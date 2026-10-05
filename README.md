@@ -16,6 +16,7 @@ Abra http://localhost:5173/login. O Vite encaminha `/auth/*` para `http://127.0.
 ## Telas
 
 - `/login`: acesso único por e-mail e senha para todos os perfis.
+- `/recuperar-senha`: e-mail → código com reenvio/expiração → nova senha e confirmação → retorno ao login. Recuperação adicionada por solicitação posterior à issue original; somente frontend, aguardando API real.
 - `/recepcao`, `/medico`, `/admin`: destinos mínimos após login para verificar sessão, perfil e logout. Painéis operacionais não fazem parte desta entrega.
 
 O perfil retornado pela API define o destino. Query strings como `?area=ADMIN` são ignoradas e não alteram apresentação, payload ou permissões. A logo original está em `public/agora-voce-logo.png`.
@@ -30,7 +31,9 @@ Os campos e o envio ficam disponíveis durante GET /auth/me e após falha de res
 - `src/components/`: marca, feedback e loading compartilhados.
 - `src/styles/`: CSS responsivo e tokens gerados.
 - `tests/auth.spec.ts`: testes de navegador com HTTP interceptado e axe.
+- `tests/recovery.spec.ts`: recuperação, falhas, duplicidade, expiração, privacidade e acessibilidade com API interceptada.
 - `docs/auth-api.md`: contrato proposto para combinar com a equipe de backend.
+- `docs/password-recovery-api.md`: contrato proposto de recuperação e pendências de segurança do servidor.
 - `DESIGN.md`, `UX-CONTRACT.md`: identidade e comportamento; tokens gerados a partir do DESIGN.
 
 ## Validação
@@ -50,6 +53,8 @@ Testes cobrem login por perfil, refresh, logout, inativo/credenciais inválidas 
 ## Integração e publicação
 
 A API proposta é POST /auth/login, GET /auth/me e POST /auth/logout. Detalhes e limites em `docs/auth-api.md`. Não há contas, credenciais de demonstração ou mocks incorporados no build. Não colocar segredos em variáveis VITE_*.
+
+A recuperação propõe POST /auth/password/request, /verify e /reset, isolados em `recovery-api.ts`. A UI só avança após respostas válidas e só confirma alteração após 2xx do reset. Código, autorização e senha ficam em memória; refresh recomeça. Política de senha, duração e espera de reenvio vêm da API. O backend ainda precisa implementar envio, verificação, uso único e revogação; veja `docs/password-recovery-api.md`.
 
 `npm run build` gera `dist/`. Hospede com HTTPS; configure fallback de rotas SPA para index.html e encaminhe `/auth/*` para a API da mesma origem antes do fallback. `npm run preview` é somente verificação local de build, não servidor de produção.
 

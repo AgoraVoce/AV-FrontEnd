@@ -47,11 +47,6 @@
       "backgroundColor": "{colors.surface}",
       "textColor": "{colors.text}"
     },
-    "role-selector": {
-      "height": "92px",
-      "backgroundColor": "{colors.brand-surface}",
-      "textColor": "{colors.primary}"
-    },
     "feedback": {
       "backgroundColor": "{colors.danger-surface}",
       "textColor": "{colors.danger}"
@@ -80,6 +75,10 @@
     },
     "scrollbar-active": {
       "backgroundColor": "{colors.scrollbar-active}"
+    },
+    "brand-panel": {
+      "backgroundColor": "{colors.brand-surface}",
+      "textColor": "{colors.text}"
     }
   }
 }
@@ -117,7 +116,7 @@ Controles usam control; container usa panel. Ícones Lucide com traços 1.7–2p
 
 ## Components
 
-Brand, Feedback e Spinner são compartilhados. LoginPage oferece um único formulário de e-mail e senha, independente de perfil ou query string. Botões possuem hover, active, focus-visible e disabled. Loading conserva geometria. Feedback é inline com role alert; pending usa role status. Reveal tem nome alternado e aria-pressed. Não há seletor de área. A API determina o perfil e o redirecionamento.
+AuthLayout, PasswordField, Brand, Feedback e Spinner são compartilhados. Recuperação usa a mesma composição, três etapas sem navegação livre, código numérico, reenvio com espera e confirmação de senha. LoginPage oferece um único formulário de e-mail e senha, independente de perfil ou query string. Botões possuem hover, active, focus-visible e disabled. Loading conserva geometria. Feedback é inline com role alert; pending usa role status. Reveal tem nome alternado e aria-pressed. Não há seletor de área. A API determina o perfil e o redirecionamento.
 
 Motion: somente transições de cor de 150ms e spinner durante requisição; prefers-reduced-motion elimina rotação e transições. A linha de pulso é estática. Scrollbars globais têm thumb, track, hover, active e fallback WebKit, sem opt-in por componente.
 
@@ -126,4 +125,4 @@ Motion: somente transições de cor de 150ms e spinner durante requisição; pre
 - Usar a logo anexada e os tokens gerados.
 - Manter um único login para todos os perfis, com campos editáveis durante a verificação de sessão e após falha de restauração.
 - Não exibir dados reais ou fictícios de pacientes no login.
-- Não adicionar MFA, recuperação de senha, lembrar acesso ou funcionalidades clínicas.
+- Recuperação de senha foi autorizada em solicitação posterior à issue original. Não adicionar MFA, lembrar acesso ou funcionalidades clínicas.

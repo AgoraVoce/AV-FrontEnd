@@ -14,6 +14,7 @@ export interface AuthContextValue {
     signal: AbortSignal,
   ) => Promise<User>;
   signOut: (signal: AbortSignal) => Promise<void>;
+  invalidateSession: () => void;
 }
 export const AuthContext = createContext<AuthContextValue | null>(null);
 export function useAuth() {

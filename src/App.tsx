@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, Link } from "react-router-dom";
+import { RecoveryPage } from "./auth/RecoveryPage";
 import { LoginPage } from "./auth/LoginPage";
 import { ProtectedArea } from "./auth/ProtectedArea";
 import { usePageTitle } from "./components/usePageTitle";
@@ -19,6 +20,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/recuperar-senha" element={<RecoveryPage />} />
       <Route
         path="/recepcao"
         element={<ProtectedArea role="RECEPCIONISTA" />}

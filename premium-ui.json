@@ -12,5 +12,8 @@
     "tokens": "npm run tokens:check",
     "design": "npm run design:lint"
   },
-  "evidence": { "failurePaths": "tests/auth.spec.ts" }
+  "evidence": {
+    "failurePaths": "tests/auth.spec.ts",
+    "recoveryFailurePaths": "tests/recovery.spec.ts"
+  }
 }

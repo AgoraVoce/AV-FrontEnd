@@ -99,8 +99,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mutation.current = false;
     }
   }, []);
+  const invalidateSession = useCallback(() => {
+    ++version.current;
+    current.current?.abort();
+    setState({ status: "anonymous", user: null });
+    channel.current?.postMessage("session-changed");
+  }, []);
   return (
-    <AuthContext.Provider value={{ state, restore, signIn, signOut }}>
+    <AuthContext.Provider
+      value={{ state, restore, signIn, signOut, invalidateSession }}
+    >
       {children}
     </AuthContext.Provider>
   );

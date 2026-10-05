@@ -42,6 +42,16 @@ Toda região usa pt-BR. Documento rola naturalmente. WCAG 2.2 AA básico verific
 
 Testes interceptam HTTP com Playwright e verificam o frontend. Eles não provam validação de usuário inativo, hash de senha, revogação, autorização ou cookies do servidor. A integração real depende do AV-Backend. O cliente de sessão usa transporte por cookie como proposta encapsulada em api.ts; se o contrato oficial for outro, adaptar ali antes da integração.
 
+## Recuperação · nova solicitação
+
+Solicitação posterior do usuário amplia somente o frontend, antes excluído da issue #17. `/recuperar-senha` mantém o mesmo layout, identidade e rolagem. `AuthLayout` é o proprietário da composição; `PasswordField` é o controle canônico de senha/reveal em login e recuperação. `RecoveryPage` é o formulário canônico desse fluxo, verificado em `tests/recovery.spec.ts`. Contrato de integração proposto em `docs/password-recovery-api.md`; não existe API oficial implementada.
+
+E-mail obrigatório/válido → resposta genérica da API → código numérico com autocomplete one-time-code → autorização restrita validada pela API → nova senha + confirmação → reset confirmado → retorno ao login sem autenticar automaticamente. Navegação interna não oferece acesso direto à redefinição. Reenvio tem espera informada pela API, bloqueio de duplicidade e substitui challenge/código apenas após sucesso. Alterar e-mail ou recomeçar descarta segredos. Cancelamento ao sair impede avanço tardio.
+
+Código inválido/expirado tem mensagem única. Contagem é informativa; servidor verifica expiração e tentativas. Nova senha segue limites recebidos, aceita paste, Unicode e espaços sem alteração; confirmação nunca vai à API. Erro de rede preserva valores para tentativa explícita e não afirma sucesso. Erro de autorização limpa segredos e pede reinício. Campos ficam editáveis antes do envio e bloqueiam somente sua requisição ativa.
+
+Etapa atual usa aria-current, mudança recebe foco no título, erro local foca o campo, progresso usa status e falha usa alert. Cada senha possui reveal independente. Sucesso remove contexto autenticado local e solicita revalidação em outras abas; revogação efetiva é do backend. Nenhum código, token ou senha persistido em URL/storage. Refresh volta à primeira etapa.
+
 ## Permissões de UI
 
 `src/auth/permissions.ts` é o proprietário canônico das permissões de visualização de área. Cada role possui somente a área já especificada: Recepcionista → recepção, Médico → médico, Admin → administração. Checagens individuais usam `hasPermission`; não há wildcard ou bypass de Admin. Esses identificadores são internos ao frontend e não alteram o contrato HTTP. Não criar permissões para operações ainda fora do escopo. O backend valida cada ação e é a autoridade; um catálogo operacional de permissões deve ser acordado antes de implementar novos controles.

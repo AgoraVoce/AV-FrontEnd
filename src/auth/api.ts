@@ -17,11 +17,11 @@ export const ERROR_COPY = {
     "Não foi possível verificar seu acesso. Tente novamente ou contate a administração.",
 };
 const REQUEST_TIMEOUT = 12_000;
-async function request(
+export async function authRequest(
   path: string,
   method: "GET" | "POST",
   signal?: AbortSignal,
-  body?: { login: string; password: string },
+  body?: Record<string, unknown>,
 ) {
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT);
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
@@ -45,7 +45,7 @@ async function request(
   if (response.status === 401 || response.status === 403)
     throw new AuthError("invalid", response.status);
   if (response.status === 429) throw new AuthError("rate-limit");
-  if (!response.ok) throw new AuthError("unavailable");
+  if (!response.ok) throw new AuthError("unavailable", response.status);
   return response;
 }
 async function session(response: Response) {
@@ -58,13 +58,13 @@ async function session(response: Response) {
 export const authApi = {
   async login(login: string, password: string, signal?: AbortSignal) {
     return session(
-      await request("/auth/login", "POST", signal, { login, password }),
+      await authRequest("/auth/login", "POST", signal, { login, password }),
     );
   },
   async me(signal?: AbortSignal) {
-    return session(await request("/auth/me", "GET", signal));
+    return session(await authRequest("/auth/me", "GET", signal));
   },
   async logout(signal?: AbortSignal) {
-    await request("/auth/logout", "POST", signal);
+    await authRequest("/auth/logout", "POST", signal);
   },
 };
