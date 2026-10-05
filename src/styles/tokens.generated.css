@@ -1,0 +1,24 @@
+/* Generated from DESIGN.md. Run npm run tokens:generate. */
+:root {
+  --color-primary: #007b78;
+  --color-primary-hover: #006561;
+  --color-primary-active: #00514e;
+  --color-background: #f6f9fb;
+  --color-surface: #ffffff;
+  --color-brand-surface: #eaf6f4;
+  --color-text: #142733;
+  --color-muted: #54657c;
+  --color-border: #d5e3e8;
+  --color-danger: #a52d38;
+  --color-danger-surface: #fff3f3;
+  --color-scrollbar-thumb: #859ba7;
+  --color-scrollbar-hover: #54657c;
+  --color-scrollbar-active: #142733;
+  --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --radius-control: 10px;
+  --radius-panel: 16px;
+  --space-page-max: 1280px;
+  --space-form-max: 540px;
+  --space-field-gap: 16px;
+}

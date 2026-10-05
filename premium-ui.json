@@ -1,0 +1,16 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["src"],
+  "locale": "pt-BR",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Form", "Scrollbar"],
+  "requiredCommands": ["lint", "unit", "build", "tokens", "design"],
+  "commands": {
+    "lint": "npm run lint",
+    "unit": "npm test",
+    "build": "npm run build",
+    "tokens": "npm run tokens:check",
+    "design": "npm run design:lint"
+  },
+  "evidence": { "failurePaths": "tests/auth.spec.ts" }
+}
