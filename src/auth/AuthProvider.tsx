@@ -66,6 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const stamp = ++version.current;
       current.current?.abort();
       mutation.current = true;
+      // A new login supersedes session restoration, including an unavailable API.
+      setState({ status: "anonymous", user: null });
       try {
         const user = await authApi.login(login, password, signal);
         if (!signal.aborted && stamp === version.current) {

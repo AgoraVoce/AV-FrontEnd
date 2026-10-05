@@ -1,36 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import {
-  ArrowRight,
-  Eye,
-  EyeOff,
-  LockKeyhole,
-  Settings2,
-  Stethoscope,
-  UserRound,
-} from "lucide-react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { ArrowRight, Eye, EyeOff, LockKeyhole } from "lucide-react";
+import { Navigate } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { Feedback, Spinner } from "../components/Feedback";
 import { usePageTitle } from "../components/usePageTitle";
 import { AuthError, ERROR_COPY } from "./api";
 import { useAuth } from "./context";
-import { HOME_BY_ROLE, ROLES } from "./types";
-import type { Role } from "./types";
-import { PRESENTATION } from "./role-presentation";
-const ICON_BY_ROLE = {
-  RECEPCIONISTA: UserRound,
-  MEDICO: Stethoscope,
-  ADMIN: Settings2,
-};
+import { HOME_BY_ROLE } from "./types";
+import { LOGIN_PRESENTATION as presentation } from "./role-presentation";
 export function LoginPage() {
   const { state, signIn, restore } = useAuth();
-  const [params, setParams] = useSearchParams();
-  const rawRole = params.get("area");
-  const role: Role = ROLES.includes(rawRole as Role)
-    ? (rawRole as Role)
-    : "RECEPCIONISTA";
-  const presentation = PRESENTATION[role];
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [reveal, setReveal] = useState(false);
@@ -42,7 +22,7 @@ export function LoginPage() {
   const loginRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  usePageTitle(`Login · ${presentation.label}`);
+  usePageTitle("Login");
   const invalidCredentials = formError === ERROR_COPY.invalid;
   useEffect(() => {
     if (!busy && invalidCredentials) passwordRef.current?.focus();
@@ -58,9 +38,13 @@ export function LoginPage() {
   }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (lock.current || state.status !== "anonymous") return;
+    if (lock.current || state.status === "authenticated") return;
     const next = {
-      login: login.trim() ? "" : "Informe seu login.",
+      login: !login.trim()
+        ? "Informe seu e-mail."
+        : loginRef.current?.validity.typeMismatch
+          ? "Informe um e-mail válido."
+          : "",
       password: password ? "" : "Informe sua senha.",
     };
     setErrors(next);
@@ -130,42 +114,16 @@ export function LoginPage() {
               <h1 id="login-title" ref={headingRef} tabIndex={-1}>
                 Bem-vindo de volta.
               </h1>
-              <p>Entre com suas credenciais para continuar.</p>
+              <p>Entre com seu e-mail e senha para continuar.</p>
             </header>
-            <div className="area-picker">
-              <p id="area-label">Área de acesso</p>
-              <div
-                className="area-options"
-                role="group"
-                aria-labelledby="area-label"
-              >
-                {ROLES.map((value) => {
-                  const Icon = ICON_BY_ROLE[value];
-                  return (
-                    <button
-                      type="button"
-                      key={value}
-                      className={`area-option${role === value ? " is-selected" : ""}`}
-                      aria-pressed={role === value}
-                      disabled={busy}
-                      onClick={() =>
-                        setParams({ area: value }, { replace: true })
-                      }
-                    >
-                      <Icon size={25} strokeWidth={1.7} aria-hidden="true" />
-                      <span>{PRESENTATION[value].label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <form noValidate onSubmit={submit} aria-busy={busy || checking}>
+            <form noValidate onSubmit={submit} aria-busy={busy}>
               <div className="field">
-                <label htmlFor="login">Login</label>
+                <label htmlFor="login">E-mail</label>
                 <input
                   id="login"
                   ref={loginRef}
-                  type="text"
+                  type="email"
+                  inputMode="email"
                   name="login"
                   autoComplete="username"
                   autoCapitalize="none"
@@ -173,8 +131,8 @@ export function LoginPage() {
                   required
                   maxLength={254}
                   value={login}
-                  disabled={busy || checking || unavailable}
-                  placeholder="Seu identificador de acesso"
+                  disabled={busy}
+                  placeholder="voce@clinica.com.br"
                   aria-invalid={Boolean(errors.login)}
                   aria-describedby={errors.login ? "login-error" : "login-help"}
                   onChange={(event) => {
@@ -202,7 +160,7 @@ export function LoginPage() {
                     required
                     maxLength={1024}
                     value={password}
-                    disabled={busy || checking || unavailable}
+                    disabled={busy}
                     placeholder="Sua senha de acesso"
                     aria-invalid={Boolean(errors.password)}
                     aria-describedby="password-error"
@@ -217,7 +175,7 @@ export function LoginPage() {
                     className="password-toggle"
                     aria-label={reveal ? "Ocultar senha" : "Mostrar senha"}
                     aria-pressed={reveal}
-                    disabled={busy || checking || unavailable}
+                    disabled={busy}
                     onClick={() => setReveal((value) => !value)}
                   >
                     {reveal ? (
@@ -232,6 +190,11 @@ export function LoginPage() {
                 </p>
               </div>
               <div className="form-feedback">
+                {checking && !busy && (
+                  <p className="session-check" role="status">
+                    Verificando sua sessão… Você já pode entrar.
+                  </p>
+                )}
                 {formError && <Feedback message={formError} />}
                 {unavailable && (
                   <Feedback
@@ -242,30 +205,16 @@ export function LoginPage() {
                   />
                 )}
               </div>
-              <button
-                type="submit"
-                className="primary-button"
-                disabled={busy || checking || unavailable}
-              >
-                <span>
-                  {busy
-                    ? "Entrando…"
-                    : checking
-                      ? "Verificando sessão…"
-                      : "Entrar no sistema"}
-                </span>
-                {busy || checking ? (
+              <button type="submit" className="primary-button" disabled={busy}>
+                <span>{busy ? "Entrando…" : "Entrar no sistema"}</span>
+                {busy ? (
                   <Spinner />
                 ) : (
                   <ArrowRight size={21} aria-hidden="true" />
                 )}
               </button>
               <p className="sr-only" role="status">
-                {busy
-                  ? "Autenticação em andamento."
-                  : checking
-                    ? "Verificação de sessão em andamento."
-                    : ""}
+                {busy ? "Autenticação em andamento." : ""}
               </p>
             </form>
             <p className="access-note">

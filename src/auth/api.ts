@@ -9,7 +9,7 @@ export class AuthError extends Error {
 }
 export const ERROR_COPY = {
   invalid:
-    "Login ou senha inválidos. Verifique suas credenciais e tente novamente.",
+    "E-mail ou senha inválidos. Verifique suas credenciais e tente novamente.",
   unavailable: "Não foi possível conectar ao serviço. Tente novamente.",
   "rate-limit":
     "Muitas tentativas. Aguarde um minuto antes de tentar novamente.",

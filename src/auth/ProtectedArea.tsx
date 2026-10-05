@@ -8,6 +8,7 @@ import { useAuth } from "./context";
 import { AuthError, ERROR_COPY } from "./api";
 import { HOME_BY_ROLE, LABEL_BY_ROLE } from "./types";
 import type { Role } from "./types";
+import { AREA_PERMISSION_BY_ROLE, hasPermission } from "./permissions";
 export function ProtectedArea({ role }: { role: Role }) {
   const { state, signOut, restore } = useAuth();
   const [busy, setBusy] = useState(false);
@@ -15,7 +16,8 @@ export function ProtectedArea({ role }: { role: Role }) {
   const lock = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const title =
-    state.status === "authenticated" && state.user.role !== role
+    state.status === "authenticated" &&
+    !hasPermission(state.user, AREA_PERMISSION_BY_ROLE[role])
       ? "Acesso não permitido"
       : LABEL_BY_ROLE[role];
   usePageTitle(title);
@@ -72,7 +74,7 @@ export function ProtectedArea({ role }: { role: Role }) {
         </div>
       </main>
     );
-  const forbidden = state.user.role !== role;
+  const forbidden = !hasPermission(state.user, AREA_PERMISSION_BY_ROLE[role]);
   return (
     <main className="area-page">
       <header className="area-header">

@@ -113,17 +113,17 @@ Um único cartão com borda suave; sombra curta e discreta. Não empilhar cartõ
 
 ## Shapes
 
-Controles e seletor usam control; container usa panel. Ícones Lucide com traços 1.7–2px. Logo PNG original é utilizada sem redesenho.
+Controles usam control; container usa panel. Ícones Lucide com traços 1.7–2px. Logo PNG original é utilizada sem redesenho.
 
 ## Components
 
-Brand, Feedback e Spinner são compartilhados. LoginPage e PRESENTATION possuem as três variações, evitando formulários duplicados. Botões possuem hover, active, focus-visible e disabled. Loading conserva geometria. Feedback é inline com role alert; pending usa role status. Reveal tem nome alternado e aria-pressed. Seleção de área usa botões com aria-pressed, sem autoridade de permissão.
+Brand, Feedback e Spinner são compartilhados. LoginPage oferece um único formulário de e-mail e senha, independente de perfil ou query string. Botões possuem hover, active, focus-visible e disabled. Loading conserva geometria. Feedback é inline com role alert; pending usa role status. Reveal tem nome alternado e aria-pressed. Não há seletor de área. A API determina o perfil e o redirecionamento.
 
 Motion: somente transições de cor de 150ms e spinner durante requisição; prefers-reduced-motion elimina rotação e transições. A linha de pulso é estática. Scrollbars globais têm thumb, track, hover, active e fallback WebKit, sem opt-in por componente.
 
 ## Do's and Don'ts
 
 - Usar a logo anexada e os tokens gerados.
-- Manter a mesma validação e comportamento nos três perfis.
+- Manter um único login para todos os perfis, com campos editáveis durante a verificação de sessão e após falha de restauração.
 - Não exibir dados reais ou fictícios de pacientes no login.
 - Não adicionar MFA, recuperação de senha, lembrar acesso ou funcionalidades clínicas.

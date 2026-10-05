@@ -15,12 +15,14 @@ Abra http://localhost:5173/login. O Vite encaminha `/auth/*` para `http://127.0.
 
 ## Telas
 
-- `/login?area=RECEPCIONISTA`: recepção.
-- `/login?area=MEDICO`: médico.
-- `/login?area=ADMIN`: administração.
+- `/login`: acesso único por e-mail e senha para todos os perfis.
 - `/recepcao`, `/medico`, `/admin`: destinos mínimos após login para verificar sessão, perfil e logout. Painéis operacionais não fazem parte desta entrega.
 
-Seletor de área muda a apresentação. Destino e acesso dependem do perfil da API. Logo original está em `public/agora-voce-logo.png`.
+O perfil retornado pela API define o destino. Query strings como `?area=ADMIN` são ignoradas e não alteram apresentação, payload ou permissões. A logo original está em `public/agora-voce-logo.png`.
+
+Os campos e o envio ficam disponíveis durante GET /auth/me e após falha de restauração. Um novo login cancela a leitura anterior, evitando que uma resposta antiga sobrescreva a sessão. Durante POST /auth/login, o formulário bloqueia duplicidade.
+
+`src/auth/permissions.ts` centraliza permissões de visualização das três áreas, derivadas do role autenticado. Não há acesso automático de Admin às outras áreas. A autorização efetiva continua no backend; permissões por ação operacional dependem do catálogo oficial e das futuras telas.
 
 ## Estrutura
 
@@ -43,7 +45,7 @@ npm test
 npm run build
 ```
 
-Testes cobrem login por perfil, refresh, logout, inativo/credenciais inválidas simulados, campos vazios, duplicidade, rede/5xx, timeout, 429, resposta malformada, acesso de perfil diferente, teclado/reveal, ausência de senha em console/storage e responsividade 320–1504px. Axe cobre violações detectáveis de WCAG AA nas três apresentações. Para gerar tokens após atualizar o DESIGN: `npm run tokens:generate`.
+Testes cobrem login por perfil, refresh, logout, inativo/credenciais inválidas simulados, campos vazios, duplicidade, rede/5xx, timeout, 429, resposta malformada, acesso de perfil diferente, teclado/reveal, ausência de senha em console/storage e responsividade 320–1504px. Axe cobre violações detectáveis de WCAG AA no login único, inclusive quando recebe parâmetros antigos de área. Para gerar tokens após atualizar o DESIGN: `npm run tokens:generate`.
 
 ## Integração e publicação
 

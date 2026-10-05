@@ -5,7 +5,7 @@ import type { Role, User } from "../src/auth/types";
 const makeUser = (role: Role): User => ({
   id: "test-user",
   name: "Pessoa de teste",
-  login: "operador.teste",
+  login: "operador@clinica.test",
   role,
 });
 async function api(
@@ -61,7 +61,9 @@ async function api(
   };
 }
 async function fill(page: Page) {
-  await page.getByLabel("Login", { exact: true }).fill("operador.teste");
+  await page
+    .getByLabel("E-mail", { exact: true })
+    .fill("operador@clinica.test");
   await page.getByLabel("Senha", { exact: true }).fill("senha-de-teste");
 }
 async function open(page: Page, path = "/login") {
@@ -101,11 +103,11 @@ test("vazios: validação, foco e zero chamadas", async ({ page }) => {
   const mock = await api(page);
   await open(page);
   await page.getByRole("button", { name: "Entrar no sistema" }).click();
-  await expect(page.getByLabel("Login", { exact: true })).toBeFocused();
-  await expect(page.getByText("Informe seu login.")).toBeVisible();
+  await expect(page.getByLabel("E-mail", { exact: true })).toBeFocused();
+  await expect(page.getByText("Informe seu e-mail.")).toBeVisible();
   await expect(page.getByText("Informe sua senha.")).toBeVisible();
   expect(mock.calls()).toBe(0);
-  await page.getByLabel("Login", { exact: true }).fill("   ");
+  await page.getByLabel("E-mail", { exact: true }).fill("   ");
   await page.getByRole("button", { name: "Entrar no sistema" }).click();
   expect(mock.calls()).toBe(0);
 });
@@ -120,13 +122,13 @@ for (const [label, status] of [
     await fill(page);
     await page.getByRole("button", { name: "Entrar no sistema" }).click();
     await expect(page.getByRole("alert")).toContainText(
-      "Login ou senha inválidos.",
+      "E-mail ou senha inválidos.",
     );
     await expect(page).toHaveURL("/login");
     await expect(page.getByLabel("Senha", { exact: true })).toHaveValue("");
     await expect(page.getByLabel("Senha", { exact: true })).toBeFocused();
-    await expect(page.getByLabel("Login", { exact: true })).toHaveValue(
-      "operador.teste",
+    await expect(page.getByLabel("E-mail", { exact: true })).toHaveValue(
+      "operador@clinica.test",
     );
     await expect(page.getByText("Mensagem sensível do servidor.")).toHaveCount(
       0,
@@ -292,9 +294,9 @@ test("reveal, teclado, labels e senha ausente de logs/storage", async ({
   page.on("console", (message) => logs.push(message.text()));
   const mock = await api(page);
   await open(page);
-  await page.getByText("Login", { exact: true }).click();
-  await expect(page.getByLabel("Login", { exact: true })).toBeFocused();
-  await expect(page.getByLabel("Login", { exact: true })).toHaveAttribute(
+  await page.getByText("E-mail", { exact: true }).click();
+  await expect(page.getByLabel("E-mail", { exact: true })).toBeFocused();
+  await expect(page.getByLabel("E-mail", { exact: true })).toHaveAttribute(
     "autocomplete",
     "username",
   );
@@ -332,17 +334,11 @@ for (const area of ["RECEPCIONISTA", "MEDICO", "ADMIN"] as const) {
   test(`a11y, responsividade e motion: ${area}`, async ({ page }) => {
     await api(page);
     await open(page, `/login?area=${area}`);
-    await expect(
-      page.getByRole("button", {
-        name:
-          area === "RECEPCIONISTA"
-            ? "Recepção"
-            : area === "MEDICO"
-              ? "Médico"
-              : "Admin",
-        exact: true,
-      }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("Área de acesso", { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(page.locator(".area-picker")).toHaveCount(0);
+    await expect(page).toHaveTitle("Login | Agora Você");
     expect(
       (
         await new AxeBuilder({ page })
@@ -386,19 +382,20 @@ test("404 oferece retorno", async ({ page }) => {
   await page.getByRole("link", { name: "Voltar para o login" }).click();
   await expect(page).toHaveURL("/login");
 });
-test("screenshots das três telas e mobile", async ({ page }) => {
+test("screenshots do login único e mobile", async ({ page }) => {
   await api(page);
-  for (const area of ["RECEPCIONISTA", "MEDICO", "ADMIN"]) {
-    await open(page, `/login?area=${area}`);
-    await page.evaluate(() => document.fonts.ready);
-    await page.screenshot({
-      path: `../qa/login-${area.toLowerCase()}.png`,
-      fullPage: true,
-    });
-  }
+  await open(page);
+  await page.evaluate(() => document.fonts.ready);
+  await page.screenshot({
+    path: "../qa/login-email-desktop.png",
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page);
-  await page.screenshot({ path: "../qa/login-mobile.png", fullPage: true });
+  await page.screenshot({
+    path: "../qa/login-email-mobile.png",
+    fullPage: true,
+  });
 });
 
 test("contrato HTTP envia somente credenciais no body", async ({ page }) => {
@@ -412,41 +409,114 @@ test("contrato HTTP envia somente credenciais no body", async ({ page }) => {
     },
   });
   await open(page, "/login?area=ADMIN");
-  await page.getByLabel("Login", { exact: true }).fill(" operador.teste ");
+  await page
+    .getByLabel("E-mail", { exact: true })
+    .fill(" operador@clinica.test ");
   await page.getByLabel("Senha", { exact: true }).fill(" senha-de-teste ");
   await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page).toHaveURL("/medico");
   expect(method).toBe("POST");
   expect(body).toEqual({
-    login: "operador.teste",
+    login: "operador@clinica.test",
     password: " senha-de-teste ",
   });
 });
 
-test("sessão pendente tem progresso e não aceita login", async ({ page }) => {
-  let finish!: () => void;
-  const pending = new Promise<void>((resolve) => {
-    finish = resolve;
-  });
-  const mock = await api(page);
-  await page.route("**/auth/me", async (route) => {
-    await pending;
-    await route.fulfill({ status: 401, json: {} });
-  });
-  await page.goto("/login");
+test("sessão pendente permite digitar e login substitui restauração", async ({
+  page,
+}) => {
+  const mock = await api(page, { role: "MEDICO" });
+  await page.route("**/auth/me", async () => {});
+  await page.goto("/login?area=ADMIN");
   await expect(
-    page.getByRole("heading", { name: "Bem-vindo de volta." }),
+    page.getByText("Verificando sua sessão… Você já pode entrar."),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Verificando sessão…" }),
-  ).toBeDisabled();
-  await expect(page.getByLabel("Login", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("E-mail", { exact: true })).toBeEditable();
+  await expect(page.getByLabel("Senha", { exact: true })).toBeEditable();
+  await fill(page);
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page).toHaveURL("/medico");
+  expect(mock.calls()).toBe(1);
+});
+
+test("e-mail inválido é rejeitado localmente", async ({ page }) => {
+  const mock = await api(page);
+  await open(page);
+  await page.getByLabel("E-mail", { exact: true }).fill("email-invalido");
+  await page.getByLabel("Senha", { exact: true }).fill("senha-de-teste");
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page.getByText("Informe um e-mail válido.")).toBeVisible();
+  await expect(page.getByLabel("E-mail", { exact: true })).toBeFocused();
   expect(mock.calls()).toBe(0);
-  finish();
+});
+
+test("falha de restauração mantém campos e login utilizáveis", async ({
+  page,
+}) => {
+  const mock = await api(page);
+  await page.route("**/auth/me", (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  );
+  await page.goto("/login");
+  await expect(page.getByRole("alert")).toContainText(
+    "Não foi possível verificar sua sessão.",
+  );
+  await fill(page);
+  await page.getByRole("button", { name: "Mostrar senha" }).click();
+  await expect(page.getByLabel("Senha", { exact: true })).toHaveAttribute(
+    "type",
+    "text",
+  );
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page).toHaveURL("/recepcao");
+  expect(mock.calls()).toBe(1);
+});
+
+test("login inválido durante restauração pendente permite nova tentativa", async ({
+  page,
+}) => {
+  const mock = await api(page, { loginStatus: 401 });
+  await page.route("**/auth/me", async () => {});
+  await page.goto("/login");
+  await fill(page);
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "E-mail ou senha inválidos.",
+  );
+  await expect(page.getByLabel("E-mail", { exact: true })).toBeEditable();
+  await expect(page.getByLabel("Senha", { exact: true })).toBeEditable();
   await expect(
     page.getByRole("button", { name: "Entrar no sistema" }),
   ).toBeEnabled();
+  expect(mock.calls()).toBe(1);
 });
+
+for (const role of ["RECEPCIONISTA", "MEDICO", "ADMIN"] as const) {
+  for (const [targetRole, path] of [
+    ["RECEPCIONISTA", "/recepcao"],
+    ["MEDICO", "/medico"],
+    ["ADMIN", "/admin"],
+  ] as const) {
+    test(`permissão ${role} -> ${targetRole}`, async ({ page }) => {
+      await api(page, { authenticated: true, role });
+      await page.goto(path);
+      if (role === targetRole) {
+        await expect(
+          page.getByRole("heading", { name: "Olá, Pessoa de teste." }),
+        ).toBeVisible();
+      } else {
+        await expect(
+          page.getByRole("heading", {
+            name: "Esta área não está disponível para seu perfil.",
+          }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("heading", { name: "Olá, Pessoa de teste." }),
+        ).toHaveCount(0);
+      }
+    });
+  }
+}
 
 test("logout 403 não é confundido com sessão revogada", async ({ page }) => {
   await api(page, { authenticated: true, logoutStatus: 403 });
