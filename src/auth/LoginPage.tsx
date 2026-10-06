@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowRight, LockKeyhole } from "lucide-react";
+import { ArrowRight, LifeBuoy } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import { AuthLayout } from "../components/AuthLayout";
 import { PasswordField } from "../components/PasswordField";
@@ -33,7 +33,7 @@ export function LoginPage() {
   const notice =
     formError ||
     (state.status === "error"
-      ? "Não foi possível verificar sua sessão. Entre com seu e-mail e senha."
+      ? "Não conseguimos conectar agora. Tente entrar daqui a pouco."
       : null);
   const loginInvalid = Boolean(notice && correctedNotice.login !== notice);
   const passwordInvalid = Boolean(
@@ -57,11 +57,11 @@ export function LoginPage() {
     if (lock.current || state.status === "authenticated") return;
     const next = {
       login: !login.trim()
-        ? "Informe seu e-mail."
+        ? "Digite seu e-mail."
         : loginRef.current?.validity.typeMismatch
-          ? "Informe um e-mail válido."
+          ? "Confira se o e-mail está escrito corretamente."
           : "",
-      password: password ? "" : "Informe sua senha.",
+      password: password ? "" : "Digite sua senha.",
     };
     setErrors(next);
     setFormError(null);
@@ -100,11 +100,11 @@ export function LoginPage() {
   return (
     <AuthLayout titleId="login-title">
       <header className="form-heading">
-        <p className="eyebrow">Acesso à equipe</p>
+        <p className="eyebrow">Vamos começar</p>
         <h1 id="login-title" ref={headingRef} tabIndex={-1}>
           Bem-vindo de volta.
         </h1>
-        <p>Entre com seu e-mail e senha para continuar.</p>
+        <p>Entre com seu e-mail e senha para começar.</p>
       </header>
       <form noValidate onSubmit={submit} aria-busy={busy}>
         <div className="field">
@@ -167,7 +167,7 @@ export function LoginPage() {
         <div className="form-feedback">
           {checking && !busy && (
             <p className="session-check" role="status">
-              Verificando sua sessão… Você já pode entrar.
+              Só um instante… Você já pode preencher seus dados.
             </p>
           )}
           <p id="login-auth-error" className="sr-only">
@@ -179,16 +179,16 @@ export function LoginPage() {
           className="primary-button"
           disabled={busy || !login.trim() || !password}
         >
-          <span>{busy ? "Entrando…" : "Entrar no sistema"}</span>
+          <span>{busy ? "Entrando…" : "Entrar"}</span>
           {busy ? <Spinner /> : <ArrowRight size={21} aria-hidden="true" />}
         </button>
         <p className="sr-only" role="status">
-          {busy ? "Autenticação em andamento." : ""}
+          {busy ? "Estamos conferindo seus dados…" : ""}
         </p>
       </form>
       <p className="access-note">
-        <LockKeyhole size={18} aria-hidden="true" />
-        <span>Seu acesso é definido pelo perfil da sua conta.</span>
+        <LifeBuoy size={18} aria-hidden="true" />
+        <span>Precisa de ajuda? Fale com sua equipe.</span>
       </p>
       <ErrorToast
         message={notice === dismissedNotice ? null : notice}

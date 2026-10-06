@@ -8,13 +8,12 @@ export class AuthError extends Error {
   }
 }
 export const ERROR_COPY = {
-  invalid:
-    "E-mail ou senha inválidos. Verifique suas credenciais e tente novamente.",
-  unavailable: "Não foi possível conectar ao serviço. Tente novamente.",
+  invalid: "E-mail ou senha inválidos. Confira os dados e tente de novo.",
+  unavailable: "Não conseguimos conectar agora. Tente de novo em instantes.",
   "rate-limit":
-    "Muitas tentativas. Aguarde um minuto antes de tentar novamente.",
+    "Você tentou várias vezes. Espere um pouco antes de tentar de novo.",
   contract:
-    "Não foi possível verificar seu acesso. Tente novamente ou contate a administração.",
+    "Não conseguimos entrar na sua conta. Tente de novo ou peça ajuda à sua equipe.",
 };
 const REQUEST_TIMEOUT = 12_000;
 export async function authRequest(

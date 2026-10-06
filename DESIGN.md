@@ -126,3 +126,7 @@ Motion: somente transições de cor de 150ms e spinner durante requisição; pre
 - Manter um único login para todos os perfis, com campos editáveis durante a verificação de sessão e após falha de restauração.
 - Não exibir dados reais ou fictícios de pacientes no login.
 - Recuperação de senha foi autorizada em solicitação posterior à issue original. Não adicionar MFA, lembrar acesso ou funcionalidades clínicas.
+
+## Linguagem
+
+pt-BR simples e acolhedor, voltado à pessoa que está entrando. Preferir “sua conta”, “Digite”, “Entrar” e “tente de novo” a termos como sessão, autenticação, credenciais, autorização e permissões nos avisos públicos. Explicar o próximo passo sem culpar a pessoa, prometer envio para contas inexistentes ou afirmar sucesso antes da API. Mensagens de conexão continuam distintas de e-mail/senha inválidos. Manter instruções de expiração, confirmação e limites de senha claras.

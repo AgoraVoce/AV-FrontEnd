@@ -60,3 +60,7 @@ Etapa atual usa aria-current, mudança recebe foco no título, erro local foca o
 ## Feedback do login · ajuste solicitado
 
 `ErrorToast` é o proprietário canônico do toast, com um único slot sem empilhamento, portal para body, placement superior direito responsivo, tokens existentes e --z-toast. Erros persistem até fechar ou iniciar nova tentativa. Fechar pelo teclado devolve foco ao formulário e mantém descrição acessível vinculada aos campos; não oferece retry. O login usa toast para erros de sessão/autenticação; recuperação e falhas de logout preservam seus avisos inline. Erros locais de formato continuam associados ao campo. Rede/5xx nunca são apresentados como credenciais inválidas. Nenhuma mensagem inclui dados digitados ou texto cru do servidor.
+
+## Linguagem do login e recuperação
+
+Solicitação do usuário: textos mais humanos, sem vocabulário da implementação na tela. Login apresenta “Cuidar de pessoas começa por aqui”, “Use o e-mail da sua conta” e ação “Entrar”. Falha de conexão informa “Não conseguimos conectar agora”; erro de e-mail/senha continua genérico. Recuperação fala em código, nova senha e prazo, evitando autorização e política de segurança. Sem mudança em endpoints, validação, campos obrigatórios, bloqueio de envio, toast ou navegação. Cabeçalhos em linhas separadas mantêm espaços entre as palavras para leitura acessível.
