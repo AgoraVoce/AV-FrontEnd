@@ -72,6 +72,17 @@ async function open(page: Page, path = "/login") {
     page.getByRole("button", { name: "Entrar no sistema" }),
   ).toBeDisabled();
 }
+test("recepção exibe a fila de espera da área autorizada", async ({ page }) => {
+  await api(page, { role: "RECEPCIONISTA", authenticated: true });
+  await page.goto("/recepcao");
+
+  await expect(
+    page.getByRole("heading", { name: "Fila de Espera e Gestão de Prioridades" }),
+  ).toBeVisible();
+  await expect(page.getByText("Maria Clara Santos")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cadastrar Paciente" })).toBeVisible();
+});
+
 for (const [role, path] of [
   ["RECEPCIONISTA", "/recepcao"],
   ["MEDICO", "/medico"],
@@ -525,7 +536,11 @@ for (const role of ["RECEPCIONISTA", "MEDICO", "ADMIN"] as const) {
     test(`permissão ${role} -> ${targetRole}`, async ({ page }) => {
       await api(page, { authenticated: true, role });
       await page.goto(path);
-      if (role === targetRole) {
+      if (role === "ADMIN" && targetRole === "RECEPCIONISTA") {
+        await expect(
+          page.getByRole("heading", { name: "Fila de Espera e Gestão de Prioridades" }),
+        ).toBeVisible();
+      } else if (role === targetRole) {
         await expect(
           page.getByRole("heading", { name: "Olá, Pessoa de teste." }),
         ).toBeVisible();

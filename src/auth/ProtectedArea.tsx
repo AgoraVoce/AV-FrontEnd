@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowRight, LogOut, ShieldCheck } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import { Brand } from "../components/Brand";
@@ -9,8 +9,19 @@ import { AuthError, ERROR_COPY } from "./api";
 import { HOME_BY_ROLE, LABEL_BY_ROLE } from "./types";
 import type { Role } from "./types";
 import { AREA_PERMISSION_BY_ROLE, hasPermission } from "./permissions";
-export function ProtectedArea({ role }: { role: Role }) {
+export function ProtectedArea({
+  role,
+  children,
+}: {
+  role: Role;
+  children?: ReactNode;
+}) {
   const { state, signOut } = useAuth();
+  const devBypass =
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("dev")?.toLowerCase() ===
+      role.toLowerCase();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lock = useRef(false);
@@ -52,6 +63,25 @@ export function ProtectedArea({ role }: { role: Role }) {
       }
     }
   }
+  if (devBypass) {
+    if (children) return <>{children}</>;
+    return (
+      <main className="area-page">
+        <header className="area-header">
+          <Brand compact />
+        </header>
+        <section className="area-welcome">
+          <div className="welcome-icon">
+            <ShieldCheck size={30} aria-hidden="true" />
+          </div>
+          <p className="eyebrow">Modo local</p>
+          <h1>Visualização de desenvolvimento.</h1>
+          <p>Sessão simulada ativada para testar a área em ambiente local.</p>
+        </section>
+      </main>
+    );
+  }
+
   if (state.status === "anonymous" || state.status === "error")
     return <Navigate to="/login" replace />;
   if (state.status === "checking")
@@ -67,6 +97,33 @@ export function ProtectedArea({ role }: { role: Role }) {
       </main>
     );
   const forbidden = !hasPermission(state.user, AREA_PERMISSION_BY_ROLE[role]);
+
+  if (children) {
+    if (forbidden) {
+      return (
+        <main className="area-page">
+          <header className="area-header">
+            <Brand compact />
+          </header>
+          <section className="area-welcome">
+            <div className="welcome-icon">
+              <ShieldCheck size={30} aria-hidden="true" />
+            </div>
+            <p className="eyebrow">Acesso restrito</p>
+            <h1>Esta área não está disponível para seu perfil.</h1>
+            <p>Continue na área autorizada para sua conta.</p>
+            <Link className="primary-button" to={HOME_BY_ROLE[state.user.role]}>
+              Ir para minha área
+              <ArrowRight size={20} aria-hidden="true" />
+            </Link>
+          </section>
+        </main>
+      );
+    }
+
+    return <>{children}</>;
+  }
+
   return (
     <main className="area-page">
       <header className="area-header">

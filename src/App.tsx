@@ -2,6 +2,8 @@ import { Navigate, Route, Routes, Link } from "react-router-dom";
 import { RecoveryPage } from "./auth/RecoveryPage";
 import { LoginPage } from "./auth/LoginPage";
 import { ProtectedArea } from "./auth/ProtectedArea";
+import { QueuePage } from "./auth/reception/QueuePage";
+import { PainelPublicoPage } from "./painel-publico/PainelPublicoPage";
 import { usePageTitle } from "./components/usePageTitle";
 function NotFound() {
   usePageTitle("Página não encontrada");
@@ -21,9 +23,10 @@ export default function App() {
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/recuperar-senha" element={<RecoveryPage />} />
+      <Route path="/transmissao" element={<PainelPublicoPage />} />
       <Route
         path="/recepcao"
-        element={<ProtectedArea role="RECEPCIONISTA" />}
+        element={<ProtectedArea role="RECEPCIONISTA"><QueuePage /></ProtectedArea>}
       />
       <Route path="/medico" element={<ProtectedArea role="MEDICO" />} />
       <Route path="/admin" element={<ProtectedArea role="ADMIN" />} />
