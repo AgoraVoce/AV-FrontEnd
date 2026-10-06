@@ -13,20 +13,21 @@ Fonte: [AV-Documents #17](https://github.com/AgoraVoce/AV-Documents/issues/17), 
 
 ## Canonical UI Map
 
-| Capability | Canonical owner               | Source of truth    | Allowed variants                          | Verification                      |
-| ---------- | ----------------------------- | ------------------ | ----------------------------------------- | --------------------------------- |
-| Form       | `src/auth/LoginPage.tsx`      | #17, este contrato | Único; query string de área ignorada      | `tests/auth.spec.ts`              |
-| Scrollbar  | `src/styles/app.css`          | DESIGN.md          | Global; forced-colors do sistema          | Teste de estilo e inspeção visual |
-| Feedback   | `src/components/Feedback.tsx` | #17                | Inline error + retry                      | `tests/auth.spec.ts`              |
-| Session    | `src/auth/AuthProvider.tsx`   | API proposta + #17 | Checking, anonymous, authenticated, error | `tests/auth.spec.ts`              |
+| Capability | Canonical owner                 | Source of truth        | Allowed variants                                      | Verification                      |
+| ---------- | ------------------------------- | ---------------------- | ----------------------------------------------------- | --------------------------------- |
+| Form       | `src/auth/LoginPage.tsx`        | #17, este contrato     | Único; query string de área ignorada                  | `tests/auth.spec.ts`              |
+| Scrollbar  | `src/styles/app.css`            | DESIGN.md              | Global; forced-colors do sistema                      | Teste de estilo e inspeção visual |
+| Feedback   | `src/components/Feedback.tsx`   | #17                    | Inline error + retry                                  | `tests/auth.spec.ts`              |
+| Toast      | `src/components/ErrorToast.tsx` | Solicitação do usuário | Erro de login/sessão; um aviso persistente, sem retry | `tests/auth.spec.ts`              |
+| Session    | `src/auth/AuthProvider.tsx`     | API proposta + #17     | Checking, anonymous, authenticated, error             | `tests/auth.spec.ts`              |
 
 ## Fluxo e estados
 
-Login: campos obrigatórios → primeiro inválido recebe foco → zero chamadas se vazio → envio único com indicador → API retorna usuário → rota correspondente ao perfil. Não há seleção de área. O e-mail é enviado no campo `login` do contrato proposto, sem role ou permissão escolhidos pelo cliente. Não armazenar credenciais ou tokens em localStorage/sessionStorage.
+Login: Entrar desabilitado enquanto e-mail (após trim) ou senha estiverem vazios → validação defensiva no submit → primeiro inválido recebe foco → zero chamadas se vazio → envio único com indicador → API retorna usuário → rota correspondente ao perfil. Não há seleção de área. O e-mail é enviado no campo `login` do contrato proposto, sem role ou permissão escolhidos pelo cliente. Não armazenar credenciais ou tokens em localStorage/sessionStorage.
 
-401/403 no login: mensagem genérica, e-mail preservado, senha limpa e remascarada. Rede/5xx/timeout: mensagem de indisponibilidade, valores preservados e botão permite nova tentativa. 429: pedir espera. Resposta desconhecida: bloquear acesso e orientar retry/contato com administração. Não mostrar mensagem crua da API.
+401/403 no login: toast genérico, ambos os campos vermelhos com aria-invalid, e-mail preservado, senha limpa e remascarada; Entrar volta a ficar desabilitado. Editar um campo remove sua marcação de erro do servidor. Rede/5xx/timeout: mensagem de indisponibilidade, valores preservados e botão permite nova tentativa. 429: pedir espera. Resposta desconhecida: bloquear acesso e orientar retry/contato com administração. Não mostrar mensagem crua da API.
 
-GET /auth/me ao montar e ao retornar à aba: ocultar conteúdo protegido enquanto verifica. 401/403: login. Falha: tela de retry; não afirmar logout/expiração. Requests de leitura antigas são canceladas e não sobrescrevem login/logout. No login, a restauração é informativa e não bloqueia digitação nem envio; em rotas protegidas, continua bloqueando conteúdo até confirmar a sessão. Mudanças de sessão são notificadas entre abas com BroadcastChannel, sem transmitir usuário ou segredo.
+GET /auth/me ao montar e ao retornar à aba: ocultar conteúdo protegido enquanto verifica. 401/403: login. Falha: retornar ao login sem revelar conteúdo protegido; toast de indisponibilidade, campos vermelhos, sem botão Tentar novamente. Não afirmar logout/expiração. Requests de leitura antigas são canceladas e não sobrescrevem login/logout. No login, a restauração é informativa e não bloqueia digitação; envio depende de campos preenchidos; em rotas protegidas, continua bloqueando conteúdo até confirmar a sessão. Mudanças de sessão são notificadas entre abas com BroadcastChannel, sem transmitir usuário ou segredo.
 
 Logout: aguardar POST /auth/logout. Sucesso ou 401: remover contexto e voltar ao login. 403 ou falha de rede/5xx: manter contexto e mostrar que sessão não pôde ser encerrada. Servidor precisa revogar a sessão para impedir reutilização.
 
@@ -55,3 +56,7 @@ Etapa atual usa aria-current, mudança recebe foco no título, erro local foca o
 ## Permissões de UI
 
 `src/auth/permissions.ts` é o proprietário canônico das permissões de visualização de área. Cada role possui somente a área já especificada: Recepcionista → recepção, Médico → médico, Admin → administração. Checagens individuais usam `hasPermission`; não há wildcard ou bypass de Admin. Esses identificadores são internos ao frontend e não alteram o contrato HTTP. Não criar permissões para operações ainda fora do escopo. O backend valida cada ação e é a autoridade; um catálogo operacional de permissões deve ser acordado antes de implementar novos controles.
+
+## Feedback do login · ajuste solicitado
+
+`ErrorToast` é o proprietário canônico do toast, com um único slot sem empilhamento, portal para body, placement superior direito responsivo, tokens existentes e --z-toast. Erros persistem até fechar ou iniciar nova tentativa. Fechar pelo teclado devolve foco ao formulário e mantém descrição acessível vinculada aos campos; não oferece retry. O login usa toast para erros de sessão/autenticação; recuperação e falhas de logout preservam seus avisos inline. Erros locais de formato continuam associados ao campo. Rede/5xx nunca são apresentados como credenciais inválidas. Nenhuma mensagem inclui dados digitados ou texto cru do servidor.

@@ -3,7 +3,7 @@
   "sourceRoots": ["src"],
   "locale": "pt-BR",
   "canonicalMap": "UX-CONTRACT.md",
-  "requiredCapabilities": ["Form", "Scrollbar"],
+  "requiredCapabilities": ["Form", "Scrollbar", "Toast"],
   "requiredCommands": ["lint", "unit", "build", "tokens", "design"],
   "commands": {
     "lint": "npm run lint",

@@ -116,7 +116,7 @@ Controles usam control; container usa panel. Ícones Lucide com traços 1.7–2p
 
 ## Components
 
-AuthLayout, PasswordField, Brand, Feedback e Spinner são compartilhados. Recuperação usa a mesma composição, três etapas sem navegação livre, código numérico, reenvio com espera e confirmação de senha. LoginPage oferece um único formulário de e-mail e senha, independente de perfil ou query string. Botões possuem hover, active, focus-visible e disabled. Loading conserva geometria. Feedback é inline com role alert; pending usa role status. Reveal tem nome alternado e aria-pressed. Não há seletor de área. A API determina o perfil e o redirecionamento.
+AuthLayout, PasswordField, ErrorToast, Brand, Feedback e Spinner são compartilhados. Recuperação usa a mesma composição, três etapas sem navegação livre, código numérico, reenvio com espera e confirmação de senha. LoginPage oferece um único formulário de e-mail e senha, independente de perfil ou query string. Botões possuem hover, active, focus-visible e disabled. Loading conserva geometria. Login usa toast de erro persistente com role alert e campos em danger/danger-surface; Entrar desabilita quando faltar e-mail ou senha. Toast superior direito usa --z-toast: 900, safe-area e largura limitada ao viewport, sem mover o formulário. Outros fluxos mantêm Feedback inline; pending usa role status. Reveal tem nome alternado e aria-pressed. Não há seletor de área. A API determina o perfil e o redirecionamento.
 
 Motion: somente transições de cor de 150ms e spinner durante requisição; prefers-reduced-motion elimina rotação e transições. A linha de pulso é estática. Scrollbars globais têm thumb, track, hover, active e fallback WebKit, sem opt-in por componente.
 

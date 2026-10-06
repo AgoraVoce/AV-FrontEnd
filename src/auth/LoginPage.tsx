@@ -4,19 +4,25 @@ import { ArrowRight, LockKeyhole } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import { AuthLayout } from "../components/AuthLayout";
 import { PasswordField } from "../components/PasswordField";
-import { Feedback, Spinner } from "../components/Feedback";
+import { Spinner } from "../components/Feedback";
+import { ErrorToast } from "../components/ErrorToast";
 import { usePageTitle } from "../components/usePageTitle";
 import { AuthError, ERROR_COPY } from "./api";
 import { useAuth } from "./context";
 import { HOME_BY_ROLE } from "./types";
 import { LOGIN_PRESENTATION as presentation } from "./role-presentation";
 export function LoginPage() {
-  const { state, signIn, restore } = useAuth();
+  const { state, signIn } = useAuth();
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [reveal, setReveal] = useState(false);
   const [errors, setErrors] = useState({ login: "", password: "" });
   const [formError, setFormError] = useState<string | null>(null);
+  const [dismissedNotice, setDismissedNotice] = useState<string | null>(null);
+  const [correctedNotice, setCorrectedNotice] = useState<{
+    login: string | null;
+    password: string | null;
+  }>({ login: null, password: null });
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const controller = useRef<AbortController | null>(null);
@@ -24,6 +30,15 @@ export function LoginPage() {
   const passwordRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   usePageTitle("Login");
+  const notice =
+    formError ||
+    (state.status === "error"
+      ? "Não foi possível verificar sua sessão. Entre com seu e-mail e senha."
+      : null);
+  const loginInvalid = Boolean(notice && correctedNotice.login !== notice);
+  const passwordInvalid = Boolean(
+    notice && correctedNotice.password !== notice,
+  );
   const invalidCredentials = formError === ERROR_COPY.invalid;
   useEffect(() => {
     if (!busy && invalidCredentials) passwordRef.current?.focus();
@@ -50,11 +65,13 @@ export function LoginPage() {
     };
     setErrors(next);
     setFormError(null);
+    setDismissedNotice(null);
     if (next.login || next.password) {
       (next.login ? loginRef : passwordRef).current?.focus();
       return;
     }
     lock.current = true;
+    setCorrectedNotice({ login: null, password: null });
     setBusy(true);
     const request = new AbortController();
     controller.current = request;
@@ -80,7 +97,6 @@ export function LoginPage() {
   if (state.status === "authenticated")
     return <Navigate to={HOME_BY_ROLE[state.user.role]} replace />;
   const checking = state.status === "checking";
-  const unavailable = state.status === "error";
   return (
     <AuthLayout titleId="login-title">
       <header className="form-heading">
@@ -107,10 +123,16 @@ export function LoginPage() {
             value={login}
             disabled={busy}
             placeholder="voce@clinica.com.br"
-            aria-invalid={Boolean(errors.login)}
-            aria-describedby={errors.login ? "login-error" : "login-help"}
+            aria-invalid={Boolean(errors.login) || loginInvalid}
+            aria-describedby={[
+              errors.login ? "login-error" : "login-help",
+              loginInvalid ? "login-auth-error" : null,
+            ]
+              .filter(Boolean)
+              .join(" ")}
             onChange={(event) => {
               setLogin(event.target.value);
+              setCorrectedNotice((old) => ({ ...old, login: notice }));
               if (errors.login) setErrors((old) => ({ ...old, login: "" }));
             }}
           />
@@ -131,8 +153,11 @@ export function LoginPage() {
           onToggle={() => setReveal((value) => !value)}
           disabled={busy}
           error={errors.password}
+          invalid={passwordInvalid}
+          descriptionId={passwordInvalid ? "login-auth-error" : undefined}
           onChange={(value) => {
             setPassword(value);
+            setCorrectedNotice((old) => ({ ...old, password: notice }));
             if (errors.password) setErrors((old) => ({ ...old, password: "" }));
           }}
         />
@@ -145,17 +170,15 @@ export function LoginPage() {
               Verificando sua sessão… Você já pode entrar.
             </p>
           )}
-          {formError && <Feedback message={formError} />}
-          {unavailable && (
-            <Feedback
-              message="Não foi possível verificar sua sessão."
-              retry={() => {
-                void restore();
-              }}
-            />
-          )}
+          <p id="login-auth-error" className="sr-only">
+            {notice}
+          </p>
         </div>
-        <button type="submit" className="primary-button" disabled={busy}>
+        <button
+          type="submit"
+          className="primary-button"
+          disabled={busy || !login.trim() || !password}
+        >
           <span>{busy ? "Entrando…" : "Entrar no sistema"}</span>
           {busy ? <Spinner /> : <ArrowRight size={21} aria-hidden="true" />}
         </button>
@@ -167,6 +190,13 @@ export function LoginPage() {
         <LockKeyhole size={18} aria-hidden="true" />
         <span>Seu acesso é definido pelo perfil da sua conta.</span>
       </p>
+      <ErrorToast
+        message={notice === dismissedNotice ? null : notice}
+        onDismiss={() => {
+          setDismissedNotice(notice);
+          (invalidCredentials ? passwordRef : loginRef).current?.focus();
+        }}
+      />
     </AuthLayout>
   );
 }

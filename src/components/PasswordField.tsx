@@ -10,6 +10,8 @@ export function PasswordField({
   onToggle,
   disabled,
   error,
+  invalid = false,
+  descriptionId,
   help,
   inputRef,
   autoComplete = "new-password",
@@ -24,6 +26,8 @@ export function PasswordField({
   onToggle: () => void;
   disabled: boolean;
   error?: string;
+  invalid?: boolean;
+  descriptionId?: string;
   help?: string;
   inputRef?: Ref<HTMLInputElement>;
   autoComplete?: "current-password" | "new-password";
@@ -54,8 +58,10 @@ export function PasswordField({
           value={value}
           disabled={disabled}
           placeholder={label === "Senha" ? "Sua senha de acesso" : label}
-          aria-invalid={Boolean(error)}
-          aria-describedby={`${id}-error`}
+          aria-invalid={Boolean(error) || invalid}
+          aria-describedby={[`${id}-error`, descriptionId]
+            .filter(Boolean)
+            .join(" ")}
           onChange={(event) => onChange(event.target.value)}
         />
         <button

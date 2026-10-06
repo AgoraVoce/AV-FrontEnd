@@ -10,7 +10,7 @@ import { HOME_BY_ROLE, LABEL_BY_ROLE } from "./types";
 import type { Role } from "./types";
 import { AREA_PERMISSION_BY_ROLE, hasPermission } from "./permissions";
 export function ProtectedArea({ role }: { role: Role }) {
-  const { state, signOut, restore } = useAuth();
+  const { state, signOut } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lock = useRef(false);
@@ -52,25 +52,17 @@ export function ProtectedArea({ role }: { role: Role }) {
       }
     }
   }
-  if (state.status === "anonymous") return <Navigate to="/login" replace />;
-  if (state.status === "checking" || state.status === "error")
+  if (state.status === "anonymous" || state.status === "error")
+    return <Navigate to="/login" replace />;
+  if (state.status === "checking")
     return (
       <main className="session-page">
         <Brand />
         <div className="session-status">
-          {state.status === "checking" ? (
-            <p role="status">
-              <Spinner />
-              Verificando seu acesso…
-            </p>
-          ) : (
-            <Feedback
-              message="Não foi possível verificar sua sessão."
-              retry={() => {
-                void restore();
-              }}
-            />
-          )}
+          <p role="status">
+            <Spinner />
+            Verificando seu acesso…
+          </p>
         </div>
       </main>
     );

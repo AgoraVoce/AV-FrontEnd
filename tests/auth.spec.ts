@@ -70,7 +70,7 @@ async function open(page: Page, path = "/login") {
   await page.goto(path);
   await expect(
     page.getByRole("button", { name: "Entrar no sistema" }),
-  ).toBeEnabled();
+  ).toBeDisabled();
 }
 for (const [role, path] of [
   ["RECEPCIONISTA", "/recepcao"],
@@ -102,13 +102,25 @@ for (const [role, path] of [
 test("vazios: validação, foco e zero chamadas", async ({ page }) => {
   const mock = await api(page);
   await open(page);
-  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await page
+    .locator("form")
+    .evaluate((form) =>
+      form.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      ),
+    );
   await expect(page.getByLabel("E-mail", { exact: true })).toBeFocused();
   await expect(page.getByText("Informe seu e-mail.")).toBeVisible();
   await expect(page.getByText("Informe sua senha.")).toBeVisible();
   expect(mock.calls()).toBe(0);
   await page.getByLabel("E-mail", { exact: true }).fill("   ");
-  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await page
+    .locator("form")
+    .evaluate((form) =>
+      form.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      ),
+    );
   expect(mock.calls()).toBe(0);
 });
 for (const [label, status] of [
@@ -226,7 +238,7 @@ test("expiração ao retornar à aba", async ({ page }) => {
   );
   await expect(page).toHaveURL("/login");
 });
-test("falha de restauração bloqueia conteúdo e oferece retry", async ({
+test("falha de restauração bloqueia conteúdo e retorna ao login com toast", async ({
   page,
 }) => {
   await api(page);
@@ -238,9 +250,22 @@ test("falha de restauração bloqueia conteúdo e oferece retry", async ({
   await expect(page.getByRole("alert")).toContainText(
     "Não foi possível verificar sua sessão",
   );
-  failure = false;
-  await page.getByRole("button", { name: "Tentar novamente" }).click();
   await expect(page).toHaveURL("/login");
+  await expect(
+    page.getByRole("button", { name: "Tentar novamente" }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("E-mail", { exact: true })).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await expect(page.getByLabel("Senha", { exact: true })).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  failure = false;
+  await fill(page);
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page).toHaveURL("/recepcao");
 });
 test("logout com falha não afirma encerramento", async ({ page }) => {
   await api(page, { authenticated: true, logoutStatus: 503 });
@@ -487,7 +512,7 @@ test("login inválido durante restauração pendente permite nova tentativa", as
   await expect(page.getByLabel("Senha", { exact: true })).toBeEditable();
   await expect(
     page.getByRole("button", { name: "Entrar no sistema" }),
-  ).toBeEnabled();
+  ).toBeDisabled();
   expect(mock.calls()).toBe(1);
 });
 
@@ -562,3 +587,119 @@ test("erro e destino autenticado têm a11y básica", async ({ page }) => {
     ).violations,
   ).toEqual([]);
 });
+
+test("Entrar fica desabilitado se qualquer campo estiver vazio, inclusive ao apagar", async ({
+  page,
+}) => {
+  const mock = await api(page);
+  await open(page);
+  const submit = page.getByRole("button", { name: "Entrar no sistema" });
+  const email = page.getByLabel("E-mail", { exact: true });
+  const password = page.getByLabel("Senha", { exact: true });
+  await email.fill("operador@clinica.test");
+  await expect(submit).toBeDisabled();
+  await password.fill("senha-de-teste");
+  await expect(submit).toBeEnabled();
+  await email.fill("   ");
+  await expect(submit).toBeDisabled();
+  await email.fill("operador@clinica.test");
+  await password.fill("");
+  await expect(submit).toBeDisabled();
+  await password.press("Enter");
+  expect(mock.calls()).toBe(0);
+  await expect(email).toHaveAttribute("aria-invalid", "false");
+});
+
+test("credenciais inválidas: um toast, ambos vermelhos, sem retry e correção por campo", async ({
+  page,
+}) => {
+  await api(page, { loginStatus: 401 });
+  await open(page);
+  await fill(page);
+  const submit = page.getByRole("button", { name: "Entrar no sistema" });
+  const before = await submit.boundingBox();
+  await submit.click();
+  await expect(page.getByRole("alert")).toContainText(
+    "E-mail ou senha inválidos.",
+  );
+  const email = page.getByLabel("E-mail", { exact: true });
+  const password = page.getByLabel("Senha", { exact: true });
+  await expect(email).toHaveAttribute("aria-invalid", "true");
+  await expect(password).toHaveAttribute("aria-invalid", "true");
+  await expect(
+    page.getByRole("button", { name: "Tentar novamente" }),
+  ).toHaveCount(0);
+  await expect(page.locator("form .feedback")).toHaveCount(0);
+  await expect(submit).toBeDisabled();
+  const after = await submit.boundingBox();
+  expect(after?.x).toBe(before?.x);
+  expect(after?.y).toBe(before?.y);
+  await page.getByRole("button", { name: "Fechar aviso" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(password).toBeFocused();
+  await expect(password).toHaveAttribute(
+    "aria-describedby",
+    /login-auth-error/,
+  );
+  await password.fill("nova tentativa");
+  await expect(password).toHaveAttribute("aria-invalid", "false");
+  await expect(email).toHaveAttribute("aria-invalid", "true");
+  await email.fill("outro@clinica.test");
+  await expect(email).toHaveAttribute("aria-invalid", "false");
+  await submit.click();
+  await expect(page.getByRole("alert")).toHaveCount(1);
+});
+
+for (const width of [320, 390, 1504]) {
+  test(`toast de sessão: ${width}px, vermelho, acessível e sem cobrir campos`, async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await api(page);
+    await page.route("**/auth/me", (route) => route.fulfill({ status: 503 }));
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/login");
+    await expect(page).toHaveTitle("Login | Agora Você");
+    await expect(page.getByRole("alert")).toContainText(
+      "Não foi possível verificar sua sessão.",
+    );
+    await expect(
+      page.getByRole("button", { name: "Entrar no sistema" }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Tentar novamente" }),
+    ).toHaveCount(0);
+    const toast = await page.locator(".error-toast").boundingBox();
+    const email = await page
+      .getByLabel("E-mail", { exact: true })
+      .boundingBox();
+    expect(toast).not.toBeNull();
+    expect(toast!.x).toBeGreaterThanOrEqual(0);
+    expect(toast!.x + toast!.width).toBeLessThanOrEqual(width);
+    expect(toast!.y + toast!.height).toBeLessThan(email!.y);
+    await expect(page.getByLabel("E-mail", { exact: true })).toHaveCSS(
+      "border-color",
+      "rgb(165, 45, 56)",
+    );
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    expect(
+      await page
+        .locator(".toast-dismiss")
+        .evaluate((button) => getComputedStyle(button).transitionDuration),
+    ).toBe("0s");
+    await page.screenshot({
+      path: `../qa/login-toast-${width}.png`,
+      fullPage: true,
+    });
+    expect(errors).toEqual([]);
+  });
+}

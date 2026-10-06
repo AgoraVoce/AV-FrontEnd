@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Abra http://localhost:5173/login. O Vite encaminha `/auth/*` para `http://127.0.0.1:3001` por padrão. Copie `.env.example` para `.env` e ajuste API_PROXY_TARGET se necessário. Sem backend, a tela informa que não foi possível verificar a sessão e oferece tentar novamente; nunca autoriza acesso fictício.
+Abra http://localhost:5173/login. O Vite encaminha `/auth/*` para `http://127.0.0.1:3001` por padrão. Copie `.env.example` para `.env` e ajuste API_PROXY_TARGET se necessário. Sem backend, a tela informa em toast que não foi possível verificar a sessão e marca os campos em vermelho; nunca autoriza acesso fictício.
 
 ## Telas
 
@@ -21,7 +21,7 @@ Abra http://localhost:5173/login. O Vite encaminha `/auth/*` para `http://127.0.
 
 O perfil retornado pela API define o destino. Query strings como `?area=ADMIN` são ignoradas e não alteram apresentação, payload ou permissões. A logo original está em `public/agora-voce-logo.png`.
 
-Os campos e o envio ficam disponíveis durante GET /auth/me e após falha de restauração. Um novo login cancela a leitura anterior, evitando que uma resposta antiga sobrescreva a sessão. Durante POST /auth/login, o formulário bloqueia duplicidade.
+Os campos ficam editáveis durante GET /auth/me e após falha de restauração. Entrar fica desabilitado enquanto e-mail ou senha estiverem vazios. Erros de login/sessão usam toast e campos vermelhos, sem botão Tentar novamente; ao corrigir um campo, sua marcação é removida. Um novo login cancela a leitura anterior, evitando que uma resposta antiga sobrescreva a sessão. Durante POST /auth/login, o formulário bloqueia duplicidade.
 
 `src/auth/permissions.ts` centraliza permissões de visualização das três áreas, derivadas do role autenticado. Não há acesso automático de Admin às outras áreas. A autorização efetiva continua no backend; permissões por ação operacional dependem do catálogo oficial e das futuras telas.
 
