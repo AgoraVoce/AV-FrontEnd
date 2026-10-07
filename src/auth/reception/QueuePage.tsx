@@ -124,7 +124,8 @@ export function QueuePage() {
         counts[original.priority] -= 1;
         counts[patient.priority] += 1;
       }
-      if (patient.status === "deleted") counts[patient.priority] -= 1;
+      if (!original && patient.status !== "deleted") counts[patient.priority] += 1;
+      if (original && patient.status === "deleted") counts[patient.priority] -= 1;
     }
     return counts;
   }, [queue]);
@@ -141,7 +142,10 @@ export function QueuePage() {
     return sortByPriorityAndWait(filtered, clockNow);
   }, [activeQueue, search, clockNow]);
 
-  const totalActive = Math.max(0, TOTAL_QUEUE_COUNT - queue.filter((patient) => patient.status === "deleted").length);
+  const totalActive = Math.max(
+    0,
+    TOTAL_QUEUE_COUNT + Math.max(0, queue.length - QUEUE_MOCK.length) - queue.filter((patient) => patient.status === "deleted").length,
+  );
   const totalPages = Math.max(1, Math.ceil(patients.length / PAGE_SIZE));
   const currentPage = Math.min(pageNumber, totalPages);
   const pagePatients = patients.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);

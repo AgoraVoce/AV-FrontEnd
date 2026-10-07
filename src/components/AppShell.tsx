@@ -17,7 +17,7 @@ import { useAuth } from "../auth/context";
 
 const MAIN_MENU = [
   { to: "/recepcao", label: "Triagem & Fila", icon: ListChecks },
-  { to: "/recepcao/novo", label: "Novo Cadastro", icon: UserPlus },
+  { to: "/novo-cadastro", label: "Novo Cadastro", icon: UserPlus },
   { to: "/medico", label: "Consultório Médico", icon: Stethoscope },
   { to: "/admin", label: "Painel Administrativo", icon: BarChart3 },
 ];
@@ -32,6 +32,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const userName =
     state.status === "authenticated" ? state.user.name : "Dra. Mariana Rios";
   const profile = "Triagem & Recepção";
+  const receptionPath =
+    import.meta.env.DEV && state.status !== "authenticated"
+      ? "/recepcao?dev=recepcionista"
+      : "/recepcao";
+  const newRegistrationPath =
+    import.meta.env.DEV && state.status !== "authenticated"
+      ? "/novo-cadastro?dev=recepcionista"
+      : "/novo-cadastro";
 
   return (
     <div className="app-shell">
@@ -87,7 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {MAIN_MENU.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
-                  to={to}
+                  to={to === "/recepcao" ? receptionPath : to === "/novo-cadastro" ? newRegistrationPath : to}
                   title={label}
                   className={({ isActive }) =>
                     `nav-item${isActive ? " is-active" : ""}`

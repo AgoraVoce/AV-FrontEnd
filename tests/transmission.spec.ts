@@ -5,9 +5,9 @@ test("painel público compõe chamada atual, próximos pacientes e protocolo", a
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/transmissao");
 
-  await expect(page.getByText("Agora Você", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Marca do sistema").getByText("Agora Você", { exact: true })).toBeVisible();
   await expect(page.getByText("PRONTO-SOCORRO CENTRAL", { exact: true })).toBeVisible();
-  await expect(page.getByText("UNIDADE DE ATENDIMENTO EMERGENCIAL E TRIAGEM", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Módulos de atendimento" }).getByRole("link", { name: "Painel TV Pública" })).toHaveClass(/is-active/);
   await expect(page.getByText("Painel em Tempo Real")).toBeVisible();
   await expect(page.getByRole("time")).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
 
@@ -60,4 +60,35 @@ test("relógio avança a cada segundo e prioridade da chamada sincroniza", async
 
   await expect(page.locator(".chamada-priority-pill")).toContainText("ALERTA");
   await expect(page.locator(".chamada-hero")).toHaveClass(/prioridade-alerta/);
+});
+
+test("menu lateral abre no mobile sem causar overflow horizontal", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/transmissao");
+
+  const menuButton = page.getByRole("button", { name: "Abrir menu" });
+  await expect(menuButton).toBeVisible();
+  await menuButton.click();
+  await expect(page.getByRole("button", { name: "Fechar menu" })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("navigation", { name: "Módulos de atendimento" }).getByRole("link", { name: "Painel TV Pública" })).toHaveClass(/is-active/);
+
+  const width = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    viewport: document.documentElement.clientWidth,
+  }));
+  expect(width.scroll).toBeLessThanOrEqual(width.viewport);
+});
+
+test("Painel TV Pública navega para Triagem & Fila no ambiente de desenvolvimento", async ({ page }) => {
+  await page.goto("/transmissao");
+
+  await page.getByRole("link", { name: "Triagem & Fila" }).click();
+  await expect(page).toHaveURL(/\/recepcao\?dev=recepcionista$/);
+  await expect(page.getByRole("heading", { name: "Fila de Espera e Gestão de Prioridades" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Triagem & Fila" })).toHaveClass(/is-active/);
+
+  await page.getByRole("link", { name: "Painel TV Pública" }).click();
+  await expect(page).toHaveURL("/transmissao");
+  await expect(page.getByRole("heading", { name: "CHAMANDO AGORA" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Painel TV Pública" })).toHaveClass(/is-active/);
 });

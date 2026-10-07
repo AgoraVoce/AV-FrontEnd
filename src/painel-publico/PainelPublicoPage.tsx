@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
 import { getQueueSnapshot, subscribeQueue } from "../reception/queue-store";
 import { QUEUE_MOCK } from "../reception/queue-data";
@@ -59,11 +60,13 @@ export function PainelPublicoPage() {
   } : null;
 
   return (
-    <main className="painel-publico">
+    <AppShell>
+      <div className="painel-publico">
       <HeaderPainel />
       <ChamadaPrincipal chamada={currentCall} />
       <ProximosChamados chamadas={nextCalls} />
       <BannerOrientacao />
-    </main>
+      </div>
+    </AppShell>
   );
 }

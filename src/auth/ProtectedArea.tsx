@@ -31,7 +31,7 @@ export function ProtectedArea({
     !hasPermission(state.user, AREA_PERMISSION_BY_ROLE[role])
       ? "Acesso não permitido"
       : LABEL_BY_ROLE[role];
-  usePageTitle(title);
+  usePageTitle(children ? "" : title);
   useEffect(
     () => () => {
       controller.current?.abort();

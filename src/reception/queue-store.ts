@@ -1,5 +1,5 @@
 import { QUEUE_MOCK } from "./queue-data";
-import type { Priority, QueuePatient } from "./types";
+import type { PatientVitals, Priority, QueuePatient } from "./types";
 import type { Role } from "../auth/types";
 
 export interface PriorityAuditEntry {
@@ -68,6 +68,49 @@ export const getQueueSnapshot = () => snapshot;
 export const subscribeQueue = (listener: () => void) => {
   listeners.add(listener);
   return () => listeners.delete(listener);
+};
+
+export const addPatientToQueue = (
+  input: Omit<QueuePatient, "ticket" | "arrivedAt" | "status" | "waitMinutes">,
+  role: Role,
+): QueueMutationResult => {
+  if (role !== "RECEPCIONISTA" && role !== "ADMIN") {
+    return { ok: false, reason: "unauthorized", snapshot };
+  }
+
+  const prefix: Record<Priority, string> = {
+    urgent: "U",
+    alert: "A",
+    calm: "T",
+  };
+  const minimumNextNumber: Record<Priority, number> = {
+    urgent: 42,
+    alert: 53,
+    calm: 91,
+  };
+  const nextNumber = Math.max(
+    minimumNextNumber[input.priority],
+    ...snapshot.patients
+      .filter((patient) => patient.ticket.startsWith(`${prefix[input.priority]}-`))
+      .map((patient) => Number(patient.ticket.split("-")[1]) + 1),
+  );
+  const ticket = `${prefix[input.priority]}-${String(nextNumber).padStart(3, "0")}`;
+  const patient: QueuePatient = {
+    ...input,
+    ticket,
+    waitMinutes: 0,
+    arrivedAt: new Date().toISOString(),
+    status: "waiting",
+    vitals: { ...input.vitals } satisfies PatientVitals,
+  };
+  const nextSnapshot: QueueSnapshot = {
+    patients: [...snapshot.patients, patient],
+    auditEntries: snapshot.auditEntries,
+    revision: snapshot.revision + 1,
+    patientVersions: { ...snapshot.patientVersions, [ticket]: 0 },
+  };
+  publishSnapshot(nextSnapshot);
+  return { ok: true, snapshot: nextSnapshot };
 };
 
 const publishSnapshot = (nextSnapshot: QueueSnapshot) => {

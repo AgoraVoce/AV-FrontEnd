@@ -13,6 +13,8 @@ npm run dev
 
 Abra http://localhost:5173/login. O Vite encaminha `/auth/*` para `http://127.0.0.1:3001` por padrão. Copie `.env.example` para `.env` e ajuste API_PROXY_TARGET se necessário. Sem backend, a tela informa em toast que não foi possível verificar a sessão e marca os campos em vermelho; nunca autoriza acesso fictício.
 
+Para visualizar a fila de recepção localmente sem backend, abra http://localhost:5173/recepcao?dev=recepcionista. Esse bypass existe apenas no servidor de desenvolvimento; não é incluído no build de produção.
+
 ## Telas
 
 - `/login`: acesso único por e-mail e senha para todos os perfis.

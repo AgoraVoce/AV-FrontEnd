@@ -10,6 +10,7 @@ export interface PatientVitals {
 export interface QueuePatient {
   ticket: string;
   name: string;
+  cpf?: string;
   age: number;
   complaint: string;
   priority: Priority;

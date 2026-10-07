@@ -1,4 +1,4 @@
-import { MapPin, Stethoscope, Volume2 } from "lucide-react";
+import { MapPin, Megaphone, Stethoscope } from "lucide-react";
 import type { Chamada } from "../types";
 
 const PRIORITY_NAME = {
@@ -12,7 +12,7 @@ export function ChamadaPrincipal({ chamada }: { chamada: Chamada | null }) {
     return (
       <section className="chamada-hero chamada-empty" aria-labelledby="chamada-atual-title">
         <div className="chamada-status-title">
-          <span className="chamada-audio-icon" aria-hidden="true"><Volume2 size={20} /></span>
+          <span className="chamada-audio-icon" aria-hidden="true"><Megaphone size={20} /></span>
           <h1 id="chamada-atual-title">FILA DE ESPERA</h1>
         </div>
         <p className="chamada-empty-copy">Nenhum paciente aguardando chamada neste momento.</p>
@@ -24,7 +24,7 @@ export function ChamadaPrincipal({ chamada }: { chamada: Chamada | null }) {
     <section className={`chamada-hero prioridade-${chamada.prioridade.toLowerCase()}`} aria-labelledby="chamada-atual-title">
       <div className="chamada-hero-topline">
         <div className="chamada-status-title">
-          <span className="chamada-audio-icon" aria-hidden="true"><Volume2 size={20} /></span>
+          <span className="chamada-audio-icon" aria-hidden="true"><Megaphone size={20} /></span>
           <h1 id="chamada-atual-title">CHAMANDO AGORA</h1>
         </div>
         <span className={`chamada-priority-pill prioridade-${chamada.prioridade.toLowerCase()}`}>
