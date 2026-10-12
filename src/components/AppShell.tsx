@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
-  Activity,
   BarChart3,
-  Building2,
   ListChecks,
   Menu,
   MonitorPlay,
@@ -48,17 +46,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="header-brand-wrap">
             <Brand />
           </div>
-          <div className="header-facility-chip">
-            <Building2 size={14} aria-hidden="true" />
-            <span>PRONTO-SOCORRO CENTRAL</span>
-          </div>
-        </div>
-
-        <div className="header-brand-center" aria-label="Marca do sistema">
-          <span className="mini-pulse-icon" aria-hidden="true">
-            <Activity size={10} />
-          </span>
-          <span>Agora <span className="brand-accent">Você</span></span>
         </div>
 
         <div className="header-right">
@@ -95,7 +82,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {MAIN_MENU.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
-                  to={to === "/recepcao" ? receptionPath : to === "/novo-cadastro" ? newRegistrationPath : to}
+                  to={
+                    to === "/recepcao"
+                      ? receptionPath
+                      : to === "/novo-cadastro"
+                        ? newRegistrationPath
+                        : to
+                  }
                   title={label}
                   className={({ isActive }) =>
                     `nav-item${isActive ? " is-active" : ""}`

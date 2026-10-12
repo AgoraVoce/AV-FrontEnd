@@ -49,7 +49,36 @@ test("o filtro por nome reduz as linhas da tabela em tempo real", async ({
   await expect(page.getByText("Nenhum paciente encontrado.")).toBeVisible();
 });
 
-test("a navegação lateral mantém a sessão entre recepção e transmissão", async ({ page }) => {
+test("filtros avançados combinam prioridade, idade e espera e recalculam a lista", async ({
+  page,
+}) => {
+  await page.goto("/recepcao?dev=recepcionista");
+  await page.getByRole("button", { name: "Filtrar" }).click();
+  const filters = page.getByRole("dialog", {
+    name: "Filtros avançados da fila",
+  });
+
+  await filters.getByRole("combobox", { name: "Prioridade" }).click();
+  await page.getByRole("option", { name: "Urgente", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: /Filtrar.*1/ })).toBeVisible();
+
+  await filters.getByRole("combobox", { name: "Faixa etária" }).click();
+  await page
+    .getByRole("option", { name: "60 anos ou mais", exact: true })
+    .click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr")).toContainText("Roberto Souza Lima");
+  await expect(page.getByText("Página 1 de 1")).toBeVisible();
+
+  await filters.getByRole("button", { name: "Limpar filtros" }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(6);
+  await expect(page.getByRole("button", { name: "Filtrar" })).toBeVisible();
+});
+
+test("a navegação lateral mantém a sessão entre recepção e transmissão", async ({
+  page,
+}) => {
   let sessionChecks = 0;
   await page.route("**/auth/me", async (route: Route) => {
     sessionChecks++;
@@ -66,17 +95,29 @@ test("a navegação lateral mantém a sessão entre recepção e transmissão", 
     });
   });
   await page.goto("/recepcao");
-  await expect(page.getByRole("heading", { name: "Fila de Espera e Gestão de Prioridades" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Fila de Espera e Gestão de Prioridades",
+    }),
+  ).toBeVisible();
   const checksBeforeNavigation = sessionChecks;
 
   await page.getByRole("link", { name: "Painel TV Pública" }).click();
   await expect(page).toHaveURL("/transmissao");
   await expect(page.locator(".route-transition")).toHaveClass(/is-entering/);
-  await expect(page.getByRole("heading", { name: "CHAMANDO AGORA" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Painel TV Pública" })).toHaveClass(/is-active/);
+  await expect(
+    page.getByRole("heading", { name: "NENHUMA CHAMADA ATIVA" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Painel TV Pública" }),
+  ).toHaveClass(/is-active/);
 
   await page.getByRole("link", { name: "Triagem & Fila" }).click();
   await expect(page).toHaveURL("/recepcao");
-  await expect(page.getByRole("heading", { name: "Fila de Espera e Gestão de Prioridades" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Fila de Espera e Gestão de Prioridades",
+    }),
+  ).toBeVisible();
   expect(sessionChecks).toBe(checksBeforeNavigation);
 });

@@ -1,25 +1,28 @@
-# Contrato de UX · Autenticação
+# Contrato de UX · Autenticação e Operação
 
 Fonte: [AV-Documents #17](https://github.com/AgoraVoce/AV-Documents/issues/17), dependências [#18](https://github.com/AgoraVoce/AV-Documents/issues/18) e [#20](https://github.com/AgoraVoce/AV-Documents/issues/20), PDF fornecido (RF01/RNF04), README do AV-Documents. Revisado em 05/10/2026. Escopo final: somente frontend, conforme orientação do usuário.
 
 ## Fontes de contexto
 
-| Assunto                             | Fonte                                                | Consequência na UI                                        |
-| ----------------------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
-| Credenciais e sessão                | #17; `docs/auth-api.md` (proposto, pendente backend) | Login genérico, me no reload e logout confirmado pela API |
-| Perfis e autorização                | #18/#20                                              | Destino por perfil retornado; servidor é autoridade       |
-| Telas e identidade                  | Anexos e `DESIGN.md`                                 | Login único por e-mail e senha, logo original             |
-| Dados clínicos e ações operacionais | Fora desta issue                                     | Nenhum paciente, fila, diagnóstico ou CRUD nesta entrega  |
+| Assunto                             | Fonte                                                | Consequência na UI                                                                 |
+| ----------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Credenciais e sessão                | #17; `docs/auth-api.md` (proposto, pendente backend) | Login genérico, me no reload e logout confirmado pela API                          |
+| Perfis e autorização                | #18/#20                                              | Destino por perfil retornado; servidor é autoridade                                |
+| Telas e identidade                  | Anexos e `DESIGN.md`                                 | Login único por e-mail e senha, logo original                                      |
+| Dados clínicos e ações operacionais | Estado local da branch `reception`                   | Fila, reclassificação, exclusão, cadastro e transmissão seguem os contratos abaixo |
 
 ## Canonical UI Map
 
-| Capability | Canonical owner                 | Source of truth        | Allowed variants                                      | Verification                      |
-| ---------- | ------------------------------- | ---------------------- | ----------------------------------------------------- | --------------------------------- |
-| Form       | `src/auth/LoginPage.tsx`        | #17, este contrato     | Único; query string de área ignorada                  | `tests/auth.spec.ts`              |
-| Scrollbar  | `src/styles/app.css`            | DESIGN.md              | Global; forced-colors do sistema                      | Teste de estilo e inspeção visual |
-| Feedback   | `src/components/Feedback.tsx`   | #17                    | Inline error + retry                                  | `tests/auth.spec.ts`              |
-| Toast      | `src/components/ErrorToast.tsx` | Solicitação do usuário | Erro de login/sessão; um aviso persistente, sem retry | `tests/auth.spec.ts`              |
-| Session    | `src/auth/AuthProvider.tsx`     | API proposta + #17     | Checking, anonymous, authenticated, error             | `tests/auth.spec.ts`              |
+| Capability     | Canonical owner                            | Source of truth         | Allowed variants                                        | Verification                      |
+| -------------- | ------------------------------------------ | ----------------------- | ------------------------------------------------------- | --------------------------------- |
+| Form           | `src/auth/LoginPage.tsx`                   | #17, este contrato      | Único; query string de área ignorada                    | `tests/auth.spec.ts`              |
+| Scrollbar      | `src/styles/app.css`                       | DESIGN.md               | Global; forced-colors do sistema                        | Teste de estilo e inspeção visual |
+| Feedback       | `src/components/Feedback.tsx`              | #17                     | Inline error + retry                                    | `tests/auth.spec.ts`              |
+| Toast          | `src/components/ErrorToast.tsx`            | Solicitação do usuário  | Erro de login/sessão; um aviso persistente, sem retry   | `tests/auth.spec.ts`              |
+| Session        | `src/auth/AuthProvider.tsx`                | API proposta + #17      | Checking, anonymous, authenticated, error               | `tests/auth.spec.ts`              |
+| Select/Listbox | `src/components/Select.tsx`                | Brief operacional       | Listbox autorado; portal, colisão, teclado e typeahead  | `tests/reception-delete.spec.ts`  |
+| Fila           | `src/auth/reception/QueuePage.tsx`         | Estado de `queue-store` | Busca + prioridade + idade + espera; paginação derivada | `tests/queue.spec.ts`             |
+| Transmissão    | `src/painel-publico/PainelPublicoPage.tsx` | `queue-store`           | Chamada somente com `status: "called"`; TV sem shell    | `tests/transmission.spec.ts`      |
 
 ## Fluxo e estados
 
@@ -31,7 +34,7 @@ GET /auth/me ao montar e ao retornar à aba: ocultar conteúdo protegido enquant
 
 Logout: aguardar POST /auth/logout. Sucesso ou 401: remover contexto e voltar ao login. 403 ou falha de rede/5xx: manter contexto e mostrar que sessão não pôde ser encerrada. Servidor precisa revogar a sessão para impedir reutilização.
 
-Rotas /recepcao, /medico e /admin: destinos mínimos de confirmação do login. Não representam painéis operacionais implementados. Perfil diferente: 403 visual com link para área permitida; usuário sem sessão: login. Nenhum redirecionamento arbitrário a URL recebida do cliente.
+Rotas /recepcao, /medico e /admin: destinos autenticados por perfil. `/recepcao` e `/novo-cadastro` compõem os fluxos operacionais desta branch; `/transmissao` é a entrada administrativa do painel público. Perfil diferente: 403 visual com link para área permitida; usuário sem sessão: login. Nenhum redirecionamento arbitrário a URL recebida do cliente.
 
 ## Acessibilidade e layout
 
@@ -55,7 +58,19 @@ Etapa atual usa aria-current, mudança recebe foco no título, erro local foca o
 
 ## Permissões de UI
 
-`src/auth/permissions.ts` é o proprietário canônico das permissões de visualização de área. Cada role possui somente a área já especificada: Recepcionista → recepção, Médico → médico, Admin → administração. Checagens individuais usam `hasPermission`; não há wildcard ou bypass de Admin. Esses identificadores são internos ao frontend e não alteram o contrato HTTP. Não criar permissões para operações ainda fora do escopo. O backend valida cada ação e é a autoridade; um catálogo operacional de permissões deve ser acordado antes de implementar novos controles.
+`src/auth/permissions.ts` é o proprietário canônico das permissões de visualização de área. Cada role possui somente a área já especificada: Recepcionista → recepção, Médico → médico, Admin → administração. Checagens individuais usam `hasPermission`; não há wildcard ou bypass de Admin. Esses identificadores são internos ao frontend e não alteram o contrato HTTP. O backend valida cada ação e é a autoridade; a branch mantém as operações de fila já existentes no `queue-store` e não amplia permissões além delas.
+
+## Operação da fila e feedback
+
+`QueuePage` mantém a busca textual e compõe filtros de prioridade (`Urgente`, `Alerta`, `Tranquilo`), faixa etária e tempo de espera calculado por `arrivedAt`. O botão `Filtrar` é o único ponto de filtros avançados; resumo de risco não oferece filtro duplicado. Busca e filtros exibem limpeza explícita, contador de filtros ativos, estado vazio e recalculam a página.
+
+Reclassificação e exclusão exigem justificativa conforme o domínio. Fechar uma reclassificação com rascunho abre confirmação própria da aplicação, nunca `window.confirm`. Toasts de operação bem-sucedida usam tom de sucesso; falhas usam erro; ações desfeitas usam tom neutro, sem inferir vermelho a partir do tipo destrutivo da operação. O undo permanece limitado ao registro e janela previstos pelo store.
+
+## Cadastro e transmissão pública
+
+`NovoCadastro` preserva título e formulário, remove atalhos de fila e o bloco contextual duplicado. A validação é manual, com `noValidate`, mensagem `role="alert"` e sem `reportValidity`.
+
+`/transmissao` é a entrada administrativa do painel e oferece `Iniciar transmissão`. `/transmissao/tv` é standalone: não renderiza `AppShell`, sidebar ou shell interno, oferece tela cheia por interação explícita e saída segura. A chamada atual deriva exclusivamente de um paciente com `status: "called"`; pacientes `waiting` aparecem como próximos sem estimativas inventadas. Em desenvolvimento, o estado local deve ser identificado visualmente.
 
 ## Feedback do login · ajuste solicitado
 

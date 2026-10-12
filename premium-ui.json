@@ -3,7 +3,7 @@
   "sourceRoots": ["src"],
   "locale": "pt-BR",
   "canonicalMap": "UX-CONTRACT.md",
-  "requiredCapabilities": ["Form", "Scrollbar", "Toast"],
+  "requiredCapabilities": ["Form", "Scrollbar", "Toast", "Select/Listbox"],
   "requiredCommands": ["lint", "unit", "build", "tokens", "design"],
   "commands": {
     "lint": "npm run lint",
@@ -14,6 +14,10 @@
   },
   "evidence": {
     "failurePaths": "tests/auth.spec.ts",
-    "recoveryFailurePaths": "tests/recovery.spec.ts"
+    "recoveryFailurePaths": "tests/recovery.spec.ts",
+    "queueAndTransmission": "tests/queue.spec.ts, tests/reception-priority.spec.ts, tests/reception-delete.spec.ts, tests/transmission.spec.ts"
+  },
+  "ownership": {
+    "Select/Listbox": "authored"
   }
 }

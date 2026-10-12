@@ -35,14 +35,29 @@ export default function App() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/recuperar-senha" element={<RecoveryPage />} />
-        <Route path="/transmissao" element={<PainelPublicoPage />} />
+        <Route
+          path="/transmissao/tv"
+          element={<PainelPublicoPage presentation="tv" />}
+        />
+        <Route
+          path="/transmissao"
+          element={<PainelPublicoPage presentation="admin" />}
+        />
         <Route
           path="/recepcao"
-          element={<ProtectedArea role="RECEPCIONISTA"><QueuePage /></ProtectedArea>}
+          element={
+            <ProtectedArea role="RECEPCIONISTA">
+              <QueuePage />
+            </ProtectedArea>
+          }
         />
         <Route
           path="/novo-cadastro"
-          element={<ProtectedArea role="RECEPCIONISTA"><NovoCadastroPage /></ProtectedArea>}
+          element={
+            <ProtectedArea role="RECEPCIONISTA">
+              <NovoCadastroPage />
+            </ProtectedArea>
+          }
         />
         <Route path="/medico" element={<ProtectedArea role="MEDICO" />} />
         <Route path="/admin" element={<ProtectedArea role="ADMIN" />} />

@@ -6,7 +6,6 @@ export interface Chamada {
   nome: string;
   prioridade: Prioridade;
   status: Status;
-  previsaoMinutos?: number;
   destino?: string;
   medicoResponsavel?: string;
 }

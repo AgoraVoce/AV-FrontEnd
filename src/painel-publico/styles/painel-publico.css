@@ -396,7 +396,7 @@
   white-space: nowrap;
 }
 
-.proximo-estimate {
+.proximo-state {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -406,7 +406,7 @@
   font-size: 10px;
 }
 
-.proximo-estimate svg {
+.proximo-state svg {
   color: #71867c;
 }
 
@@ -458,27 +458,15 @@
   letter-spacing: 0.04em;
 }
 
-.painel-protocol-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  flex: 0 0 auto;
-  min-height: 34px;
-  padding: 7px 11px;
-  border: 1px solid #c8d8d2;
-  border-radius: 999px;
-  background: #f8fbf9;
-  color: #39705c;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.055em;
-  white-space: nowrap;
-}
-
 @keyframes painel-live-pulse {
-  0% { transform: scale(0.72); opacity: 0.85; }
-  100% { transform: scale(1.65); opacity: 0; }
+  0% {
+    transform: scale(0.72);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1.65);
+    opacity: 0;
+  }
 }
 
 @media (max-width: 1050px) {
@@ -527,10 +515,6 @@
     gap: 12px;
   }
 
-  .painel-protocol-badge {
-    white-space: normal;
-  }
-
   .chamada-ticket {
     font-size: 58px;
   }
@@ -545,6 +529,338 @@
 
   .proximos-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .painel-live-dot::after {
+    animation: none;
+  }
+}
+
+/* Presentation contract: the TV route is a standalone public surface. */
+.painel-tv-root {
+  min-height: 100dvh;
+  background: #f4f6f8;
+}
+
+.painel-publico {
+  --public-ink: #18322d;
+  --public-muted: #667772;
+  --public-line: #dce6e2;
+  --public-green: #0f6e5e;
+  --public-green-dark: #095748;
+  width: 100%;
+  min-height: calc(100dvh - 140px);
+  box-sizing: border-box;
+  gap: clamp(14px, 1.3vw, 24px);
+  padding: clamp(16px, 1.8vw, 32px) clamp(16px, 2.4vw, 48px);
+  background: #f4f6f8;
+  color: var(--public-ink);
+}
+
+.painel-publico.is-tv-mode {
+  min-height: 100dvh;
+  gap: clamp(20px, 2.2vw, 42px);
+  padding: clamp(24px, 3.2vw, 70px) clamp(24px, 4vw, 96px);
+}
+
+.painel-header {
+  position: relative;
+  min-height: 68px;
+  box-sizing: border-box;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--public-line);
+}
+
+.painel-publico.is-tv-mode .painel-header {
+  min-height: 74px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.painel-brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.painel-brand-lockup .brand {
+  gap: 9px;
+  flex: 0 0 auto;
+  color: #173a32;
+  font-size: clamp(18px, 1.6vw, 25px);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.painel-brand-lockup .brand img {
+  width: clamp(36px, 3.2vw, 56px);
+  height: clamp(36px, 3.2vw, 56px);
+}
+
+.painel-brand-copy {
+  min-width: 0;
+}
+
+.painel-brand-copy p {
+  margin: 0;
+}
+
+.painel-brand-title {
+  color: #264b40;
+  font-size: clamp(13px, 1.1vw, 18px);
+  font-weight: 800;
+}
+
+.painel-facility-subtitle {
+  margin-top: 4px !important;
+  color: var(--public-muted);
+  font-size: clamp(10px, 0.75vw, 13px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.painel-header-status {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  max-width: 70%;
+  flex-wrap: wrap;
+}
+
+.painel-dev-badge {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid #d7dfdf;
+  border-radius: 999px;
+  background: #f8faf9;
+  color: #62736f;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.painel-start-button,
+.painel-fullscreen-button,
+.painel-exit-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 13px;
+  border: 1px solid #b7d4ca;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--public-green-dark);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.painel-start-button,
+.painel-fullscreen-button {
+  border-color: var(--public-green);
+  background: var(--public-green);
+  color: #fff;
+}
+
+.painel-start-button:hover,
+.painel-fullscreen-button:hover {
+  background: var(--public-green-dark);
+}
+
+.painel-exit-button:hover {
+  background: #f1f7f4;
+}
+
+.painel-clock {
+  min-width: 108px;
+  color: #173a32;
+  font-family: var(--font-display);
+  font-size: clamp(20px, 1.8vw, 31px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1;
+  text-align: right;
+}
+
+.painel-fullscreen-error {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  margin: 0;
+  color: #9a3035;
+  font-size: 11px;
+}
+
+.painel-publico.is-tv-mode .chamada-hero,
+.painel-publico.is-tv-mode .proximos-section,
+.painel-publico.is-tv-mode .painel-footer-banner {
+  width: min(100%, 1760px);
+}
+
+.painel-publico.is-tv-mode .chamada-hero {
+  padding: clamp(28px, 3vw, 56px) clamp(26px, 4vw, 72px);
+  border-radius: clamp(14px, 1vw, 22px);
+}
+
+.painel-publico.is-tv-mode .chamada-status-title h1 {
+  font-size: clamp(13px, 1vw, 20px);
+}
+
+.painel-publico.is-tv-mode .chamada-audio-icon {
+  width: clamp(40px, 3vw, 56px);
+  height: clamp(40px, 3vw, 56px);
+  flex-basis: clamp(40px, 3vw, 56px);
+}
+
+.painel-publico.is-tv-mode .chamada-ticket {
+  font-size: clamp(76px, 10vw, 176px);
+}
+
+.painel-publico.is-tv-mode .chamada-patient-label {
+  margin-top: clamp(14px, 1.4vw, 26px);
+  font-size: clamp(10px, 0.75vw, 14px);
+}
+
+.painel-publico.is-tv-mode .chamada-patient-name {
+  font-size: clamp(22px, 2.2vw, 42px);
+}
+
+.painel-publico.is-tv-mode .chamada-empty {
+  min-height: clamp(280px, 31vh, 470px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.painel-publico.is-tv-mode .chamada-empty-copy {
+  margin-block: clamp(30px, 4vh, 64px);
+  font-size: clamp(18px, 1.6vw, 30px);
+}
+
+.painel-publico.is-tv-mode .chamada-empty-copy span {
+  margin-top: 10px;
+  color: var(--public-muted);
+  font-size: 0.72em;
+}
+
+.painel-publico.is-tv-mode .proximos-heading h2 {
+  font-size: clamp(20px, 1.6vw, 30px);
+}
+
+.painel-publico.is-tv-mode .proximos-heading p {
+  font-size: clamp(11px, 0.8vw, 15px);
+}
+
+.painel-publico.is-tv-mode .proximos-grid {
+  gap: clamp(12px, 1.1vw, 24px);
+}
+
+.painel-publico.is-tv-mode .proximo-card {
+  min-height: clamp(150px, 16vh, 230px);
+  padding: clamp(16px, 1.4vw, 26px);
+  border-radius: clamp(10px, 0.8vw, 16px);
+}
+
+.painel-publico.is-tv-mode .proximo-ticket {
+  margin-top: 14px;
+  font-size: clamp(28px, 2.4vw, 46px);
+}
+
+.painel-publico.is-tv-mode .proximo-name {
+  margin-top: 8px;
+  font-size: clamp(13px, 0.95vw, 18px);
+}
+
+.painel-publico.is-tv-mode .proximo-state {
+  padding-top: 14px;
+  font-size: clamp(11px, 0.75vw, 14px);
+}
+
+.painel-publico.is-tv-mode .painel-footer-banner {
+  padding: clamp(14px, 1.2vw, 22px) clamp(17px, 1.5vw, 28px);
+  border-radius: clamp(10px, 0.8vw, 16px);
+}
+
+.painel-publico.is-tv-mode .painel-footer-message p {
+  font-size: clamp(13px, 0.9vw, 17px);
+}
+
+@media (max-width: 1120px) {
+  .painel-header-status {
+    position: static;
+    max-width: none;
+    margin-top: 14px;
+    justify-content: flex-start;
+  }
+
+  .painel-clock {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .painel-publico.is-tv-mode {
+    gap: 18px;
+    padding: 18px 14px 22px;
+  }
+
+  .painel-brand-lockup {
+    align-items: flex-start;
+  }
+
+  .painel-brand-copy {
+    display: none;
+  }
+
+  .painel-header-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .painel-clock {
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .painel-start-button,
+  .painel-fullscreen-button,
+  .painel-exit-button {
+    width: 100%;
+  }
+
+  .painel-publico.is-tv-mode .chamada-hero {
+    padding: 22px 16px;
+  }
+
+  .painel-publico.is-tv-mode .chamada-hero-topline {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .painel-publico.is-tv-mode .chamada-hero-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .painel-publico.is-tv-mode .proximos-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .painel-footer-banner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
