@@ -130,6 +130,35 @@ test("selects portaledos ficam acima dos overlays e modais", async ({
   );
 });
 
+test("menu lateral permanece abaixo do cabeçalho ao rolar", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/recepcao?dev=recepcionista");
+  await page.evaluate(() => window.scrollTo(0, 320));
+
+  const positions = await page.evaluate(() => {
+    const header = document.querySelector<HTMLElement>(".site-header")!;
+    const sidebar = document.querySelector<HTMLElement>(".sidebar")!;
+    const firstMenuGroup = document.querySelector<HTMLElement>(".nav-group")!;
+    const headerBox = header.getBoundingClientRect();
+    const sidebarBox = sidebar.getBoundingClientRect();
+    const firstMenuGroupBox = firstMenuGroup.getBoundingClientRect();
+    return {
+      headerBottom: headerBox.bottom,
+      sidebarTop: sidebarBox.top,
+      firstMenuGroupTop: firstMenuGroupBox.top,
+    };
+  });
+
+  expect(positions.sidebarTop).toBeGreaterThanOrEqual(
+    positions.headerBottom - 1,
+  );
+  expect(positions.firstMenuGroupTop).toBeGreaterThanOrEqual(
+    positions.headerBottom - 1,
+  );
+});
+
 test("a navegação lateral mantém a sessão entre recepção e transmissão", async ({
   page,
 }) => {
