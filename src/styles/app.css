@@ -87,72 +87,79 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 60px 48px 28px;
+  padding: 4px 12px 12px;
 }
 .login-card {
   width: 100%;
   max-width: var(--space-page-max);
+  min-height: min(598px, calc(100svh - 16px));
   color: var(--nivel-alerta-cor);
   display: grid;
   grid-template-columns: 48% 52%;
   border: 1px solid var(--color-border);
+  border-radius: 12px;
   background: var(--color-surface);
-  box-shadow: 0 14px 40px rgb(20 39 51 / 3%);
+  box-shadow: 0 8px 24px rgb(20 39 51 / 4%);
+  overflow: hidden;
 }
 .brand-panel {
   min-width: 0;
   background: var(--color-brand-surface);
-  border-radius: var(--radius-panel) 0 0 var(--radius-panel);
   display: flex;
   flex-direction: column;
-  padding: 62px 60px 45px;
+  padding: 48px 46px 34px;
 }
 .brand {
   display: flex;
   align-items: center;
-  gap: 20px;
-  font-size: 38px;
+  gap: 16px;
+  font-size: 29px;
   line-height: 1.2;
   font-weight: 700;
-  letter-spacing: -1.8px;
+  letter-spacing: -1.4px;
   white-space: nowrap;
 }
-.brand img {
-  width: 72px;
-  height: 72px;
-  object-fit: contain;
+.brand-mark {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--color-surface);
+  background: #08a7a2;
 }
 .brand-accent {
   color: var(--color-primary);
 }
 .brand-story {
-  margin-top: 90px;
+  margin-top: 72px;
 }
 .brand-story h2 {
-  font-size: clamp(32px, 3.2vw, 48px);
-  line-height: 1.28;
+  font-size: 38px;
+  line-height: 1.2;
   font-weight: 700;
-  letter-spacing: -2.2px;
+  letter-spacing: -1.9px;
 }
 .brand-story h2 span {
   display: block;
 }
 .brand-story p {
-  margin-top: 28px;
+  margin-top: 24px;
   color: var(--color-muted);
-  font-size: 20px;
-  line-height: 1.65;
+  font-size: 15px;
+  line-height: 1.7;
   white-space: pre-line;
 }
 .brand-bottom {
   margin-top: auto;
-  padding-top: 70px;
+  padding-top: 0;
 }
 .pulse-line {
   display: block;
-  width: calc(100% + 120px);
-  height: 86px;
-  margin-left: -60px;
+  width: calc(100% + 92px);
+  height: 74px;
+  margin-left: -46px;
 }
 .pulse-line path {
   stroke: var(--color-primary);
@@ -162,14 +169,14 @@ body,
   stroke-linejoin: round;
 }
 .brand-bottom p {
-  margin-top: 10px;
-  font-size: 14px;
+  margin-top: 8px;
+  font-size: 11px;
   color: var(--color-muted);
 }
 .form-panel {
-  padding: 62px 60px 44px;
+  padding: 58px 46px 42px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   min-width: 0;
 }
 .form-content {
@@ -178,50 +185,52 @@ body,
   margin: 0 auto;
 }
 .eyebrow {
-  color: var(--color-muted);
-  font-size: 12px;
+  color: var(--color-text);
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 1.7px;
+  letter-spacing: 1.25px;
   text-transform: uppercase;
 }
 .form-heading h1 {
-  font-size: clamp(28px, 2.7vw, 40px);
+  font-size: 30px;
   font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: -1.6px;
-  margin-top: 20px;
-  margin-bottom: 10px;
+  line-height: 1.2;
+  letter-spacing: -1.5px;
+  margin-top: 18px;
+  margin-bottom: 6px;
 }
 .form-heading h1:focus {
   outline: none;
 }
 .form-heading > p:last-child {
   color: var(--color-muted);
-  font-size: 17px;
+  font-size: 13px;
 }
 .form-content form {
-  margin-top: 36px;
+  margin-top: 27px;
 }
 .session-check {
   color: var(--color-muted);
   font-size: 12px;
 }
 .field + .field {
-  margin-top: var(--space-field-gap);
+  margin-top: 10px;
 }
 .field label {
   display: inline-block;
-  margin-bottom: 8px;
+  margin-bottom: 7px;
+  font-size: 13px;
+  line-height: 1.25;
 }
 .field input {
   width: 100%;
-  height: 54px;
-  padding: 0 16px;
+  height: 40px;
+  padding: 0 12px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
+  border-radius: 8px;
   color: var(--color-text);
   background: var(--color-surface);
-  font-size: 14px;
+  font-size: 11px;
 }
 .field input::placeholder {
   color: var(--color-muted);
@@ -233,19 +242,30 @@ body,
 .field input:focus {
   border-color: var(--color-primary);
 }
+.field input:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-surface),
+    0 0 0 4px var(--color-primary);
+}
 .field input[aria-invalid="true"] {
   border-color: var(--color-danger);
   background: var(--color-danger-surface);
+}
+.login-form--session-error .field input[aria-invalid="true"] {
+  border-color: var(--color-border);
+  background: var(--color-surface);
 }
 .field input:disabled {
   color: var(--color-muted);
   background: var(--color-background);
 }
 .field-help {
-  font-size: 11px;
+  font-size: 9px;
+  line-height: 1.35;
   color: var(--color-muted);
-  min-height: 19px;
-  margin-top: 5px;
+  min-height: 14px;
+  margin-top: 4px;
 }
 .field-error {
   color: var(--color-danger);
@@ -254,20 +274,24 @@ body,
   position: relative;
 }
 .password-wrap input {
-  padding-right: 56px;
+  padding-right: 44px;
 }
 .password-toggle {
   position: absolute;
-  right: 5px;
-  top: 5px;
-  width: 44px;
-  height: 44px;
+  right: 3px;
+  top: 2px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   border: none;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
   color: var(--color-muted);
+}
+.password-toggle svg {
+  width: 16px;
+  height: 16px;
 }
 .password-toggle:hover:not(:disabled) {
   background: var(--color-brand-surface);
@@ -278,17 +302,17 @@ body,
 }
 .primary-button {
   border: 1px solid transparent;
-  border-radius: var(--radius-control);
+  border-radius: 8px;
   background: var(--color-primary);
   color: var(--color-surface);
-  padding: 13px 20px;
-  min-height: 54px;
+  padding: 9px 16px;
+  min-height: 42px;
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  font-size: 14px;
+  gap: 12px;
+  font-size: 11px;
   font-weight: 700;
   text-decoration: none;
 }
@@ -299,10 +323,10 @@ body,
   background: var(--color-primary-active);
 }
 .form-feedback {
-  margin: 6px 0 14px;
+  margin: 0 0 10px;
 }
 .form-feedback:empty {
-  margin: 6px 0 14px;
+  margin: 0 0 10px;
 }
 .feedback {
   border: 1px solid var(--color-danger);
@@ -314,6 +338,28 @@ body,
   gap: 10px;
   padding: 14px;
   font-size: 13px;
+}
+.form-feedback .feedback {
+  min-height: 70px;
+  gap: 8px;
+  padding: 11px 11px 10px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.form-feedback .feedback > svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+.form-feedback .feedback > div {
+  min-width: 0;
+}
+.form-feedback .text-button {
+  min-height: 0;
+  padding: 7px 0 0;
+  font-size: 10px;
+  line-height: 1.2;
 }
 .feedback > svg {
   flex-shrink: 0;
@@ -335,15 +381,18 @@ body,
 .access-note {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  margin-top: 28px;
+  gap: 8px;
+  margin-top: 18px;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 10px;
 }
 .access-note svg {
   flex-shrink: 0;
+  width: 14px;
+  height: 14px;
 }
 .page-footer {
+  display: none;
   color: var(--color-muted);
   font-size: 12px;
   padding-top: 38px;
@@ -403,9 +452,10 @@ body,
   gap: 12px;
   letter-spacing: -1px;
 }
-.brand--compact img {
+.brand--compact .brand-mark {
   width: 42px;
   height: 42px;
+  flex-basis: 42px;
 }
 .secondary-button {
   display: flex;
@@ -461,31 +511,6 @@ body,
   text-align: left;
   margin-top: 28px;
 }
-@media (max-width: 1190px) and (min-width: 900px) {
-  .brand-panel {
-    padding-left: 36px;
-    padding-right: 36px;
-  }
-  .form-panel {
-    padding-left: 36px;
-    padding-right: 36px;
-  }
-  .brand {
-    font-size: 30px;
-    gap: 14px;
-  }
-  .brand img {
-    width: 56px;
-    height: 56px;
-  }
-  .brand-story p {
-    font-size: 17px;
-  }
-  .pulse-line {
-    width: calc(100% + 72px);
-    margin-left: -36px;
-  }
-}
 @media (max-width: 899px) {
   .login-page {
     padding: 30px 24px 24px;
@@ -505,9 +530,10 @@ body,
     gap: 12px;
     letter-spacing: -1px;
   }
-  .brand img {
+  .brand-mark {
     width: 44px;
     height: 44px;
+    flex-basis: 44px;
   }
   .brand-story,
   .brand-bottom {
@@ -551,9 +577,10 @@ body,
     font-size: 20px;
     gap: 8px;
   }
-  .brand--compact img {
+  .brand--compact .brand-mark {
     width: 34px;
     height: 34px;
+    flex-basis: 34px;
   }
   .area-welcome {
     margin-top: 70px;
@@ -592,9 +619,15 @@ body,
 .recovery-link-row {
   display: flex;
   justify-content: flex-end;
-  margin: 0 0 16px;
+  margin: 0 0 14px;
 }
-.recovery-link-row a,
+.recovery-link-row a {
+  font-size: 10px;
+  font-weight: 600;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
 .back-link {
   font-size: 13px;
   font-weight: 600;
