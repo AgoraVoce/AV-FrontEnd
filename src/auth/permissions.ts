@@ -12,7 +12,7 @@ export type Permission = (typeof AREA_PERMISSION_BY_ROLE)[Role];
 const PERMISSIONS_BY_ROLE: Record<Role, readonly Permission[]> = {
   RECEPCIONISTA: [AREA_PERMISSION_BY_ROLE.RECEPCIONISTA],
   MEDICO: [AREA_PERMISSION_BY_ROLE.MEDICO],
-  ADMIN: [AREA_PERMISSION_BY_ROLE.ADMIN],
+  ADMIN: [AREA_PERMISSION_BY_ROLE.ADMIN, AREA_PERMISSION_BY_ROLE.RECEPCIONISTA],
 };
 
 export function hasPermission(user: User | null, permission: Permission) {

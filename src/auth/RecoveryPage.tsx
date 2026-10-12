@@ -20,26 +20,27 @@ type Step = "email" | "code" | "password" | "success";
 type Operation = "request" | "resend" | "verify" | "reset";
 const LABELS = {
   email: [
-    "Vamos recuperar seu acesso.",
-    "Digite o e-mail da sua conta para receber um código.",
+    "Recupere seu acesso.",
+    "Informe o e-mail cadastrado para solicitar um código de verificação.",
   ],
   code: [
     "Confira seu e-mail.",
-    "Se esse e-mail estiver cadastrado, você receberá um código. Confira também a pasta de spam.",
+    "Se houver uma conta para esse e-mail, você receberá um código. Confira também a pasta de spam.",
   ],
   password: [
     "Crie uma nova senha.",
-    "Tudo certo com o código. Agora escolha uma nova senha.",
+    "Seu código foi verificado. Escolha uma nova senha para acessar sua conta.",
   ],
   success: [
     "Senha redefinida.",
-    "Sua nova senha está pronta. Agora você pode entrar.",
+    "Sua senha foi alterada. Entre novamente com suas novas credenciais.",
   ],
 } as const;
 const PRESENTATION = {
-  headline: ["Volte para", "a sua"],
-  accent: "conta.",
-  description: "Receba um código por e-mail e escolha uma nova senha.",
+  headline: ["Um novo começo.", "O mesmo"],
+  accent: "cuidado.",
+  description:
+    "Recupere seu acesso em poucos passos.\nSua equipe espera por você.",
   loginHelp: "",
 };
 const STEPS = ["E-mail", "Código", "Nova senha"];
@@ -146,7 +147,7 @@ export function RecoveryPage() {
           cause instanceof RecoveryError ? cause.kind : "unavailable";
         setError(
           operation === "reset" && kind === "unavailable"
-            ? "Não conseguimos confirmar se a senha mudou. Tente de novo ou tente entrar com a nova senha."
+            ? "Não foi possível confirmar a alteração. Tente novamente ou entre com a nova senha."
             : RECOVERY_COPY[kind],
         );
         if (operation === "verify") focusAfterRequest.current = codeRef.current;
@@ -170,9 +171,9 @@ export function RecoveryPage() {
     )
       return;
     const invalid = !email.trim()
-      ? "Digite seu e-mail."
+      ? "Informe seu e-mail."
       : emailRef.current?.validity.typeMismatch
-        ? "Confira se o e-mail está escrito corretamente."
+        ? "Informe um e-mail válido."
         : "";
     if (invalid) {
       setErrors((old) => ({ ...old, email: invalid }));
@@ -199,7 +200,7 @@ export function RecoveryPage() {
       setStep("code");
       if (operation === "resend") {
         setNotice(
-          "Se esse e-mail estiver cadastrado, você receberá outro código. Use o mais recente.",
+          "Se houver uma conta para esse e-mail, um novo código será enviado. Use o código mais recente.",
         );
         focusAfterRequest.current = codeRef.current;
       }
@@ -221,7 +222,7 @@ export function RecoveryPage() {
       if (invalid) {
         setErrors((old) => ({
           ...old,
-          code: `Digite os ${challenge.codeLength} dígitos do código.`,
+          code: `Informe os ${challenge.codeLength} dígitos do código.`,
         }));
         codeRef.current?.focus();
         return;
@@ -250,15 +251,15 @@ export function RecoveryPage() {
       const length = Array.from(password).length;
       const next = {
         password: !password
-          ? "Digite sua nova senha."
+          ? "Informe sua nova senha."
           : length < challenge.passwordPolicy.minLength ||
               length > challenge.passwordPolicy.maxLength
             ? `Use de ${challenge.passwordPolicy.minLength} a ${challenge.passwordPolicy.maxLength} caracteres.`
             : "",
         confirmation: !confirmation
-          ? "Digite a nova senha mais uma vez."
+          ? "Confirme sua nova senha."
           : password !== confirmation
-            ? "Digite a mesma senha nos dois campos."
+            ? "As senhas não coincidem."
             : "",
       };
       setErrors((old) => ({ ...old, ...next }));
@@ -310,7 +311,7 @@ export function RecoveryPage() {
         ))}
       </ol>
       <header className="form-heading recovery-heading">
-        <p className="eyebrow">Esqueceu a senha?</p>
+        <p className="eyebrow">Recuperação de acesso</p>
         <h1 id="recovery-title" ref={headingRef} tabIndex={-1}>
           {LABELS[step][0]}
         </h1>
@@ -361,7 +362,7 @@ export function RecoveryPage() {
                 id="recovery-email-help"
                 className={`field-help${errors.email ? " field-error" : ""}`}
               >
-                {errors.email || "Use o e-mail da sua conta."}
+                {errors.email || "Use o e-mail cadastrado pela administração."}
               </p>
             </div>
           )}
@@ -421,7 +422,7 @@ export function RecoveryPage() {
                 >
                   {errors.code ||
                     (codeExpired
-                      ? "O código expirou. Peça um novo abaixo."
+                      ? "Código expirado. Solicite um novo abaixo."
                       : `Digite os ${challenge.codeLength} dígitos. Expira em ${formatTime(remaining)}.`)}
                 </p>
               </div>
@@ -478,7 +479,7 @@ export function RecoveryPage() {
           >
             <span>
               {busy === "request"
-                ? "Enviando código…"
+                ? "Solicitando código…"
                 : busy === "verify"
                   ? "Verificando código…"
                   : busy === "reset"
@@ -503,7 +504,7 @@ export function RecoveryPage() {
                 }}
               >
                 {busy === "resend"
-                  ? "Reenviando código…"
+                  ? "Solicitando novo código…"
                   : resendWait > 0
                     ? `Reenviar em ${resendWait}s`
                     : "Reenviar código"}
@@ -521,7 +522,7 @@ export function RecoveryPage() {
             </button>
           )}
           <p className="sr-only" role="status">
-            {busy ? "Só um instante…" : ""}
+            {busy ? "Solicitação em andamento." : ""}
           </p>
         </form>
       )}
@@ -530,8 +531,8 @@ export function RecoveryPage() {
           <LockKeyhole size={18} aria-hidden="true" />
           <span>
             {step === "email"
-              ? "Precisa de ajuda? Fale com sua equipe."
-              : "Se atualizar a página, você precisará começar de novo."}
+              ? "Não informamos se um e-mail possui uma conta."
+              : "Ao recarregar esta página, recomece a recuperação."}
           </span>
         </p>
       )}

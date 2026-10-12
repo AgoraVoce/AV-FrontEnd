@@ -1,0 +1,1 @@
+export type { Priority, QueuePatient } from "../../reception/types";

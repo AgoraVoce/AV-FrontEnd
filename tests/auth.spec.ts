@@ -68,8 +68,21 @@ async function fill(page: Page) {
 }
 async function open(page: Page, path = "/login") {
   await page.goto(path);
-  await expect(page.getByRole("button", { name: "Entrar" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Entrar no sistema" }),
+  ).toBeDisabled();
 }
+test("recepção exibe a fila de espera da área autorizada", async ({ page }) => {
+  await api(page, { role: "RECEPCIONISTA", authenticated: true });
+  await page.goto("/recepcao");
+
+  await expect(
+    page.getByRole("heading", { name: "Fila de Espera e Gestão de Prioridades" }),
+  ).toBeVisible();
+  await expect(page.getByText("Maria Clara Santos")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cadastrar Paciente" })).toBeVisible();
+});
+
 for (const [role, path] of [
   ["RECEPCIONISTA", "/recepcao"],
   ["MEDICO", "/medico"],
@@ -81,7 +94,7 @@ for (const [role, path] of [
     const mock = await api(page, { role });
     await open(page, "/login?area=RECEPCIONISTA");
     await fill(page);
-    await page.getByRole("button", { name: "Entrar" }).click();
+    await page.getByRole("button", { name: "Entrar no sistema" }).click();
     await expect(page).toHaveURL(path);
     await expect(
       page.getByRole("heading", { name: "Olá, Pessoa de teste." }),
@@ -108,8 +121,8 @@ test("vazios: validação, foco e zero chamadas", async ({ page }) => {
       ),
     );
   await expect(page.getByLabel("E-mail", { exact: true })).toBeFocused();
-  await expect(page.getByText("Digite seu e-mail.")).toBeVisible();
-  await expect(page.getByText("Digite sua senha.")).toBeVisible();
+  await expect(page.getByText("Informe seu e-mail.")).toBeVisible();
+  await expect(page.getByText("Informe sua senha.")).toBeVisible();
   expect(mock.calls()).toBe(0);
   await page.getByLabel("E-mail", { exact: true }).fill("   ");
   await page
@@ -130,7 +143,7 @@ for (const [label, status] of [
     await api(page, { loginStatus: status });
     await open(page);
     await fill(page);
-    await page.getByRole("button", { name: "Entrar" }).click();
+    await page.getByRole("button", { name: "Entrar no sistema" }).click();
     await expect(page.getByRole("alert")).toContainText(
       "E-mail ou senha inválidos.",
     );
@@ -159,7 +172,7 @@ test("duplo submit é bloqueado e preserva dimensões", async ({ page }) => {
   await open(page);
   await fill(page);
   const before = await page
-    .getByRole("button", { name: "Entrar" })
+    .getByRole("button", { name: "Entrar no sistema" })
     .boundingBox();
   await page.locator("form").evaluate((form) => {
     form.dispatchEvent(
@@ -193,15 +206,15 @@ for (const label of ["API 503", "falha de rede"] as const) {
     });
     await open(page);
     await fill(page);
-    await page.getByRole("button", { name: "Entrar" }).click();
+    await page.getByRole("button", { name: "Entrar no sistema" }).click();
     await expect(page.getByRole("alert")).toContainText(
-      "Não conseguimos conectar agora",
+      "Não foi possível conectar",
     );
     await expect(page.getByLabel("Senha", { exact: true })).toHaveValue(
       "senha-de-teste",
     );
     failure = false;
-    await page.getByRole("button", { name: "Entrar" }).click();
+    await page.getByRole("button", { name: "Entrar no sistema" }).click();
     await expect(page).toHaveURL("/recepcao");
   });
 }
@@ -209,12 +222,14 @@ test("timeout encerra loading e permite retry", async ({ page }) => {
   await api(page, { loginHandler: async () => {} });
   await open(page);
   await fill(page);
-  await page.getByRole("button", { name: "Entrar" }).click();
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page.getByRole("alert")).toContainText(
-    "Não conseguimos conectar agora",
+    "Não foi possível conectar",
     { timeout: 15_000 },
   );
-  await expect(page.getByRole("button", { name: "Entrar" })).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Entrar no sistema" }),
+  ).toBeEnabled();
 });
 test("refresh inválido remove conteúdo protegido", async ({ page }) => {
   await api(page);
@@ -244,7 +259,7 @@ test("falha de restauração bloqueia conteúdo e retorna ao login com toast", a
   );
   await page.goto("/admin");
   await expect(page.getByRole("alert")).toContainText(
-    "Não conseguimos conectar agora",
+    "Não foi possível verificar sua sessão",
   );
   await expect(page).toHaveURL("/login");
   await expect(
@@ -260,7 +275,7 @@ test("falha de restauração bloqueia conteúdo e retorna ao login com toast", a
   );
   failure = false;
   await fill(page);
-  await page.getByRole("button", { name: "Entrar" }).click();
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page).toHaveURL("/recepcao");
 });
 test("logout com falha não afirma encerramento", async ({ page }) => {
@@ -295,9 +310,9 @@ test("perfil desconhecido falha fechado", async ({ page }) => {
   });
   await open(page);
   await fill(page);
-  await page.getByRole("button", { name: "Entrar" }).click();
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page.getByRole("alert")).toContainText(
-    "Não conseguimos entrar na sua conta",
+    "Não foi possível verificar seu acesso",
   );
   await expect(page).toHaveURL("/login");
 });
@@ -305,10 +320,8 @@ test("429 tem feedback próprio", async ({ page }) => {
   await api(page, { loginStatus: 429 });
   await open(page);
   await fill(page);
-  await page.getByRole("button", { name: "Entrar" }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    "Você tentou várias vezes",
-  );
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page.getByRole("alert")).toContainText("Muitas tentativas");
 });
 test("reveal, teclado, labels e senha ausente de logs/storage", async ({
   page,
@@ -371,7 +384,9 @@ for (const area of ["RECEPCIONISTA", "MEDICO", "ADMIN"] as const) {
     ).toEqual([]);
     for (const width of [320, 390, 768, 1024, 1504]) {
       await page.setViewportSize({ width, height: 900 });
-      await expect(page.getByRole("button", { name: "Entrar" })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Entrar no sistema" }),
+      ).toBeVisible();
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -434,7 +449,7 @@ test("contrato HTTP envia somente credenciais no body", async ({ page }) => {
     .getByLabel("E-mail", { exact: true })
     .fill(" operador@clinica.test ");
   await page.getByLabel("Senha", { exact: true }).fill(" senha-de-teste ");
-  await page.getByRole("button", { name: "Entrar" }).click();
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page).toHaveURL("/medico");
   expect(method).toBe("POST");
   expect(body).toEqual({
@@ -450,12 +465,12 @@ test("sessão pendente permite digitar e login substitui restauração", async (
   await page.route("**/auth/me", async () => {});
   await page.goto("/login?area=ADMIN");
   await expect(
-    page.getByText("Só um instante… Você já pode preencher seus dados."),
+    page.getByText("Verificando sua sessão… Você já pode entrar."),
   ).toBeVisible();
   await expect(page.getByLabel("E-mail", { exact: true })).toBeEditable();
   await expect(page.getByLabel("Senha", { exact: true })).toBeEditable();
   await fill(page);
-  await page.getByRole("button", { name: "Entrar" }).click();
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page).toHaveURL("/medico");
   expect(mock.calls()).toBe(1);
 });
@@ -465,10 +480,8 @@ test("e-mail inválido é rejeitado localmente", async ({ page }) => {
   await open(page);
   await page.getByLabel("E-mail", { exact: true }).fill("email-invalido");
   await page.getByLabel("Senha", { exact: true }).fill("senha-de-teste");
-  await page.getByRole("button", { name: "Entrar" }).click();
-  await expect(
-    page.getByText("Confira se o e-mail está escrito corretamente."),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page.getByText("Informe um e-mail válido.")).toBeVisible();
   await expect(page.getByLabel("E-mail", { exact: true })).toBeFocused();
   expect(mock.calls()).toBe(0);
 });
@@ -482,7 +495,7 @@ test("falha de restauração mantém campos e login utilizáveis", async ({
   );
   await page.goto("/login");
   await expect(page.getByRole("alert")).toContainText(
-    "Não conseguimos conectar agora.",
+    "Não foi possível verificar sua sessão.",
   );
   await fill(page);
   await page.getByRole("button", { name: "Mostrar senha" }).click();
@@ -490,7 +503,7 @@ test("falha de restauração mantém campos e login utilizáveis", async ({
     "type",
     "text",
   );
-  await page.getByRole("button", { name: "Entrar" }).click();
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page).toHaveURL("/recepcao");
   expect(mock.calls()).toBe(1);
 });
@@ -502,13 +515,15 @@ test("login inválido durante restauração pendente permite nova tentativa", as
   await page.route("**/auth/me", async () => {});
   await page.goto("/login");
   await fill(page);
-  await page.getByRole("button", { name: "Entrar" }).click();
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "E-mail ou senha inválidos.",
   );
   await expect(page.getByLabel("E-mail", { exact: true })).toBeEditable();
   await expect(page.getByLabel("Senha", { exact: true })).toBeEditable();
-  await expect(page.getByRole("button", { name: "Entrar" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Entrar no sistema" }),
+  ).toBeDisabled();
   expect(mock.calls()).toBe(1);
 });
 
@@ -521,7 +536,11 @@ for (const role of ["RECEPCIONISTA", "MEDICO", "ADMIN"] as const) {
     test(`permissão ${role} -> ${targetRole}`, async ({ page }) => {
       await api(page, { authenticated: true, role });
       await page.goto(path);
-      if (role === targetRole) {
+      if (role === "ADMIN" && targetRole === "RECEPCIONISTA") {
+        await expect(
+          page.getByRole("heading", { name: "Fila de Espera e Gestão de Prioridades" }),
+        ).toBeVisible();
+      } else if (role === targetRole) {
         await expect(
           page.getByRole("heading", { name: "Olá, Pessoa de teste." }),
         ).toBeVisible();
@@ -560,7 +579,7 @@ test("erro e destino autenticado têm a11y básica", async ({ page }) => {
   await api(page, { loginStatus: 401 });
   await open(page);
   await fill(page);
-  await page.getByRole("button", { name: "Entrar" }).click();
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page.getByRole("alert")).toBeVisible();
   expect(
     (
@@ -589,7 +608,7 @@ test("Entrar fica desabilitado se qualquer campo estiver vazio, inclusive ao apa
 }) => {
   const mock = await api(page);
   await open(page);
-  const submit = page.getByRole("button", { name: "Entrar" });
+  const submit = page.getByRole("button", { name: "Entrar no sistema" });
   const email = page.getByLabel("E-mail", { exact: true });
   const password = page.getByLabel("Senha", { exact: true });
   await email.fill("operador@clinica.test");
@@ -612,7 +631,7 @@ test("credenciais inválidas: um toast, ambos vermelhos, sem retry e correção 
   await api(page, { loginStatus: 401 });
   await open(page);
   await fill(page);
-  const submit = page.getByRole("button", { name: "Entrar" });
+  const submit = page.getByRole("button", { name: "Entrar no sistema" });
   const before = await submit.boundingBox();
   await submit.click();
   await expect(page.getByRole("alert")).toContainText(
@@ -659,9 +678,11 @@ for (const width of [320, 390, 1504]) {
     await page.goto("/login");
     await expect(page).toHaveTitle("Login | Agora Você");
     await expect(page.getByRole("alert")).toContainText(
-      "Não conseguimos conectar agora.",
+      "Não foi possível verificar sua sessão.",
     );
-    await expect(page.getByRole("button", { name: "Entrar" })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Entrar no sistema" }),
+    ).toBeDisabled();
     await expect(
       page.getByRole("button", { name: "Tentar novamente" }),
     ).toHaveCount(0);

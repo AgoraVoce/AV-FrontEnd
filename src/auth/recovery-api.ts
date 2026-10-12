@@ -21,14 +21,15 @@ export class RecoveryError extends Error {
   }
 }
 export const RECOVERY_COPY = {
-  code: "Esse código não funcionou. Confira os números ou peça um novo.",
-  expired: "O prazo para criar sua senha acabou. Peça um novo código.",
-  policy: "Essa senha não pode ser usada. Escolha outra e tente de novo.",
-  unavailable: "Não conseguimos continuar agora. Tente de novo em instantes.",
-  "rate-limit":
-    "Você tentou várias vezes. Espere um pouco antes de tentar de novo.",
+  code: "Código inválido ou expirado. Confira o código ou solicite um novo.",
+  expired:
+    "Sua autorização expirou. Recomece a recuperação para receber um novo código.",
+  policy:
+    "Essa senha não atende à política de segurança. Escolha outra senha e tente novamente.",
+  unavailable: "O serviço de recuperação está indisponível. Tente novamente.",
+  "rate-limit": "Muitas tentativas. Aguarde antes de tentar novamente.",
   contract:
-    "Não conseguimos continuar. Tente de novo ou peça ajuda à sua equipe.",
+    "Não foi possível continuar a recuperação. Tente novamente ou contate a administração.",
 };
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))

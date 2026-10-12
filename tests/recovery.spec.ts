@@ -42,7 +42,7 @@ async function mockApi(
 async function start(page: Page) {
   await page.goto("/recuperar-senha");
   await expect(
-    page.getByRole("heading", { name: "Vamos recuperar seu acesso." }),
+    page.getByRole("heading", { name: "Recupere seu acesso." }),
   ).toBeFocused();
 }
 async function codeStep(page: Page) {
@@ -98,14 +98,12 @@ test("e-mail vazio/inválido: foco, erro associado e zero chamadas", async ({
     .getByRole("button", { name: "Enviar código", exact: true })
     .click();
   await expect(page.getByLabel("E-mail", { exact: true })).toBeFocused();
-  await expect(page.getByText("Digite seu e-mail.")).toBeVisible();
+  await expect(page.getByText("Informe seu e-mail.")).toBeVisible();
   await page.getByLabel("E-mail", { exact: true }).fill("invalido");
   await page
     .getByRole("button", { name: "Enviar código", exact: true })
     .click();
-  await expect(
-    page.getByText("Confira se o e-mail está escrito corretamente."),
-  ).toBeVisible();
+  await expect(page.getByText("Informe um e-mail válido.")).toBeVisible();
   expect(calls.request).toHaveLength(0);
 });
 for (const account of ["existente", "inexistente", "inativa"]) {
@@ -115,7 +113,7 @@ for (const account of ["existente", "inexistente", "inativa"]) {
     await mockApi(page);
     await codeStep(page);
     await expect(
-      page.getByText(/Se esse e-mail estiver cadastrado/),
+      page.getByText(/Se houver uma conta para esse e-mail/),
     ).toBeVisible();
     await expect(page.getByLabel("Código de verificação")).toHaveAttribute(
       "autocomplete",
@@ -227,10 +225,10 @@ for (const operation of ["request", "verify", "reset"] as const) {
       await submit.click();
       await expect(page.getByRole("alert")).toContainText(
         failure === "429"
-          ? "Você tentou várias vezes"
+          ? "Muitas tentativas"
           : operation === "reset"
-            ? "Não conseguimos confirmar"
-            : "Não conseguimos continuar agora",
+            ? "Não foi possível confirmar"
+            : "indisponível",
       );
       await expect(page.getByText("detalhe privado")).toHaveCount(0);
       if (operation === "reset")
@@ -262,7 +260,7 @@ for (const status of [401, 410]) {
     await page.getByLabel("Código de verificação").fill("123456");
     await page.getByRole("button", { name: "Verificar código" }).click();
     await expect(page.getByRole("alert")).toContainText(
-      "Esse código não funcionou.",
+      "Código inválido ou expirado.",
     );
     await expect(page.getByLabel("Código de verificação")).toBeFocused();
     await expect(page.getByLabel("Nova senha", { exact: true })).toHaveCount(0);
@@ -277,7 +275,7 @@ test("código incompleto ou não numérico não chama verify; paste com espaços
     await page.getByLabel("Código de verificação").fill(value);
     await page.getByRole("button", { name: "Verificar código" }).click();
     await expect(
-      page.getByText("Digite os 6 dígitos do código."),
+      page.getByText("Informe os 6 dígitos do código."),
     ).toBeVisible();
   }
   expect(calls.verify).toHaveLength(0);
@@ -315,7 +313,7 @@ test("expiração do código, espera de reenvio e novo challenge invalidam estad
   await page.getByLabel("Código de verificação").fill("123456");
   await page.clock.runFor(3000);
   await expect(
-    page.getByText("O código expirou. Peça um novo abaixo."),
+    page.getByText("Código expirado. Solicite um novo abaixo."),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Verificar código" }),
@@ -359,12 +357,10 @@ test("reenvio bloqueia duplicidade e falha preserva challenge para retry", async
     });
   await expect.poll(() => calls.request.length).toBe(2);
   await expect(
-    page.getByRole("button", { name: "Reenviando código…" }),
+    page.getByRole("button", { name: "Solicitando novo código…" }),
   ).toBeDisabled();
   finish();
-  await expect(page.getByRole("alert")).toContainText(
-    "Não conseguimos continuar agora",
-  );
+  await expect(page.getByRole("alert")).toContainText("indisponível");
   await expect(page.getByLabel("Código de verificação")).toHaveValue("123456");
   await page
     .getByRole("button", { name: "Reenviar código", exact: true })
@@ -378,9 +374,7 @@ test("senha obrigatória, limites da API e confirmação: zero reset inválido",
   await passwordStep(page);
   await page.getByRole("button", { name: "Redefinir senha" }).click();
   await expect(page.getByLabel("Nova senha", { exact: true })).toBeFocused();
-  await expect(
-    page.getByText("Digite a nova senha mais uma vez."),
-  ).toBeVisible();
+  await expect(page.getByText("Confirme sua nova senha.")).toBeVisible();
   for (const value of ["curta", "a".repeat(129)]) {
     await fillPassword(page, value);
     await page.getByRole("button", { name: "Redefinir senha" }).click();
@@ -396,9 +390,7 @@ test("senha obrigatória, limites da API e confirmação: zero reset inválido",
     .getByLabel("Confirmar nova senha", { exact: true })
     .fill("outra senha longa");
   await page.getByRole("button", { name: "Redefinir senha" }).click();
-  await expect(
-    page.getByText("Digite a mesma senha nos dois campos."),
-  ).toBeVisible();
+  await expect(page.getByText("As senhas não coincidem.")).toBeVisible();
   await expect(
     page.getByLabel("Confirmar nova senha", { exact: true }),
   ).toBeFocused();
@@ -413,9 +405,7 @@ for (const status of [422, 401]) {
     await fillPassword(page);
     await page.getByRole("button", { name: "Redefinir senha" }).click();
     await expect(page.getByRole("alert")).toContainText(
-      status === 422
-        ? "Essa senha não pode ser usada"
-        : "O prazo para criar sua senha acabou",
+      status === 422 ? "política de segurança" : "autorização expirou",
     );
     if (status === 401) {
       await expect(page.getByLabel("Nova senha", { exact: true })).toHaveValue(
@@ -441,9 +431,7 @@ test("grant expira na página sem enviar reset", async ({ page }) => {
   await passwordStep(page);
   await fillPassword(page);
   await page.clock.runFor(3000);
-  await expect(page.getByRole("alert")).toContainText(
-    "O prazo para criar sua senha acabou",
-  );
+  await expect(page.getByRole("alert")).toContainText("autorização expirou");
   await expect(
     page.getByRole("button", { name: "Redefinir senha" }),
   ).toBeDisabled();
@@ -464,7 +452,7 @@ for (const operation of ["request", "verify"] as const) {
     }
     await page.locator("button[type=submit]").click();
     await expect(page.getByRole("alert")).toContainText(
-      "Não conseguimos continuar",
+      "Não foi possível continuar",
     );
     await expect(page.getByLabel("Nova senha", { exact: true })).toHaveCount(0);
   });
@@ -509,7 +497,7 @@ test("saída durante verify cancela resultado tardio e reinicia fluxo", async ({
   await expect(page).toHaveURL("/login");
   await page.getByRole("link", { name: "Esqueci minha senha" }).click();
   await expect(
-    page.getByRole("heading", { name: "Vamos recuperar seu acesso." }),
+    page.getByRole("heading", { name: "Recupere seu acesso." }),
   ).toBeVisible();
 });
 test("timeout encerra loading sem avançar", async ({ page }) => {
@@ -519,12 +507,9 @@ test("timeout encerra loading sem avançar", async ({ page }) => {
   await page
     .getByRole("button", { name: "Enviar código", exact: true })
     .click();
-  await expect(page.getByRole("alert")).toContainText(
-    "Não conseguimos continuar agora",
-    {
-      timeout: 15_000,
-    },
-  );
+  await expect(page.getByRole("alert")).toContainText("indisponível", {
+    timeout: 15_000,
+  });
   await expect(
     page.getByRole("button", { name: "Enviar código", exact: true }),
   ).toBeEnabled();

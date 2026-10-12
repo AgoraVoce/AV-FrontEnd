@@ -57,7 +57,7 @@ export function PasswordField({
           }
           value={value}
           disabled={disabled}
-          placeholder={label === "Senha" ? "Sua senha" : label}
+          placeholder={label === "Senha" ? "Sua senha de acesso" : label}
           aria-invalid={Boolean(error) || invalid}
           aria-describedby={[`${id}-error`, descriptionId]
             .filter(Boolean)
