@@ -4,7 +4,7 @@ import { ArrowRight, LockKeyhole } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import { AuthLayout } from "../components/AuthLayout";
 import { PasswordField } from "../components/PasswordField";
-import { Spinner } from "../components/Feedback";
+import { Feedback, Spinner } from "../components/Feedback";
 import { ErrorToast } from "../components/ErrorToast";
 import { usePageTitle } from "../components/usePageTitle";
 import { AuthError, ERROR_COPY } from "./api";
@@ -12,7 +12,7 @@ import { useAuth } from "./context";
 import { HOME_BY_ROLE } from "./types";
 import { LOGIN_PRESENTATION as presentation } from "./role-presentation";
 export function LoginPage() {
-  const { state, signIn } = useAuth();
+  const { state, restore, signIn } = useAuth();
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [reveal, setReveal] = useState(false);
@@ -30,11 +30,10 @@ export function LoginPage() {
   const passwordRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   usePageTitle("Login");
+  const sessionError = state.status === "error";
   const notice =
     formError ||
-    (state.status === "error"
-      ? "Não foi possível verificar sua sessão. Entre com seu e-mail e senha."
-      : null);
+    (sessionError ? "Não foi possível verificar sua sessão." : null);
   const loginInvalid = Boolean(notice && correctedNotice.login !== notice);
   const passwordInvalid = Boolean(
     notice && correctedNotice.password !== notice,
@@ -106,7 +105,14 @@ export function LoginPage() {
         </h1>
         <p>Entre com seu e-mail e senha para continuar.</p>
       </header>
-      <form noValidate onSubmit={submit} aria-busy={busy}>
+      <form
+        className={
+          sessionError ? "login-form login-form--session-error" : "login-form"
+        }
+        noValidate
+        onSubmit={submit}
+        aria-busy={busy}
+      >
         <div className="field">
           <label htmlFor="login">E-mail</label>
           <input
@@ -170,6 +176,9 @@ export function LoginPage() {
               Verificando sua sessão… Você já pode entrar.
             </p>
           )}
+          {sessionError && !formError && notice && (
+            <Feedback message={notice} retry={() => void restore()} />
+          )}
           <p id="login-auth-error" className="sr-only">
             {notice}
           </p>
@@ -191,7 +200,7 @@ export function LoginPage() {
         <span>Seu acesso é definido pelo perfil da sua conta.</span>
       </p>
       <ErrorToast
-        message={notice === dismissedNotice ? null : notice}
+        message={sessionError || notice === dismissedNotice ? null : notice}
         onDismiss={() => {
           setDismissedNotice(notice);
           (invalidCredentials ? passwordRef : loginRef).current?.focus();

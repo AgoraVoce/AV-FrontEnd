@@ -77,10 +77,14 @@ test("recepção exibe a fila de espera da área autorizada", async ({ page }) =
   await page.goto("/recepcao");
 
   await expect(
-    page.getByRole("heading", { name: "Fila de Espera e Gestão de Prioridades" }),
+    page.getByRole("heading", {
+      name: "Fila de Espera e Gestão de Prioridades",
+    }),
   ).toBeVisible();
   await expect(page.getByText("Maria Clara Santos")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Cadastrar Paciente" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Cadastrar Paciente" }),
+  ).toBeVisible();
 });
 
 for (const [role, path] of [
@@ -249,7 +253,7 @@ test("expiração ao retornar à aba", async ({ page }) => {
   );
   await expect(page).toHaveURL("/login");
 });
-test("falha de restauração bloqueia conteúdo e retorna ao login com toast", async ({
+test("falha de restauração bloqueia conteúdo e retorna ao login com feedback", async ({
   page,
 }) => {
   await api(page);
@@ -264,7 +268,7 @@ test("falha de restauração bloqueia conteúdo e retorna ao login com toast", a
   await expect(page).toHaveURL("/login");
   await expect(
     page.getByRole("button", { name: "Tentar novamente" }),
-  ).toHaveCount(0);
+  ).toHaveCount(1);
   await expect(page.getByLabel("E-mail", { exact: true })).toHaveAttribute(
     "aria-invalid",
     "true",
@@ -538,7 +542,9 @@ for (const role of ["RECEPCIONISTA", "MEDICO", "ADMIN"] as const) {
       await page.goto(path);
       if (role === "ADMIN" && targetRole === "RECEPCIONISTA") {
         await expect(
-          page.getByRole("heading", { name: "Fila de Espera e Gestão de Prioridades" }),
+          page.getByRole("heading", {
+            name: "Fila de Espera e Gestão de Prioridades",
+          }),
         ).toBeVisible();
       } else if (role === targetRole) {
         await expect(
@@ -667,7 +673,7 @@ test("credenciais inválidas: um toast, ambos vermelhos, sem retry e correção 
 });
 
 for (const width of [320, 390, 1504]) {
-  test(`toast de sessão: ${width}px, vermelho, acessível e sem cobrir campos`, async ({
+  test(`feedback de sessão: ${width}px, acessível e dentro da página`, async ({
     page,
   }) => {
     const errors: string[] = [];
@@ -685,18 +691,19 @@ for (const width of [320, 390, 1504]) {
     ).toBeDisabled();
     await expect(
       page.getByRole("button", { name: "Tentar novamente" }),
-    ).toHaveCount(0);
-    const toast = await page.locator(".error-toast").boundingBox();
+    ).toHaveCount(1);
+    await expect(page.locator(".error-toast")).toHaveCount(0);
+    const feedback = await page.locator("form .feedback").boundingBox();
     const email = await page
       .getByLabel("E-mail", { exact: true })
       .boundingBox();
-    expect(toast).not.toBeNull();
-    expect(toast!.x).toBeGreaterThanOrEqual(0);
-    expect(toast!.x + toast!.width).toBeLessThanOrEqual(width);
-    expect(toast!.y + toast!.height).toBeLessThan(email!.y);
+    expect(feedback).not.toBeNull();
+    expect(feedback!.x).toBeGreaterThanOrEqual(0);
+    expect(feedback!.x + feedback!.width).toBeLessThanOrEqual(width);
+    expect(feedback!.y).toBeGreaterThan(email!.y);
     await expect(page.getByLabel("E-mail", { exact: true })).toHaveCSS(
       "border-color",
-      "rgb(165, 45, 56)",
+      "rgb(213, 227, 232)",
     );
     expect(
       (
@@ -708,11 +715,11 @@ for (const width of [320, 390, 1504]) {
     await page.emulateMedia({ reducedMotion: "reduce" });
     expect(
       await page
-        .locator(".toast-dismiss")
+        .getByRole("button", { name: "Tentar novamente" })
         .evaluate((button) => getComputedStyle(button).transitionDuration),
     ).toBe("0s");
     await page.screenshot({
-      path: `../qa/login-toast-${width}.png`,
+      path: `../qa/login-feedback-${width}.png`,
       fullPage: true,
     });
     expect(errors).toEqual([]);
