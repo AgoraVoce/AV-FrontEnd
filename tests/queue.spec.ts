@@ -76,6 +76,60 @@ test("filtros avançados combinam prioridade, idade e espera e recalculam a list
   await expect(page.getByRole("button", { name: "Filtrar" })).toBeVisible();
 });
 
+test("selects portaledos ficam acima dos overlays e modais", async ({
+  page,
+}) => {
+  await page.goto("/recepcao?dev=recepcionista");
+
+  await page.getByRole("button", { name: "Filtrar" }).click();
+  const filters = page.getByRole("dialog", {
+    name: "Filtros avançados da fila",
+  });
+  await filters.getByRole("combobox", { name: "Prioridade" }).click();
+
+  const filterPopover = page.locator(".select-popover");
+  await expect(filterPopover).toBeVisible();
+  expect(
+    await filterPopover.evaluate((element) =>
+      Number(getComputedStyle(element).zIndex),
+    ),
+  ).toBeGreaterThan(
+    await page.evaluate(() =>
+      Number(
+        getComputedStyle(document.querySelector(".filter-popover")!).zIndex,
+      ),
+    ),
+  );
+  await page.getByRole("option", { name: "Urgente", exact: true }).click();
+  await filters.getByRole("combobox", { name: "Prioridade" }).click();
+  await page.getByRole("option", { name: "Todas", exact: true }).click();
+
+  await page
+    .locator("tr")
+    .filter({ hasText: "Ana Beatriz Rocha" })
+    .getByRole("button", { name: "Excluir paciente Ana Beatriz Rocha" })
+    .click();
+  const dialog = page.getByRole("alertdialog", {
+    name: "Excluir paciente da fila?",
+  });
+  await dialog.getByRole("combobox", { name: "Motivo da exclusão" }).click();
+
+  const modalPopover = page.locator(".select-popover");
+  await expect(modalPopover).toBeVisible();
+  expect(
+    await modalPopover.evaluate((element) =>
+      Number(getComputedStyle(element).zIndex),
+    ),
+  ).toBeGreaterThan(
+    await page.evaluate(() =>
+      Number(
+        getComputedStyle(document.querySelector(".reevaluation-overlay")!)
+          .zIndex,
+      ),
+    ),
+  );
+});
+
 test("a navegação lateral mantém a sessão entre recepção e transmissão", async ({
   page,
 }) => {

@@ -780,7 +780,8 @@ body,
   --text-muted: #5d6d7c;
   --shadow-soft: 0 10px 28px rgb(20 39 51 / 6%);
   --z-sticky: 100;
-  --z-dropdown: 200;
+  /* Select popovers are portaled to body and must clear modal overlays. */
+  --z-dropdown: 700;
   --z-popover: 300;
   --z-backdrop: 500;
   --z-dialog: 600;
