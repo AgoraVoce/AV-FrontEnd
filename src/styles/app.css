@@ -93,7 +93,7 @@ body,
   width: 100%;
   max-width: var(--space-page-max);
   min-height: min(598px, calc(100svh - 16px));
-  color: var(--nivel-alerta-cor);
+  color: var(--color-text);
   display: grid;
   grid-template-columns: 48% 52%;
   border: 1px solid var(--color-border);
@@ -127,7 +127,7 @@ body,
   place-items: center;
   border-radius: 10px;
   color: var(--color-surface);
-  background: #08a7a2;
+  background: #0f9d9a;
 }
 .brand-accent {
   color: var(--color-primary);
