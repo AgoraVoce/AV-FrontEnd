@@ -45,7 +45,7 @@ test("painel administrativo oferece a entrada para a transmissão e mostra o ate
   ).toHaveAttribute("href", "/transmissao/tv");
   await expect(
     page.getByText("PRONTO-SOCORRO CENTRAL", { exact: true }),
-  ).toHaveCount(0);
+  ).toHaveCount(1);
   await expect(
     page.getByText("Painel em Tempo Real", { exact: true }),
   ).toHaveCount(0);
@@ -73,7 +73,7 @@ test("transmissão TV é uma superfície sem shell e mostra o atendimento atual"
   await expect(page.locator("aside.sidebar")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Tela cheia" })).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Sair da transmissão" }),
+    page.getByRole("button", { name: "Sair da transmissão" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "CHAMANDO AGORA" }),
@@ -150,7 +150,7 @@ test("transmissão TV navega de volta sem criar overflow horizontal", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/transmissao/tv");
-  await page.getByRole("link", { name: "Sair da transmissão" }).click();
+  await page.getByRole("button", { name: "Sair da transmissão" }).click();
   await expect(page).toHaveURL("/transmissao");
   await expect(
     page.getByRole("link", { name: "Iniciar transmissão" }),
@@ -163,9 +163,39 @@ test("transmissão TV navega de volta sem criar overflow horizontal", async ({
   expect(width.scroll).toBeLessThanOrEqual(width.viewport);
 });
 
+test("sair da transmissão também navega quando o painel está em tela cheia", async ({
+  page,
+}) => {
+  await page.goto("/transmissao/tv");
+  await page.getByRole("button", { name: "Tela cheia" }).click();
+  await expect(
+    page.getByRole("button", { name: "Sair da tela cheia" }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "Sair da transmissão" }).click();
+  await expect(page).toHaveURL("/transmissao");
+  await expect(
+    page.getByRole("link", { name: "Iniciar transmissão" }),
+  ).toBeVisible();
+});
+
 test("entrada administrativa abre a rota TV standalone", async ({ page }) => {
   await page.goto("/transmissao");
   await page.getByRole("link", { name: "Iniciar transmissão" }).click();
   await expect(page).toHaveURL("/transmissao/tv");
   await expect(page.locator("aside.sidebar")).toHaveCount(0);
+});
+
+test("botão Sair do painel público retorna ao login sem sessão autenticada", async ({
+  page,
+}) => {
+  let logoutRequested = false;
+  await page.route("**/auth/logout", async (route) => {
+    logoutRequested = true;
+    await route.fulfill({ status: 503 });
+  });
+  await page.goto("/transmissao");
+  await page.getByRole("button", { name: "Sair" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  expect(logoutRequested).toBe(false);
 });

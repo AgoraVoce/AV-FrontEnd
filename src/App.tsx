@@ -7,6 +7,7 @@ import { QueuePage } from "./auth/reception/QueuePage";
 import { PainelPublicoPage } from "./painel-publico/PainelPublicoPage";
 import MedicoPage from "./pages/Medico";
 import NovoCadastroPage from "./pages/NovoCadastro";
+import AdminPage from "./pages/Admin";
 import { usePageTitle } from "./components/usePageTitle";
 function NotFound() {
   usePageTitle("Página não encontrada");
@@ -68,7 +69,14 @@ export default function App() {
             </ProtectedArea>
           }
         />
-        <Route path="/admin" element={<ProtectedArea role="ADMIN" />} />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedArea role="ADMIN">
+              <AdminPage />
+            </ProtectedArea>
+          }
+        />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </div>
