@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   Bell,
   Building2,
@@ -12,35 +12,30 @@ import {
 import { AppShell } from "../../components/AppShell";
 import { PriorityBadge } from "../../components/PriorityBadge";
 import { usePageTitle } from "../../components/usePageTitle";
-import type { Priority } from "../../reception/types";
+import {
+  getWaitMinutes,
+  sortPatientsByPriorityAndWait,
+} from "../../reception/types";
+import type { Priority, QueuePatient } from "../../reception/types";
+import {
+  callNextPatient,
+  finalizeAppointment,
+  getQueueSnapshot,
+  subscribeQueue,
+} from "../../reception/queue-store";
 import "./medico.css";
-
-interface PatientInCare {
-  name: string;
-  age: number;
-  gender: string;
-  ticket: string;
-  priority: Priority;
-  priorityLabel: string;
-  complaint: string;
-}
-
-interface WaitingPatient {
-  ticket: string;
-  name: string;
-  record: string;
-  age: number;
-  complaint: string;
-  priority: Priority;
-  wait: number;
-  nurse: string;
-}
 
 const DOCTOR = {
   name: "Dr. Marcelo Arantes",
   crm: "CRM 142.890-SP",
   office: "Consultório 04",
   specialty: "Clínica Médica Geral",
+};
+
+const PRIORITY_CAPTION: Record<Priority, string> = {
+  urgent: "Urgente (Vermelho)",
+  alert: "Alerta (Amarelo)",
+  calm: "Tranquilo (Verde)",
 };
 
 function getBrasiliaTime() {
@@ -53,77 +48,19 @@ function getBrasiliaTime() {
   }).format(new Date());
 }
 
-const CURRENT_PATIENT: PatientInCare = {
-  name: "Roberto Souza Lima",
-  age: 67,
-  gender: "Masculino",
-  ticket: "U-039",
-  priority: "urgent",
-  priorityLabel: "Urgente (Vermelho)",
-  complaint: "Dispneia moderada, tosse produtiva e saturação O2 92%",
-};
-
-const NEXT_PATIENT: PatientInCare = {
-  name: "Ana Beatriz Rocha",
-  age: 34,
-  gender: "Feminino",
-  ticket: "A-051",
-  priority: "alert",
-  priorityLabel: "Alerta (Amarelo)",
-  complaint: "Cólica renal intensa com náuseas",
-};
-
-const WAITING_PATIENTS: WaitingPatient[] = [
-  {
-    ticket: "A-052",
-    name: "Jorge Fernando Alves",
-    record: "#88412",
-    age: 45,
-    complaint: "Suspeita de fratura",
-    priority: "alert",
-    wait: 32,
-    nurse: "Enf. Paula",
-  },
-  {
-    ticket: "T-089",
-    name: "Juliana Mendes",
-    record: "#88415",
-    age: 29,
-    complaint: "Sintomas gripais leves",
-    priority: "calm",
-    wait: 46,
-    nurse: "Enf. Paula",
-  },
-  {
-    ticket: "T-090",
-    name: "Lucas Gabriel Moreira",
-    record: "#88419",
-    age: 19,
-    complaint: "Escoriação leve no joelho",
-    priority: "calm",
-    wait: 51,
-    nurse: "Enf. Paula",
-  },
-  {
-    ticket: "T-091",
-    name: "Camila Duarte",
-    record: "#88422",
-    age: 38,
-    complaint: "Renovação de receita",
-    priority: "calm",
-    wait: 54,
-    nurse: "Enf. Carlos",
-  },
-];
-
-function PatientIdentity({ patient }: { patient: PatientInCare }) {
+function PatientIdentity({ patient }: { patient: QueuePatient }) {
   return (
     <div className="doctor-patient-identity">
       <div>
         <h3>{patient.name}</h3>
         <p>
-          {patient.age} anos <span aria-hidden="true">•</span> Sexo{" "}
-          {patient.gender}
+          {patient.age} anos
+          {patient.gender && (
+            <>
+              {" "}
+              <span aria-hidden="true">•</span> Sexo {patient.gender}
+            </>
+          )}
         </p>
       </div>
       <div className="doctor-ticket">
@@ -134,54 +71,95 @@ function PatientIdentity({ patient }: { patient: PatientInCare }) {
   );
 }
 
-function PriorityPill({
-  priority,
-  children,
-}: {
-  priority: Priority;
-  children: string;
-}) {
+function PriorityPill({ priority }: { priority: Priority }) {
   return (
     <span className={`doctor-priority-pill is-${priority}`}>
       <span aria-hidden="true">●</span>
-      {children}
+      {PRIORITY_CAPTION[priority]}
     </span>
   );
 }
 
 export default function MedicoPage() {
   usePageTitle("Consultório Médico");
+  const queueSnapshot = useSyncExternalStore(
+    subscribeQueue,
+    getQueueSnapshot,
+    getQueueSnapshot,
+  );
   const [currentTime, setCurrentTime] = useState(getBrasiliaTime);
-  const [currentPatient, setCurrentPatient] = useState<PatientInCare | null>(
-    CURRENT_PATIENT,
-  );
-  const [nextPatient, setNextPatient] = useState<PatientInCare | null>(
-    NEXT_PATIENT,
-  );
+  const [queueNow, setQueueNow] = useState(() => Date.now());
   const [callError, setCallError] = useState("");
+  const currentPatient =
+    queueSnapshot.patients.find(
+      (patient) => patient.ticket === queueSnapshot.activeConsultationTicket,
+    ) ?? null;
+  const waitingPatients = useMemo(
+    () =>
+      sortPatientsByPriorityAndWait(
+        queueSnapshot.patients.filter(
+          (patient) => patient.status === "waiting",
+        ),
+        queueNow,
+      ),
+    [queueSnapshot.patients, queueNow],
+  );
+  const nextPatient = waitingPatients[0] ?? null;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       setCurrentTime(getBrasiliaTime());
+      setQueueNow(Date.now());
     }, 1000);
     return () => window.clearInterval(timer);
   }, []);
 
-  // Finaliza a consulta atual e libera o consultório.
+  // Finaliza a consulta atual e mantém a última chamada na TV.
   function handleFinishAppointment() {
-    setCurrentPatient(null);
+    if (!currentPatient) return;
+    const result = finalizeAppointment(
+      currentPatient.ticket,
+      "MEDICO",
+      queueSnapshot.revision,
+    );
+    if (!result.ok) {
+      setCallError(
+        result.reason === "stale"
+          ? "A fila foi atualizada em outra tela. Confira os dados e tente novamente."
+          : "Não foi possível finalizar este atendimento.",
+      );
+      return;
+    }
+    setCallError("");
   }
 
-  // Chama o próximo paciente apenas quando o consultório está livre.
+  // Chama o próximo paciente da fila compartilhada, por prioridade e espera.
   function handleCallNextPatient() {
     if (currentPatient) {
       setCallError("Finalize o atendimento atual antes de chamar o próximo.");
       return;
     }
     if (!nextPatient) return;
+    const result = callNextPatient(
+      nextPatient.ticket,
+      DOCTOR.office,
+      DOCTOR.name,
+      "MEDICO",
+      queueSnapshot.revision,
+    );
+    if (!result.ok) {
+      setCallError(
+        result.reason === "stale"
+          ? "A fila foi atualizada em outra tela. Confira o próximo paciente e tente novamente."
+          : result.reason === "patient-not-next"
+            ? "A ordem da fila mudou. Confira o próximo paciente e tente novamente."
+            : result.reason === "consultation-active"
+              ? "Finalize o atendimento atual antes de chamar o próximo."
+              : "Não foi possível chamar o próximo paciente.",
+      );
+      return;
+    }
     setCallError("");
-    setCurrentPatient(nextPatient);
-    setNextPatient(null);
   }
 
   const headerContext = (
@@ -252,9 +230,7 @@ export default function MedicoPage() {
                 <PatientIdentity patient={currentPatient} />
                 <div className="doctor-risk-line">
                   <span className="doctor-label">CLASSIFICAÇÃO DE RISCO</span>
-                  <PriorityPill priority={currentPatient.priority}>
-                    {currentPatient.priorityLabel}
-                  </PriorityPill>
+                  <PriorityPill priority={currentPatient.priority} />
                 </div>
                 <div className="doctor-complaint">
                   <span>Queixa Principal Relatada:</span>
@@ -265,15 +241,25 @@ export default function MedicoPage() {
                   <div className="doctor-vitals-grid">
                     <div>
                       <span>Temperatura</span>
-                      <strong className="is-danger">38.4 °C</strong>
+                      <strong
+                        className={
+                          currentPatient.vitals.temperature >= 38
+                            ? "is-danger"
+                            : undefined
+                        }
+                      >
+                        {currentPatient.vitals.temperature.toFixed(1)} °C
+                      </strong>
                     </div>
                     <div>
                       <span>Pressão Art.</span>
-                      <strong>140/90</strong>
+                      <strong>{currentPatient.vitals.bloodPressure}</strong>
                     </div>
                     <div>
                       <span>Escala de Dor</span>
-                      <strong>6 / 10</strong>
+                      <strong>
+                        {currentPatient.vitals.painScale ?? "—"} / 10
+                      </strong>
                     </div>
                   </div>
                 </div>
@@ -309,9 +295,7 @@ export default function MedicoPage() {
                 <PatientIdentity patient={nextPatient} />
                 <div className="doctor-risk-line">
                   <span className="doctor-label">CLASSIFICAÇÃO DE RISCO</span>
-                  <PriorityPill priority={nextPatient.priority}>
-                    {nextPatient.priorityLabel}
-                  </PriorityPill>
+                  <PriorityPill priority={nextPatient.priority} />
                 </div>
                 <div className="doctor-complaint">
                   <span>Queixa Principal:</span>
@@ -322,26 +306,38 @@ export default function MedicoPage() {
                     <Hourglass size={14} aria-hidden="true" />
                     Tempo na espera:
                   </span>
-                  <strong>Aguardando há 24 min</strong>
+                  <strong>
+                    Aguardando há {getWaitMinutes(nextPatient, queueNow)} min
+                  </strong>
                 </div>
                 <button
                   className="doctor-action-button is-call"
                   type="button"
                   onClick={handleCallNextPatient}
+                  disabled={Boolean(currentPatient)}
                 >
                   <Megaphone size={15} aria-hidden="true" />
                   Chamar Próximo Paciente ({nextPatient.ticket})
                 </button>
-                {callError && (
-                  <p className="doctor-call-notice" role="status">
-                    {callError}
-                  </p>
-                )}
               </>
             ) : (
-              <div className="doctor-empty-patient">
-                Não há próximo paciente para chamar.
-              </div>
+              <>
+                <div className="doctor-empty-patient">
+                  Não há próximo paciente para chamar.
+                </div>
+                <button
+                  className="doctor-action-button is-call"
+                  type="button"
+                  disabled
+                >
+                  Fila vazia
+                </button>
+              </>
+            )}
+            {callError && (
+              <p className="doctor-call-notice" role="status">
+                {callError}
+              </p>
             )}
           </section>
         </div>
@@ -355,8 +351,7 @@ export default function MedicoPage() {
               </p>
             </div>
             <span className="doctor-queue-total">
-              Total na fila: <strong>{WAITING_PATIENTS.length}</strong>{" "}
-              pacientes
+              Total na fila: <strong>{waitingPatients.length}</strong> pacientes
             </span>
           </div>
 
@@ -378,7 +373,7 @@ export default function MedicoPage() {
                 </tr>
               </thead>
               <tbody>
-                {WAITING_PATIENTS.map((patient) => (
+                {waitingPatients.map((patient) => (
                   <tr key={patient.ticket}>
                     <td>
                       <span className="doctor-queue-ticket">
@@ -387,7 +382,7 @@ export default function MedicoPage() {
                     </td>
                     <td className="doctor-queue-name">
                       <strong>{patient.name}</strong>
-                      <small>Prontuário {patient.record}</small>
+                      <small>Prontuário {patient.record ?? "—"}</small>
                     </td>
                     <td>{patient.age} anos</td>
                     <td>{patient.complaint}</td>
@@ -396,9 +391,9 @@ export default function MedicoPage() {
                     </td>
                     <td className="doctor-queue-wait">
                       <Clock3 size={13} aria-hidden="true" />
-                      <span>{patient.wait} min</span>
+                      <span>{getWaitMinutes(patient, queueNow)} min</span>
                     </td>
-                    <td>{patient.nurse}</td>
+                    <td>{patient.triagedBy ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>

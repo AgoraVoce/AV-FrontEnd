@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
-import { getQueueSnapshot, subscribeQueue } from "../reception/queue-store";
-import { getWaitMinutes } from "../reception/types";
-import type { Priority } from "../reception/types";
+import {
+  getQueueSnapshot,
+  subscribeQueue,
+  type QueueCall,
+} from "../reception/queue-store";
+import { sortPatientsByPriorityAndWait } from "../reception/types";
+import type { Priority, QueuePatient } from "../reception/types";
 import { BannerOrientacao } from "./components/BannerOrientacao";
 import { ChamadaPrincipal } from "./components/ChamadaPrincipal";
 import { HeaderPainel } from "./components/HeaderPainel";
@@ -11,17 +15,23 @@ import { ProximosChamados } from "./components/ProximosChamados";
 import type { Chamada, Prioridade } from "./types";
 import "./styles/painel-publico.css";
 
-const PRIORITY_ORDER: Record<Priority, number> = {
-  urgent: 0,
-  alert: 1,
-  calm: 2,
-};
-
 const PRIORITY_LABEL: Record<Priority, Prioridade> = {
   urgent: "URGENTE",
   alert: "ALERTA",
   calm: "TRANQUILO",
 };
+
+function toPublicCall(call: QueueCall | QueuePatient): Chamada {
+  return {
+    senha: call.ticket,
+    nome: call.name,
+    prioridade: PRIORITY_LABEL[call.priority],
+    status: "CHAMANDO",
+    ...("destination" in call ? { destino: call.destination } : {}),
+    ...("physician" in call ? { medicoResponsavel: call.physician } : {}),
+    ...("calledAt" in call ? { calledAt: call.calledAt } : {}),
+  };
+}
 
 export function PainelPublicoPage({
   presentation = "admin",
@@ -34,11 +44,12 @@ export function PainelPublicoPage({
       ? "Transmissão TV | Agora Você"
       : "Painel Público de Chamada Hospitalar",
   );
-  const { patients: allPatients } = useSyncExternalStore(
+  const queueSnapshot = useSyncExternalStore(
     subscribeQueue,
     getQueueSnapshot,
     getQueueSnapshot,
   );
+  const { patients: allPatients } = queueSnapshot;
   const patients = allPatients.filter(
     (patient) => patient.status === "waiting",
   );
@@ -50,17 +61,19 @@ export function PainelPublicoPage({
   }, []);
 
   const orderedPatients = useMemo(
-    () =>
-      [...patients].sort(
-        (left, right) =>
-          PRIORITY_ORDER[left.priority] - PRIORITY_ORDER[right.priority] ||
-          getWaitMinutes(right, now) - getWaitMinutes(left, now),
-      ),
+    () => sortPatientsByPriorityAndWait(patients, now),
     [patients, now],
   );
 
   const activeCall =
-    allPatients.find((patient) => patient.status === "called") ?? null;
+    queueSnapshot.currentCall ??
+    allPatients.find((patient) => patient.status === "called") ??
+    allPatients.find(
+      (patient) =>
+        patient.ticket === queueSnapshot.activeConsultationTicket ||
+        patient.status === "in-care",
+    ) ??
+    null;
   const nextCalls: Chamada[] = orderedPatients.slice(0, 5).map((patient) => ({
     senha: patient.ticket,
     nome: patient.name,
@@ -68,12 +81,7 @@ export function PainelPublicoPage({
     status: "AGUARDANDO",
   }));
   const currentCall: Chamada | null = activeCall
-    ? {
-        senha: activeCall.ticket,
-        nome: activeCall.name,
-        prioridade: PRIORITY_LABEL[activeCall.priority],
-        status: "CHAMANDO",
-      }
+    ? toPublicCall(activeCall)
     : null;
 
   const content = (

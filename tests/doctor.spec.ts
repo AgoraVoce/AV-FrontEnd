@@ -19,8 +19,8 @@ test("exibe o consultório médico e permite navegar de ida e volta", async ({
   await expect(
     page.getByRole("link", { name: "Consultório Médico" }),
   ).toHaveClass(/is-active/);
-  await expect(page.locator(".doctor-queue-table tbody tr")).toHaveCount(4);
-  await expect(page.getByText("Total na fila: 4 pacientes")).toBeVisible();
+  await expect(page.locator(".doctor-queue-table tbody tr")).toHaveCount(5);
+  await expect(page.getByText("Total na fila: 5 pacientes")).toBeVisible();
 
   await page.getByRole("link", { name: "Triagem & Fila" }).click();
   await expect(page).toHaveURL("/recepcao?dev=recepcionista");
@@ -43,25 +43,78 @@ test("finaliza a consulta e transfere o próximo paciente quando liberado", asyn
   await useAnonymousSession(page);
   await page.goto("/medico?dev=medico");
 
-  await page
-    .getByRole("button", { name: "Chamar Próximo Paciente (A-051)" })
-    .click();
-  await expect(page.getByRole("status")).toHaveText(
-    "Finalize o atendimento atual antes de chamar o próximo.",
-  );
+  const callButton = page.getByRole("button", {
+    name: "Chamar Próximo Paciente (U-038)",
+  });
+  await expect(callButton).toBeDisabled();
 
   await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
   await expect(page.getByText("Nenhum paciente em consulta.")).toBeVisible();
   await page
-    .getByRole("button", { name: "Chamar Próximo Paciente (A-051)" })
+    .getByRole("button", { name: "Chamar Próximo Paciente (U-038)" })
     .click();
 
   await expect(page.locator(".doctor-consult-card.is-current")).toContainText(
-    "Ana Beatriz Rocha",
+    "Maria Clara Santos",
   );
   await expect(
-    page.getByText("Não há próximo paciente para chamar."),
+    page.getByRole("button", { name: "Chamar Próximo Paciente (A-052)" }),
   ).toBeVisible();
+  await expect(page.getByText("Total na fila: 4 pacientes")).toBeVisible();
+});
+
+test("compartilha a chamada do médico com a TV e mantém a última chamada ao finalizar", async ({
+  page,
+  context,
+}) => {
+  await useAnonymousSession(page);
+  const tv = await context.newPage();
+  await page.goto("/medico?dev=medico");
+  await tv.goto("/transmissao/tv");
+
+  await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+  await page
+    .getByRole("button", { name: "Chamar Próximo Paciente (U-038)" })
+    .click();
+
+  await expect(
+    tv.getByRole("heading", { name: "CHAMANDO AGORA" }),
+  ).toBeVisible();
+  await expect(tv.locator(".chamada-ticket")).toHaveText("U-038");
+  await expect(tv.locator(".chamada-patient-name")).toHaveText(
+    "MARIA CLARA SANTOS",
+  );
+  await expect(tv.locator(".chamada-hero")).toHaveClass(/prioridade-urgente/);
+  await expect(tv.locator(".chamada-hero")).toHaveClass(/is-new-call/);
+  await expect(tv.locator(".chamada-destination")).toContainText(
+    "Consultório 04",
+  );
+  await expect(tv.locator(".chamada-doctor")).toContainText(
+    "Dr. Marcelo Arantes",
+  );
+
+  await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+  await expect(tv.locator(".chamada-ticket")).toHaveText("U-038");
+});
+
+test("desabilita a chamada quando todos os pacientes aguardando são atendidos", async ({
+  page,
+}) => {
+  await useAnonymousSession(page);
+  await page.goto("/medico?dev=medico");
+  await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+
+  while ((await page.locator(".doctor-queue-table tbody tr").count()) > 0) {
+    const nextCall = page.getByRole("button", {
+      name: /Chamar Próximo Paciente/,
+    });
+    await expect(nextCall).toBeEnabled();
+    await nextCall.click();
+    await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+  }
+
+  await expect(page.getByRole("button", { name: "Fila vazia" })).toBeDisabled();
+  await expect(page.getByText("Total na fila: 0 pacientes")).toBeVisible();
 });
 
 test("mostra o horário de Brasília sincronizado e atualiza os segundos", async ({

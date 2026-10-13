@@ -220,6 +220,29 @@
   line-height: 1.05;
 }
 
+.chamada-hero.prioridade-urgente .chamada-ticket {
+  color: #b33438;
+}
+
+.chamada-hero.prioridade-alerta .chamada-ticket {
+  color: #805a0b;
+}
+
+.chamada-hero.prioridade-tranquilo .chamada-ticket {
+  color: #277449;
+}
+
+.chamada-hero.is-new-call {
+  animation: chamada-new-call 800ms ease-in-out 3;
+}
+
+@keyframes chamada-new-call {
+  50% {
+    border-color: var(--public-green);
+    box-shadow: 0 0 0 6px rgb(15 110 94 / 16%);
+  }
+}
+
 .chamada-patient-label {
   margin: 11px 0 0;
   color: #85918d;
@@ -533,6 +556,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .chamada-hero.is-new-call {
+    animation: none;
+  }
+
   .painel-live-dot::after {
     animation: none;
   }

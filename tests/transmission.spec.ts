@@ -1,15 +1,45 @@
 import { expect, test } from "@playwright/test";
 import { QUEUE_MOCK } from "../src/reception/queue-data";
 
-test("painel administrativo oferece a entrada para a transmissão sem inventar chamada", async ({
+test("painel administrativo oferece a entrada para a transmissão e mostra o atendimento atual", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/transmissao");
 
   await expect(
-    page.getByRole("heading", { name: "NENHUMA CHAMADA ATIVA" }),
+    page.getByRole("heading", { name: "CHAMANDO AGORA" }),
   ).toBeVisible();
+  await expect(page.locator(".chamada-ticket")).toHaveText("U-039");
+  await expect(page.locator(".chamada-patient-name")).toHaveText(
+    "ROBERTO SOUZA LIMA",
+  );
+  await expect(page.locator(".chamada-destination")).toContainText(
+    "Consultório 04",
+  );
+  await expect(page.locator(".chamada-doctor")).toContainText(
+    "Dr. Marcelo Arantes",
+  );
+
+  await page.evaluate((initialPatients) => {
+    const channel = new BroadcastChannel("agora-voce.queue-updates");
+    channel.postMessage({
+      patients: initialPatients,
+      auditEntries: [],
+      revision: 1,
+      patientVersions: Object.fromEntries(
+        initialPatients.map((patient) => [patient.ticket, 0]),
+      ),
+      activeConsultationTicket: "U-039",
+      currentCall: null,
+    });
+    channel.close();
+  }, QUEUE_MOCK);
+  await expect(page.locator(".chamada-ticket")).toHaveText("U-039");
+  await expect(page.locator(".chamada-patient-name")).toHaveText(
+    "ROBERTO SOUZA LIMA",
+  );
+
   await expect(
     page.getByRole("link", { name: "Iniciar transmissão" }),
   ).toHaveAttribute("href", "/transmissao/tv");
@@ -34,7 +64,7 @@ test("painel administrativo oferece a entrada para a transmissão sem inventar c
   expect(layout.footerBottom).toBeLessThanOrEqual(layout.viewportHeight);
 });
 
-test("transmissão TV é uma superfície sem shell e só mostra chamada operacional", async ({
+test("transmissão TV é uma superfície sem shell e mostra o atendimento atual", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
@@ -46,10 +76,12 @@ test("transmissão TV é uma superfície sem shell e só mostra chamada operacio
     page.getByRole("link", { name: "Sair da transmissão" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "NENHUMA CHAMADA ATIVA" }),
+    page.getByRole("heading", { name: "CHAMANDO AGORA" }),
   ).toBeVisible();
-  await expect(page.locator(".chamada-destination")).toHaveCount(0);
-  await expect(page.locator(".chamada-doctor")).toHaveCount(0);
+  await expect(page.locator(".chamada-ticket")).toHaveText("U-039");
+  await expect(page.locator(".chamada-destination")).toContainText(
+    "Consultório 04",
+  );
 
   await page.evaluate((initialPatients) => {
     const calledPatient = initialPatients[2];

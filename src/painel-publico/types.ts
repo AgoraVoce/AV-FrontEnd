@@ -8,4 +8,5 @@ export interface Chamada {
   status: Status;
   destino?: string;
   medicoResponsavel?: string;
+  calledAt?: string;
 }
