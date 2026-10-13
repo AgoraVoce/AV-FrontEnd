@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowRight, LockKeyhole } from "lucide-react";
+import {
+  ArrowRight,
+  BadgeCheck,
+  LockKeyhole,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import { AuthLayout } from "../components/AuthLayout";
 import { PasswordField } from "../components/PasswordField";
@@ -10,11 +16,11 @@ import { usePageTitle } from "../components/usePageTitle";
 import { AuthError, ERROR_COPY } from "./api";
 import { useAuth } from "./context";
 import { HOME_BY_ROLE } from "./types";
-import { LOGIN_PRESENTATION as presentation } from "./role-presentation";
 export function LoginPage() {
   const { state, signIn } = useAuth();
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
+  const [keepConnected, setKeepConnected] = useState(false);
   const [reveal, setReveal] = useState(false);
   const [errors, setErrors] = useState({ login: "", password: "" });
   const [formError, setFormError] = useState<string | null>(null);
@@ -55,10 +61,13 @@ export function LoginPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (lock.current || state.status === "authenticated") return;
+    const normalizedLogin = login.trim();
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedLogin);
+    const validRegistration = /^[a-z]{3}-\d{4,8}$/i.test(normalizedLogin);
     const next = {
       login: !login.trim()
         ? "Informe seu e-mail."
-        : loginRef.current?.validity.typeMismatch
+        : !validEmail && !validRegistration
           ? "Informe um e-mail válido."
           : "",
       password: password ? "" : "Informe sua senha.",
@@ -98,54 +107,65 @@ export function LoginPage() {
     return <Navigate to={HOME_BY_ROLE[state.user.role]} replace />;
   const checking = state.status === "checking";
   return (
-    <AuthLayout titleId="login-title">
-      <header className="form-heading">
-        <p className="eyebrow">Acesso à equipe</p>
+    <AuthLayout titleId="login-title" variant="login">
+      <header className="form-heading login-heading">
         <h1 id="login-title" ref={headingRef} tabIndex={-1}>
           Bem-vindo de volta.
         </h1>
-        <p>Entre com seu e-mail e senha para continuar.</p>
+        <p>
+          Informe sua matrícula e guichê de atendimento para iniciar o
+          acolhimento e classificação de risco.
+        </p>
       </header>
-      <form noValidate onSubmit={submit} aria-busy={busy}>
-        <div className="field">
-          <label htmlFor="login">E-mail</label>
-          <input
-            id="login"
-            ref={loginRef}
-            type="email"
-            inputMode="email"
-            name="login"
-            autoComplete="username"
-            autoCapitalize="none"
-            spellCheck={false}
-            required
-            maxLength={254}
-            value={login}
-            disabled={busy}
-            placeholder="voce@clinica.com.br"
-            aria-invalid={Boolean(errors.login) || loginInvalid}
-            aria-describedby={[
-              errors.login ? "login-error" : "login-help",
-              loginInvalid ? "login-auth-error" : null,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            onChange={(event) => {
-              setLogin(event.target.value);
-              setCorrectedNotice((old) => ({ ...old, login: notice }));
-              if (errors.login) setErrors((old) => ({ ...old, login: "" }));
-            }}
-          />
+      <form
+        className="login-form"
+        noValidate
+        onSubmit={submit}
+        aria-busy={busy}
+      >
+        <div className="field login-identity-field">
+          <label htmlFor="login">Matrícula ou E-mail Institucional</label>
+          <div className="login-input-wrap">
+            <UserRound size={15} aria-hidden="true" />
+            <input
+              id="login"
+              ref={loginRef}
+              type="text"
+              inputMode="email"
+              name="login"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              required
+              maxLength={254}
+              value={login}
+              disabled={busy}
+              placeholder="mariana.rios@agoravoce.com.br ou REC-10482"
+              aria-invalid={Boolean(errors.login) || loginInvalid}
+              aria-describedby={[
+                errors.login ? "login-error" : "login-help",
+                loginInvalid ? "login-auth-error" : null,
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onChange={(event) => {
+                setLogin(event.target.value);
+                setCorrectedNotice((old) => ({ ...old, login: notice }));
+                if (errors.login) setErrors((old) => ({ ...old, login: "" }));
+              }}
+            />
+          </div>
           <p
-            className={`field-help${errors.login ? " field-error" : ""}`}
+            className={`field-help login-field-help${errors.login ? " field-error" : ""}`}
             id={errors.login ? "login-error" : "login-help"}
           >
-            {errors.login || presentation.loginHelp}
+            {errors.login ||
+              "Use seu e-mail institucional ou matrícula cadastrada."}
           </p>
         </div>
         <PasswordField
           id="password"
-          label="Senha"
+          label="Senha de Acesso"
           value={password}
           inputRef={passwordRef}
           autoComplete="current-password"
@@ -155,14 +175,38 @@ export function LoginPage() {
           error={errors.password}
           invalid={passwordInvalid}
           descriptionId={passwordInvalid ? "login-auth-error" : undefined}
+          fieldClassName="login-password-field"
+          placeholder="••••••••••••"
+          leadingIcon={<LockKeyhole size={14} />}
+          labelAside={
+            <Link
+              className="login-forgot-link"
+              to="/recuperar-senha"
+              aria-label="Esqueci minha senha"
+            >
+              Esqueceu a senha?
+            </Link>
+          }
           onChange={(value) => {
             setPassword(value);
             setCorrectedNotice((old) => ({ ...old, password: notice }));
             if (errors.password) setErrors((old) => ({ ...old, password: "" }));
           }}
         />
-        <div className="recovery-link-row">
-          <Link to="/recuperar-senha">Esqueci minha senha</Link>
+        <div className="login-options-row">
+          <label className="login-remember-option" htmlFor="keep-connected">
+            <input
+              id="keep-connected"
+              type="checkbox"
+              checked={keepConnected}
+              onChange={(event) => setKeepConnected(event.target.checked)}
+            />
+            Manter conectado neste guichê
+          </label>
+          <span className="login-terminal-badge">
+            <span className="login-terminal-dot" aria-hidden="true" />
+            Terminal #01-REC
+          </span>
         </div>
         <div className="form-feedback">
           {checking && !busy && (
@@ -178,18 +222,28 @@ export function LoginPage() {
           type="submit"
           className="primary-button"
           disabled={busy || !login.trim() || !password}
+          aria-label={busy ? "Entrando…" : "Entrar no sistema"}
         >
-          <span>{busy ? "Entrando…" : "Entrar no sistema"}</span>
+          <span>{busy ? "Entrando…" : "ENTRAR NA RECEPÇÃO"}</span>
           {busy ? <Spinner /> : <ArrowRight size={21} aria-hidden="true" />}
         </button>
         <p className="sr-only" role="status">
           {busy ? "Autenticação em andamento." : ""}
         </p>
       </form>
-      <p className="access-note">
-        <LockKeyhole size={18} aria-hidden="true" />
-        <span>Seu acesso é definido pelo perfil da sua conta.</span>
-      </p>
+      <aside className="login-secure-card">
+        <span className="login-secure-icon">
+          <ShieldCheck size={19} aria-hidden="true" />
+        </span>
+        <strong>
+          <BadgeCheck size={12} aria-hidden="true" />
+          AUTENTICAÇÃO SEGURA PROTOCOLO MANCHESTER
+        </strong>
+        <p>
+          Acesso restrito a profissionais de enfermagem e recepcionistas
+          credenciados. Registros vinculados ao terminal.
+        </p>
+      </aside>
       <ErrorToast
         message={notice === dismissedNotice ? null : notice}
         onDismiss={() => {
