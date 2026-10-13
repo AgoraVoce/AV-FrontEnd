@@ -5,6 +5,7 @@ import { LoginPage } from "./auth/LoginPage";
 import { ProtectedArea } from "./auth/ProtectedArea";
 import { QueuePage } from "./auth/reception/QueuePage";
 import { PainelPublicoPage } from "./painel-publico/PainelPublicoPage";
+import MedicoPage from "./pages/Medico";
 import NovoCadastroPage from "./pages/NovoCadastro";
 import { usePageTitle } from "./components/usePageTitle";
 function NotFound() {
@@ -59,7 +60,14 @@ export default function App() {
             </ProtectedArea>
           }
         />
-        <Route path="/medico" element={<ProtectedArea role="MEDICO" />} />
+        <Route
+          path="/medico"
+          element={
+            <ProtectedArea role="MEDICO">
+              <MedicoPage />
+            </ProtectedArea>
+          }
+        />
         <Route path="/admin" element={<ProtectedArea role="ADMIN" />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

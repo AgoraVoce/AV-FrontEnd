@@ -10,6 +10,7 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { Brand } from "./Brand";
 import { useAuth } from "../auth/context";
 
@@ -24,7 +25,15 @@ const TRANSMISSION_MENU = [
   { to: "/transmissao", label: "Painel TV Pública", icon: MonitorPlay },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  headerContext,
+  headerTools,
+}: {
+  children: ReactNode;
+  headerContext?: ReactNode;
+  headerTools?: ReactNode;
+}) {
   const { state } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const userName =
@@ -38,6 +47,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     import.meta.env.DEV && state.status !== "authenticated"
       ? "/novo-cadastro?dev=recepcionista"
       : "/novo-cadastro";
+  const doctorPath =
+    import.meta.env.DEV && state.status !== "authenticated"
+      ? "/medico?dev=medico"
+      : "/medico";
+  const adminPath =
+    import.meta.env.DEV && state.status !== "authenticated"
+      ? "/admin?dev=admin"
+      : "/admin";
 
   return (
     <div className="app-shell">
@@ -46,9 +63,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="header-brand-wrap">
             <Brand />
           </div>
+          {headerContext && (
+            <div className="header-context">{headerContext}</div>
+          )}
         </div>
 
         <div className="header-right">
+          {headerTools && <div className="header-tools">{headerTools}</div>}
           <button
             type="button"
             className="header-menu-toggle"
@@ -87,7 +108,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       ? receptionPath
                       : to === "/novo-cadastro"
                         ? newRegistrationPath
-                        : to
+                        : to === "/medico"
+                          ? doctorPath
+                          : to === "/admin"
+                            ? adminPath
+                            : to
                   }
                   title={label}
                   className={({ isActive }) =>
