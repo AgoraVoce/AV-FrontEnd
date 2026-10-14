@@ -8,6 +8,7 @@ import { PainelPublicoPage } from "./painel-publico/PainelPublicoPage";
 import MedicoPage from "./pages/Medico";
 import NovoCadastroPage from "./pages/NovoCadastro";
 import AdminPage from "./pages/Admin";
+import ReceptionUsersPage from "./pages/ReceptionUsers";
 import { usePageTitle } from "./components/usePageTitle";
 function NotFound() {
   usePageTitle("Página não encontrada");
@@ -50,6 +51,14 @@ export default function App() {
           element={
             <ProtectedArea role="RECEPCIONISTA">
               <QueuePage />
+            </ProtectedArea>
+          }
+        />
+        <Route
+          path="/recepcao/usuarios"
+          element={
+            <ProtectedArea role="RECEPCIONISTA">
+              <ReceptionUsersPage />
             </ProtectedArea>
           }
         />
