@@ -55,14 +55,14 @@ test("recepcionista cadastra somente médico ou recepcionista usando select aces
   await page.getByRole("button", { name: "Adicionar à lista local" }).click();
   await expect(page.getByText("Joana Oliveira")).toBeVisible();
   await expect(page.getByRole("button", { name: "Desativar" })).toHaveCount(0);
-  await expect(page.getByText("3 de 3 profissionais exibidos")).toBeVisible();
+  await expect(page.getByText("4 de 4 profissionais exibidos")).toBeVisible();
 });
 
-test("médico não tem cadastro; receptionist não pode entrar em gestão administrativa", async ({ page }) => {
+test("médico não tem cadastro; médico não pode entrar em gestão administrativa", async ({ page }) => {
   await page.goto("/medico?dev=medico");
   await expect(page.getByRole("link", { name: "Gestão de Usuários" })).toHaveCount(0);
   await page.goto("/recepcao/usuarios?dev=medico");
-  await expect(page).toHaveURL(/\\/login$/);
+  await expect(page).toHaveURL(/\/login$/);
 
   await page.route("**/auth/me", (route) =>
     route.fulfill({
