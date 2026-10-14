@@ -12,7 +12,7 @@ test("usuários têm página própria com pesquisa, filtro e cadastro de demonst
   await page.getByRole("searchbox", { name: "Buscar profissionais" }).fill("");
 
   await page.getByRole("button", { name: "Adicionar usuário" }).click();
-  const functionSelect = page.getByRole("combobox", { name: "Função" });
+  const functionSelect = page.getByRole("combobox", { name: "Função", exact: true });
   await expect(functionSelect).toBeVisible();
   await expect(page.locator(".admin-section-form-grid select")).toHaveCount(0);
   await functionSelect.click();
@@ -38,7 +38,7 @@ test("recepcionista cadastra somente médico ou recepcionista usando select aces
   await expect(page.getByRole("link", { name: "Gestão de Usuários" })).toBeVisible();
   await expect(page.getByText("Lucas Vasconcelos")).toHaveCount(0);
   await page.getByRole("button", { name: "Adicionar usuário" }).click();
-  const functionSelect = page.getByRole("combobox", { name: "Função" });
+  const functionSelect = page.getByRole("combobox", { name: "Função", exact: true });
   await functionSelect.click();
   await expect(page.getByRole("option")).toHaveCount(2);
   await expect(page.getByRole("option", { name: "Administrador" })).toHaveCount(0);
