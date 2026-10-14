@@ -645,6 +645,11 @@ test("credenciais inválidas: um toast, ambos vermelhos, sem retry e correção 
   await api(page, { loginStatus: 401 });
   await open(page);
   await fill(page);
+  await page.locator(".route-transition").evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => animation.finished.catch(() => undefined)),
+    );
+  });
   const submit = page.getByRole("button", { name: "Entrar no sistema" });
   const before = await submit.boundingBox();
   await submit.click();
