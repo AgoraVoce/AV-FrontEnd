@@ -183,7 +183,6 @@ function QueueSummaryCard({ patient }: { patient: QueuePatient }) {
 }
 
 export default function AdminPage() {
-  usePageTitle("Painel Administrativo - Visão Geral do Pronto-Socorro");
   const queueSnapshot = useSyncExternalStore(
     subscribeQueue,
     getQueueSnapshot,
@@ -199,6 +198,8 @@ export default function AdminPage() {
       : location.pathname.endsWith("/relatorios")
         ? "Relatórios"
         : "Visão Geral";
+  const adminUrl = (section = "") => `/admin${section}${import.meta.env.DEV && new URLSearchParams(location.search).get("dev") === "admin" ? "?dev=admin" : ""}`;
+  usePageTitle(selectedTab === "Visão Geral" ? "Painel Administrativo - Visão Geral do Pronto-Socorro" : `${selectedTab} | Administração`);
   const [now, setNow] = useState(() => Date.now());
   const waitingPatients = useMemo(
     () =>
@@ -275,10 +276,10 @@ export default function AdminPage() {
                 className={`admin-tab${selectedTab === label ? " is-active" : ""}`}
                 aria-pressed={selectedTab === label}
                 onClick={() => navigate(
-                  label === "Usuários" ? "/admin/usuarios"
-                    : label === "Fila de Espera" ? "/admin/fila"
-                    : label === "Relatórios" ? "/admin/relatorios"
-                    : "/admin"
+                  label === "Usuários" ? adminUrl("/usuarios")
+                    : label === "Fila de Espera" ? adminUrl("/fila")
+                    : label === "Relatórios" ? adminUrl("/relatorios")
+                    : adminUrl()
                 )}
               >
                 <Icon size={14} aria-hidden="true" />
@@ -521,7 +522,7 @@ export default function AdminPage() {
                   <p>Colaboradores ativos alocados nas salas e guichês</p>
                 </div>
               </div>
-              <button className="admin-add-button" type="button" onClick={() => navigate("/admin/usuarios")}>
+              <button className="admin-add-button" type="button" onClick={() => navigate(adminUrl("/usuarios"))}>
                 + Adicionar Usuário
               </button>
             </div>
@@ -579,7 +580,7 @@ export default function AdminPage() {
             </div>
             <footer className="admin-staff-footer">
               <span>Mostrando {STAFF.length} profissionais demonstrativos</span>
-              <button type="button" className="admin-inline-action" onClick={() => navigate("/admin/usuarios")}>
+              <button type="button" className="admin-inline-action" onClick={() => navigate(adminUrl("/usuarios"))}>
                 <BookOpenText size={13} aria-hidden="true" />
                 Ver equipe completa <ArrowRight size={13} aria-hidden="true" />
               </button>
@@ -594,7 +595,7 @@ export default function AdminPage() {
               </div>
               <Link
                 className="admin-inline-action"
-                to="/admin/fila"
+                to={adminUrl("/fila")}
               >
                 Painel Geral <ExternalLink size={13} aria-hidden="true" />
               </Link>
@@ -618,7 +619,7 @@ export default function AdminPage() {
                 <span className="admin-queue-footer-dot" aria-hidden="true" />
                 Ordem calculada pelo Protocolo de Triagem
               </span>
-              <Link className="admin-call-next" to="/admin/fila">
+              <Link className="admin-call-next" to={adminUrl("/fila")}>
                 Ver fila completa <ArrowUpRight size={14} aria-hidden="true" />
               </Link>
             </footer>
@@ -639,7 +640,7 @@ export default function AdminPage() {
           <p className="admin-backup">
             Último backup: <strong>Hoje, 14:00</strong>
           </p>
-          <button className="admin-logs-button" type="button" onClick={() => navigate("/admin/relatorios")}>
+          <button className="admin-logs-button" type="button" onClick={() => navigate(adminUrl("/relatorios"))}>
             Ver Logs do Sistema
           </button>
         </section>
