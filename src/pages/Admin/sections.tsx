@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { ArrowDownToLine, Search, UserPlus, Users, ClipboardList, Clock3 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PriorityBadge } from "../../components/PriorityBadge";
@@ -144,11 +144,11 @@ export function ReportsSection({ patients, now, auditCount, onExport }: { patien
   const waiting = patients.filter((patient) => patient.status === "waiting");
   const completed = patients.filter((patient) => patient.status === "completed");
   const avgWait = waiting.length ? Math.round(waiting.reduce((total, patient) => total + getWaitMinutes(patient, now), 0) / waiting.length) : 0;
-  const priorityCounts = useMemo(() => ([
+  const priorityCounts = [
     { key: "urgent" as const, count: waiting.filter((patient) => patient.priority === "urgent").length },
     { key: "alert" as const, count: waiting.filter((patient) => patient.priority === "alert").length },
     { key: "calm" as const, count: waiting.filter((patient) => patient.priority === "calm").length },
-  ]), [waiting]);
+  ];
   return (
     <section className="admin-section-page" aria-labelledby="admin-reports-title">
       <header className="admin-section-intro"><div><p className="admin-section-eyebrow">Indicadores · Retrato da sessão</p><h2 id="admin-reports-title">Relatórios Operacionais</h2><p>Consulte indicadores da fila demonstrativa e exporte os dados agregados atuais.</p></div><button className="admin-section-primary" type="button" onClick={onExport}><ArrowDownToLine size={17} aria-hidden="true" />Exportar CSV</button></header>
