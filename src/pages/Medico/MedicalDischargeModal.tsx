@@ -24,6 +24,8 @@ export function MedicalDischargeModal({
   const [guidance, setGuidance] = useState("");
   const summaryRef = useRef<HTMLTextAreaElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const confirmed = summary.trim().length >= 10 && prescription.trim().length >= 10;
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export function MedicalDischargeModal({
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
       }
       if (event.key === "Tab") {
         const dialog = document.querySelector<HTMLElement>(".doctor-discharge-dialog");
@@ -48,7 +50,7 @@ export function MedicalDischargeModal({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, []);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
