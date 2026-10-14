@@ -189,7 +189,7 @@ test("a navegação lateral mantém a sessão entre recepção e transmissão", 
   await expect(page).toHaveURL("/transmissao");
   await expect(page.locator(".route-transition")).toHaveClass(/is-entering/);
   await expect(
-    page.getByRole("heading", { name: "NENHUMA CHAMADA ATIVA" }),
+    page.getByRole("heading", { name: "CHAMANDO AGORA" }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Painel TV Pública" }),

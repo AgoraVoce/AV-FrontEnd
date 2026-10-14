@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { MapPin, Megaphone, Stethoscope } from "lucide-react";
 import type { Chamada } from "../types";
 
@@ -14,6 +15,18 @@ export function ChamadaPrincipal({
   chamada: Chamada | null;
   waitingCount: number;
 }) {
+  const previousCallAt = useRef(chamada?.calledAt ?? null);
+  const [isNewCall, setIsNewCall] = useState(false);
+
+  useEffect(() => {
+    const calledAt = chamada?.calledAt;
+    if (!calledAt || calledAt === previousCallAt.current) return;
+    previousCallAt.current = calledAt;
+    setIsNewCall(true);
+    const timer = window.setTimeout(() => setIsNewCall(false), 2400);
+    return () => window.clearTimeout(timer);
+  }, [chamada?.calledAt]);
+
   if (!chamada) {
     return (
       <section
@@ -41,7 +54,7 @@ export function ChamadaPrincipal({
 
   return (
     <section
-      className={`chamada-hero prioridade-${chamada.prioridade.toLowerCase()}`}
+      className={`chamada-hero prioridade-${chamada.prioridade.toLowerCase()}${isNewCall ? " is-new-call" : ""}`}
       aria-labelledby="chamada-atual-title"
     >
       <div className="chamada-hero-topline">

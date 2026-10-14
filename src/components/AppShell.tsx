@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   BarChart3,
+  Building2,
   ListChecks,
+  LogOut,
   Menu,
   MonitorPlay,
   Stethoscope,
@@ -10,8 +12,10 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { Brand } from "./Brand";
 import { useAuth } from "../auth/context";
+import { ERROR_COPY, AuthError } from "../auth/api";
 
 const MAIN_MENU = [
   { to: "/recepcao", label: "Triagem & Fila", icon: ListChecks },
@@ -24,9 +28,20 @@ const TRANSMISSION_MENU = [
   { to: "/transmissao", label: "Painel TV Pública", icon: MonitorPlay },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const { state } = useAuth();
+export function AppShell({
+  children,
+  headerContext,
+  headerTools,
+}: {
+  children: ReactNode;
+  headerContext?: ReactNode;
+  headerTools?: ReactNode;
+}) {
+  const { state, signOut, invalidateSession } = useAuth();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
   const userName =
     state.status === "authenticated" ? state.user.name : "Dra. Mariana Rios";
   const profile = "Triagem & Recepção";
@@ -38,6 +53,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     import.meta.env.DEV && state.status !== "authenticated"
       ? "/novo-cadastro?dev=recepcionista"
       : "/novo-cadastro";
+  const doctorPath =
+    import.meta.env.DEV && state.status !== "authenticated"
+      ? "/medico?dev=medico"
+      : "/medico";
+  const adminPath =
+    import.meta.env.DEV && state.status !== "authenticated"
+      ? "/admin?dev=admin"
+      : "/admin";
+  const unitContext = headerContext ?? (
+    <span className="app-unit-chip">
+      <Building2 size={14} aria-hidden="true" />
+      PRONTO-SOCORRO CENTRAL
+    </span>
+  );
+
+  async function handleSignOut() {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    setSignOutError("");
+    if (state.status !== "authenticated") {
+      invalidateSession();
+      navigate("/login", { replace: true });
+      setIsSigningOut(false);
+      return;
+    }
+    const controller = new AbortController();
+    try {
+      await signOut(controller.signal);
+      navigate("/login", { replace: true });
+    } catch (error) {
+      setSignOutError(
+        error instanceof AuthError && error.kind === "invalid"
+          ? "O serviço não confirmou o encerramento. Tente novamente."
+          : `Não foi possível encerrar sua sessão. ${
+              ERROR_COPY[
+                error instanceof AuthError ? error.kind : "unavailable"
+              ]
+            }`,
+      );
+    } finally {
+      setIsSigningOut(false);
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -46,9 +104,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="header-brand-wrap">
             <Brand />
           </div>
+          <div className="header-context">{unitContext}</div>
         </div>
 
         <div className="header-right">
+          {headerTools && <div className="header-tools">{headerTools}</div>}
           <button
             type="button"
             className="header-menu-toggle"
@@ -87,7 +147,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       ? receptionPath
                       : to === "/novo-cadastro"
                         ? newRegistrationPath
-                        : to
+                        : to === "/medico"
+                          ? doctorPath
+                          : to === "/admin"
+                            ? adminPath
+                            : to
                   }
                   title={label}
                   className={({ isActive }) =>
@@ -117,6 +181,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ))}
             </div>
           </nav>
+
+          {signOutError && (
+            <p className="sidebar-signout-error" role="alert">
+              {signOutError}
+            </p>
+          )}
+          <button
+            className="sidebar-signout-button"
+            type="button"
+            onClick={() => void handleSignOut()}
+            disabled={isSigningOut}
+          >
+            <LogOut size={16} aria-hidden="true" />
+            <span>{isSigningOut ? "Saindo..." : "Sair"}</span>
+          </button>
 
           <div className="sidebar-footer">
             <span className="service-status-dot" aria-hidden="true" />

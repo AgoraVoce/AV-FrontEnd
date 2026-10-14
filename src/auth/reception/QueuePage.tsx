@@ -34,7 +34,10 @@ import { Select as AuthoredSelect } from "../../components/Select";
 import { usePageTitle } from "../../components/usePageTitle";
 import { useAuth } from "../context";
 import { QUEUE_MOCK } from "./QueueData";
-import { getWaitMinutes } from "../../reception/types";
+import {
+  getWaitMinutes,
+  sortPatientsByPriorityAndWait,
+} from "../../reception/types";
 import type { Priority, QueuePatient } from "./Types";
 import {
   changePriority,
@@ -57,12 +60,6 @@ const SUMMARY_COUNTS: Record<Priority, number> = {
 };
 const INITIAL_QUEUE_TIME =
   Date.parse(QUEUE_MOCK[0].arrivedAt) + QUEUE_MOCK[0].waitMinutes * 60_000;
-
-const PRIORITY_ORDER: Record<Priority, number> = {
-  urgent: 0,
-  alert: 1,
-  calm: 2,
-};
 
 const PRIORITY_LABEL: Record<Priority, string> = {
   urgent: "Urgente",
@@ -118,13 +115,6 @@ interface LedBounds {
   height: number;
 }
 
-const sortByPriorityAndWait = (patients: QueuePatient[], now: number) =>
-  [...patients].sort(
-    (left, right) =>
-      PRIORITY_ORDER[left.priority] - PRIORITY_ORDER[right.priority] ||
-      getWaitMinutes(right, now) - getWaitMinutes(left, now),
-  );
-
 export function QueuePage() {
   usePageTitle("Fila de espera");
   const { state: authState } = useAuth();
@@ -139,7 +129,9 @@ export function QueuePage() {
     getQueueSnapshot,
   );
   const queue = queueSnapshot.patients;
-  const activeQueue = queue.filter((patient) => patient.status !== "deleted");
+  const activeQueue = queue.filter(
+    (patient) => patient.status !== "deleted" && patient.status !== "completed",
+  );
   const auditEntries = queueSnapshot.auditEntries;
   const [search, setSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
@@ -263,7 +255,7 @@ export function QueuePage() {
       return matchesSearch && matchesPriority && matchesAge && matchesWait;
     });
 
-    return sortByPriorityAndWait(filtered, clockNow);
+    return sortPatientsByPriorityAndWait(filtered, clockNow);
   }, [activeQueue, ageFilter, clockNow, priorityFilter, search, waitFilter]);
 
   const totalActive = Math.max(
@@ -289,9 +281,10 @@ export function QueuePage() {
   const highlightPatient = useCallback(
     (ticket: string, priority: Priority, sourcePatients: QueuePatient[]) => {
       const active = sourcePatients.filter(
-        (patient) => patient.status !== "deleted",
+        (patient) =>
+          patient.status !== "deleted" && patient.status !== "completed",
       );
-      const ordered = sortByPriorityAndWait(active, Date.now());
+      const ordered = sortPatientsByPriorityAndWait(active, Date.now());
       const target = ordered.find((patient) => patient.ticket === ticket);
       if (!target) return;
       const query = search.trim().toLowerCase();

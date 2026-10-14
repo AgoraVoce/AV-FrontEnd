@@ -8,6 +8,12 @@ const makeUser = (role: Role): User => ({
   login: "operador@clinica.test",
   role,
 });
+const landingHeadings = {
+  "/recepcao": "Fila de Espera e Gestão de Prioridades",
+  "/medico": "Dr. Marcelo Arantes",
+  "/admin": "Painel Administrativo - Visão Geral do Pronto-Socorro",
+} as const;
+
 async function api(
   page: Page,
   {
@@ -101,11 +107,11 @@ for (const [role, path] of [
     await page.getByRole("button", { name: "Entrar no sistema" }).click();
     await expect(page).toHaveURL(path);
     await expect(
-      page.getByRole("heading", { name: "Olá, Pessoa de teste." }),
+      page.getByRole("heading", { name: landingHeadings[path] }),
     ).toBeVisible();
     await page.reload();
     await expect(
-      page.getByRole("heading", { name: "Olá, Pessoa de teste." }),
+      page.getByRole("heading", { name: landingHeadings[path] }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Sair", exact: true }).click();
     await expect(page).toHaveURL("/login");
@@ -239,7 +245,9 @@ test("refresh inválido remove conteúdo protegido", async ({ page }) => {
   await api(page);
   await page.goto("/admin");
   await expect(page).toHaveURL("/login");
-  await expect(page.getByText("Olá, Pessoa de teste.")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: landingHeadings["/admin"] }),
+  ).toHaveCount(0);
 });
 test("expiração ao retornar à aba", async ({ page }) => {
   const mock = await api(page, { authenticated: true });
@@ -548,7 +556,7 @@ for (const role of ["RECEPCIONISTA", "MEDICO", "ADMIN"] as const) {
         ).toBeVisible();
       } else if (role === targetRole) {
         await expect(
-          page.getByRole("heading", { name: "Olá, Pessoa de teste." }),
+          page.getByRole("heading", { name: landingHeadings[path] }),
         ).toBeVisible();
       } else {
         await expect(
@@ -557,7 +565,7 @@ for (const role of ["RECEPCIONISTA", "MEDICO", "ADMIN"] as const) {
           }),
         ).toBeVisible();
         await expect(
-          page.getByRole("heading", { name: "Olá, Pessoa de teste." }),
+          page.getByRole("heading", { name: landingHeadings[path] }),
         ).toHaveCount(0);
       }
     });
@@ -598,7 +606,7 @@ test("erro e destino autenticado têm a11y básica", async ({ page }) => {
   await api(page, { authenticated: true });
   await page.goto("/recepcao");
   await expect(
-    page.getByRole("heading", { name: "Olá, Pessoa de teste." }),
+    page.getByRole("heading", { name: landingHeadings["/recepcao"] }),
   ).toBeVisible();
   expect(
     (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { Brand } from "../../components/Brand";
 
@@ -19,6 +19,7 @@ export function HeaderPainel({
   presentation: "admin" | "tv";
   developmentMode: boolean;
 }) {
+  const navigate = useNavigate();
   const [clock, setClock] = useState(() => formatClock(new Date()));
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenError, setFullscreenError] = useState("");
@@ -49,8 +50,17 @@ export function HeaderPainel({
     }
   };
 
-  const exitTransmission = () => {
-    if (document.fullscreenElement) void document.exitFullscreen();
+  const exitTransmission = async () => {
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        setFullscreenError(
+          "Não foi possível sair da tela cheia. Voltando ao painel.",
+        );
+      }
+    }
+    navigate("/transmissao");
   };
 
   return (
@@ -89,13 +99,13 @@ export function HeaderPainel({
               )}
               {isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
             </button>
-            <Link
+            <button
+              type="button"
               className="painel-exit-button"
-              to="/transmissao"
-              onClick={exitTransmission}
+              onClick={() => void exitTransmission()}
             >
               Sair da transmissão
-            </Link>
+            </button>
           </>
         )}
         <time className="painel-clock" aria-label={`Horário ${clock}`}>

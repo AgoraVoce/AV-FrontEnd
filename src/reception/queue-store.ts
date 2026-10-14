@@ -1,5 +1,6 @@
 import { QUEUE_MOCK } from "./queue-data";
 import type { PatientVitals, Priority, QueuePatient } from "./types";
+import { sortPatientsByPriorityAndWait } from "./types";
 import type { Role } from "../auth/types";
 
 export interface PriorityAuditEntry {
@@ -15,7 +16,11 @@ export interface PriorityAuditEntry {
   type: "priority-change" | "Desfeita" | "exclusão" | "Exclusão desfeita";
   originalEntryId?: string;
   alertStatus?: "active" | "cancelled";
-  deletionReason?: "Cadastro duplicado" | "Cadastro por engano" | "Paciente desistiu / evadiu" | "Outro";
+  deletionReason?:
+    | "Cadastro duplicado"
+    | "Cadastro por engano"
+    | "Paciente desistiu / evadiu"
+    | "Outro";
 }
 
 export interface QueueSnapshot {
@@ -23,29 +28,72 @@ export interface QueueSnapshot {
   auditEntries: PriorityAuditEntry[];
   revision: number;
   patientVersions: Record<string, number>;
+  activeConsultationTicket: string | null;
+  currentCall: QueueCall | null;
+}
+
+export interface QueueCall {
+  ticket: string;
+  name: string;
+  priority: Priority;
+  destination: string;
+  physician: string;
+  calledAt: string;
 }
 
 export interface QueueMutationResult {
   ok: boolean;
-  reason?: "unauthorized" | "patient-unavailable" | "unchanged-priority" | "invalid-reason" | "stale" | "undo-blocked" | "invalid-deletion-reason";
+  reason?:
+    | "unauthorized"
+    | "patient-unavailable"
+    | "unchanged-priority"
+    | "invalid-reason"
+    | "stale"
+    | "undo-blocked"
+    | "invalid-deletion-reason"
+    | "consultation-active"
+    | "consultation-unavailable"
+    | "patient-not-next";
   snapshot: QueueSnapshot;
   entry?: PriorityAuditEntry;
 }
 
+const INITIAL_CONSULTATION_TICKET =
+  QUEUE_MOCK.find((patient) => patient.status === "in-care")?.ticket ?? null;
+const INITIAL_ACTIVE_PATIENT = QUEUE_MOCK.find(
+  (patient) => patient.ticket === INITIAL_CONSULTATION_TICKET,
+);
 const CHANNEL_NAME = "agora-voce.queue-updates";
 const listeners = new Set<() => void>();
 
 const createInitialSnapshot = (): QueueSnapshot => ({
-  patients: QUEUE_MOCK.map((patient) => ({ ...patient, vitals: { ...patient.vitals } })),
+  patients: QUEUE_MOCK.map((patient) => ({
+    ...patient,
+    vitals: { ...patient.vitals },
+  })),
   auditEntries: [],
   revision: 0,
-  patientVersions: Object.fromEntries(QUEUE_MOCK.map((patient) => [patient.ticket, 0])),
+  patientVersions: Object.fromEntries(
+    QUEUE_MOCK.map((patient) => [patient.ticket, 0]),
+  ),
+  activeConsultationTicket: INITIAL_CONSULTATION_TICKET,
+  currentCall: INITIAL_ACTIVE_PATIENT
+    ? {
+        ticket: INITIAL_ACTIVE_PATIENT.ticket,
+        name: INITIAL_ACTIVE_PATIENT.name,
+        priority: INITIAL_ACTIVE_PATIENT.priority,
+        destination: "Consultório 04",
+        physician: "Dr. Marcelo Arantes",
+        calledAt: INITIAL_ACTIVE_PATIENT.arrivedAt,
+      }
+    : null,
 });
 
 let snapshot = createInitialSnapshot();
-const channel = typeof BroadcastChannel === "undefined"
-  ? null
-  : new BroadcastChannel(CHANNEL_NAME);
+const channel =
+  typeof BroadcastChannel === "undefined"
+    ? null
+    : new BroadcastChannel(CHANNEL_NAME);
 
 const notify = () => {
   for (const listener of listeners) listener();
@@ -54,8 +102,21 @@ const notify = () => {
 const receiveSnapshot = (value: unknown) => {
   if (!value || typeof value !== "object") return;
   const incoming = value as Partial<QueueSnapshot>;
-  if (!Array.isArray(incoming.patients) || !Array.isArray(incoming.auditEntries) || !incoming.patientVersions) return;
-  snapshot = incoming as QueueSnapshot;
+  if (
+    !Array.isArray(incoming.patients) ||
+    !Array.isArray(incoming.auditEntries) ||
+    !incoming.patientVersions
+  )
+    return;
+  snapshot = {
+    ...incoming,
+    activeConsultationTicket:
+      incoming.activeConsultationTicket ??
+      incoming.patients.find((patient) => patient.status === "in-care")
+        ?.ticket ??
+      null,
+    currentCall: incoming.currentCall ?? null,
+  } as QueueSnapshot;
   notify();
 };
 
@@ -91,7 +152,9 @@ export const addPatientToQueue = (
   const nextNumber = Math.max(
     minimumNextNumber[input.priority],
     ...snapshot.patients
-      .filter((patient) => patient.ticket.startsWith(`${prefix[input.priority]}-`))
+      .filter((patient) =>
+        patient.ticket.startsWith(`${prefix[input.priority]}-`),
+      )
       .map((patient) => Number(patient.ticket.split("-")[1]) + 1),
   );
   const ticket = `${prefix[input.priority]}-${String(nextNumber).padStart(3, "0")}`;
@@ -104,10 +167,91 @@ export const addPatientToQueue = (
     vitals: { ...input.vitals } satisfies PatientVitals,
   };
   const nextSnapshot: QueueSnapshot = {
+    ...snapshot,
     patients: [...snapshot.patients, patient],
-    auditEntries: snapshot.auditEntries,
     revision: snapshot.revision + 1,
     patientVersions: { ...snapshot.patientVersions, [ticket]: 0 },
+  };
+  publishSnapshot(nextSnapshot);
+  return { ok: true, snapshot: nextSnapshot };
+};
+
+// Chama somente o paciente elegível de maior prioridade e publica a atualização para as outras abas.
+export const callNextPatient = (
+  ticket: string,
+  destination: string,
+  physician: string,
+  role: Role,
+  expectedRevision: number,
+): QueueMutationResult => {
+  if (role !== "MEDICO" && role !== "ADMIN")
+    return { ok: false, reason: "unauthorized", snapshot };
+  if (snapshot.revision !== expectedRevision)
+    return { ok: false, reason: "stale", snapshot };
+  if (snapshot.activeConsultationTicket)
+    return { ok: false, reason: "consultation-active", snapshot };
+
+  const waiting = snapshot.patients.filter(
+    (patient) => patient.status === "waiting",
+  );
+  const nextPatient = sortPatientsByPriorityAndWait(waiting)[0];
+  if (!nextPatient || nextPatient.ticket !== ticket)
+    return { ok: false, reason: "patient-not-next", snapshot };
+
+  const calledAt = new Date().toISOString();
+  const currentCall: QueueCall = {
+    ticket: nextPatient.ticket,
+    name: nextPatient.name,
+    priority: nextPatient.priority,
+    destination,
+    physician,
+    calledAt,
+  };
+  const nextSnapshot: QueueSnapshot = {
+    ...snapshot,
+    patients: snapshot.patients.map((patient) =>
+      patient.ticket === ticket ? { ...patient, status: "called" } : patient,
+    ),
+    revision: snapshot.revision + 1,
+    patientVersions: {
+      ...snapshot.patientVersions,
+      [ticket]: (snapshot.patientVersions[ticket] ?? 0) + 1,
+    },
+    activeConsultationTicket: ticket,
+    currentCall,
+  };
+  publishSnapshot(nextSnapshot);
+  return { ok: true, snapshot: nextSnapshot };
+};
+
+// Finaliza o atendimento sem apagar a última chamada exibida na TV.
+export const finalizeAppointment = (
+  ticket: string,
+  role: Role,
+  expectedRevision: number,
+): QueueMutationResult => {
+  if (role !== "MEDICO" && role !== "ADMIN")
+    return { ok: false, reason: "unauthorized", snapshot };
+  if (snapshot.revision !== expectedRevision)
+    return { ok: false, reason: "stale", snapshot };
+  if (snapshot.activeConsultationTicket !== ticket)
+    return { ok: false, reason: "consultation-unavailable", snapshot };
+
+  const patient = snapshot.patients.find((item) => item.ticket === ticket);
+  if (!patient || !["in-care", "called"].includes(patient.status))
+    return { ok: false, reason: "consultation-unavailable", snapshot };
+
+  const nextSnapshot: QueueSnapshot = {
+    ...snapshot,
+    patients: snapshot.patients.map((item) =>
+      item.ticket === ticket ? { ...item, status: "completed" } : item,
+    ),
+    revision: snapshot.revision + 1,
+    patientVersions: {
+      ...snapshot.patientVersions,
+      [ticket]: (snapshot.patientVersions[ticket] ?? 0) + 1,
+    },
+    activeConsultationTicket: null,
   };
   publishSnapshot(nextSnapshot);
   return { ok: true, snapshot: nextSnapshot };
@@ -122,25 +266,47 @@ const publishSnapshot = (nextSnapshot: QueueSnapshot) => {
 export const getUndoEntry = (ticket: string, now = Date.now()) => {
   const patient = snapshot.patients.find((item) => item.ticket === ticket);
   if (!patient || patient.status !== "waiting") return null;
-  const latest = [...snapshot.auditEntries].reverse().find((entry) => entry.ticket === ticket);
-  if (!latest || latest.type !== "priority-change" || latest.status !== "ativa") return null;
+  const latest = [...snapshot.auditEntries]
+    .reverse()
+    .find((entry) => entry.ticket === ticket);
+  if (!latest || latest.type !== "priority-change" || latest.status !== "ativa")
+    return null;
   if (Date.parse(latest.occurredAt) + 10 * 60_000 < now) return null;
   if (patient.priority !== latest.newPriority) return null;
   return latest;
 };
 
-export const getUndoBlockedReason = (ticket: string, now = Date.now(), requestedEntryId?: string) => {
+export const getUndoBlockedReason = (
+  ticket: string,
+  now = Date.now(),
+  requestedEntryId?: string,
+) => {
   const patient = snapshot.patients.find((item) => item.ticket === ticket);
-  if (patient && patient.status !== "waiting") return "Paciente já foi chamado ou está em atendimento.";
-  const latest = [...snapshot.auditEntries].reverse().find((entry) => entry.ticket === ticket);
+  if (patient && patient.status !== "waiting")
+    return "Paciente já foi chamado ou está em atendimento.";
+  const latest = [...snapshot.auditEntries]
+    .reverse()
+    .find((entry) => entry.ticket === ticket);
   if (latest?.type === "Desfeita") return "Esta alteração já foi desfeita.";
-  if (requestedEntryId && latest?.type === "priority-change" && latest.id !== requestedEntryId) {
+  if (
+    requestedEntryId &&
+    latest?.type === "priority-change" &&
+    latest.id !== requestedEntryId
+  ) {
     return "Outra alteração foi feita depois da original.";
   }
-  if (latest?.type === "priority-change" && latest.status === "ativa" && Date.parse(latest.occurredAt) + 10 * 60_000 < now) {
+  if (
+    latest?.type === "priority-change" &&
+    latest.status === "ativa" &&
+    Date.parse(latest.occurredAt) + 10 * 60_000 < now
+  ) {
     return "O prazo de 10 minutos para desfazer expirou.";
   }
-  if (latest?.type === "priority-change" && latest.status === "ativa" && patient?.priority !== latest.newPriority) {
+  if (
+    latest?.type === "priority-change" &&
+    latest.status === "ativa" &&
+    patient?.priority !== latest.newPriority
+  ) {
     return "Outra alteração foi feita depois desta.";
   }
   return "Não há alteração recente disponível para desfazer.";
@@ -149,16 +315,24 @@ export const getUndoBlockedReason = (ticket: string, now = Date.now(), requested
 export const changePriority = (
   ticket: string,
   priority: Priority,
-  input: Omit<PriorityAuditEntry, "id" | "ticket" | "status" | "type" | "alertStatus">,
+  input: Omit<
+    PriorityAuditEntry,
+    "id" | "ticket" | "status" | "type" | "alertStatus"
+  >,
   role: Role,
   expectedPatientVersion: number,
 ): QueueMutationResult => {
-  if (!["RECEPCIONISTA", "MEDICO", "ADMIN"].includes(role)) return { ok: false, reason: "unauthorized", snapshot };
-  if ((snapshot.patientVersions[ticket] ?? 0) !== expectedPatientVersion) return { ok: false, reason: "stale", snapshot };
+  if (!["RECEPCIONISTA", "MEDICO", "ADMIN"].includes(role))
+    return { ok: false, reason: "unauthorized", snapshot };
+  if ((snapshot.patientVersions[ticket] ?? 0) !== expectedPatientVersion)
+    return { ok: false, reason: "stale", snapshot };
   const patient = snapshot.patients.find((item) => item.ticket === ticket);
-  if (!patient || patient.status !== "waiting") return { ok: false, reason: "patient-unavailable", snapshot };
-  if (priority === patient.priority) return { ok: false, reason: "unchanged-priority", snapshot };
-  if (input.reason.trim().length < 10) return { ok: false, reason: "invalid-reason", snapshot };
+  if (!patient || patient.status !== "waiting")
+    return { ok: false, reason: "patient-unavailable", snapshot };
+  if (priority === patient.priority)
+    return { ok: false, reason: "unchanged-priority", snapshot };
+  if (input.reason.trim().length < 10)
+    return { ok: false, reason: "invalid-reason", snapshot };
 
   const entry: PriorityAuditEntry = {
     ...input,
@@ -169,10 +343,16 @@ export const changePriority = (
     ...(priority === "urgent" ? { alertStatus: "active" as const } : {}),
   };
   const nextSnapshot: QueueSnapshot = {
-    patients: snapshot.patients.map((item) => item.ticket === ticket ? { ...item, priority } : item),
+    ...snapshot,
+    patients: snapshot.patients.map((item) =>
+      item.ticket === ticket ? { ...item, priority } : item,
+    ),
     auditEntries: [...snapshot.auditEntries, entry],
     revision: snapshot.revision + 1,
-    patientVersions: { ...snapshot.patientVersions, [ticket]: expectedPatientVersion + 1 },
+    patientVersions: {
+      ...snapshot.patientVersions,
+      [ticket]: expectedPatientVersion + 1,
+    },
   };
   publishSnapshot(nextSnapshot);
   return { ok: true, snapshot, entry };
@@ -186,10 +366,13 @@ export const undoPriorityChange = (
   expectedPatientVersion: number,
   now = new Date(),
 ): QueueMutationResult => {
-  if (!["RECEPCIONISTA", "MEDICO", "ADMIN"].includes(role)) return { ok: false, reason: "unauthorized", snapshot };
-  if ((snapshot.patientVersions[ticket] ?? 0) !== expectedPatientVersion) return { ok: false, reason: "stale", snapshot };
+  if (!["RECEPCIONISTA", "MEDICO", "ADMIN"].includes(role))
+    return { ok: false, reason: "unauthorized", snapshot };
+  if ((snapshot.patientVersions[ticket] ?? 0) !== expectedPatientVersion)
+    return { ok: false, reason: "stale", snapshot };
   const original = getUndoEntry(ticket, now.getTime());
-  if (!original || original.id !== originalEntryId) return { ok: false, reason: "undo-blocked", snapshot };
+  if (!original || original.id !== originalEntryId)
+    return { ok: false, reason: "undo-blocked", snapshot };
   const patient = snapshot.patients.find((item) => item.ticket === ticket);
   if (!patient) return { ok: false, reason: "patient-unavailable", snapshot };
 
@@ -207,14 +390,31 @@ export const undoPriorityChange = (
     type: "Desfeita",
     originalEntryId: original.id,
   };
-  const auditEntries = snapshot.auditEntries.map((entry) => entry.id === original.id
-    ? { ...entry, status: "desfeita" as const, alertStatus: entry.alertStatus === "active" ? "cancelled" as const : entry.alertStatus }
-    : entry);
+  const auditEntries = snapshot.auditEntries.map((entry) =>
+    entry.id === original.id
+      ? {
+          ...entry,
+          status: "desfeita" as const,
+          alertStatus:
+            entry.alertStatus === "active"
+              ? ("cancelled" as const)
+              : entry.alertStatus,
+        }
+      : entry,
+  );
   const nextSnapshot: QueueSnapshot = {
-    patients: snapshot.patients.map((item) => item.ticket === ticket ? { ...item, priority: original.previousPriority } : item),
+    ...snapshot,
+    patients: snapshot.patients.map((item) =>
+      item.ticket === ticket
+        ? { ...item, priority: original.previousPriority }
+        : item,
+    ),
     auditEntries: [...auditEntries, undoEntry],
     revision: snapshot.revision + 1,
-    patientVersions: { ...snapshot.patientVersions, [ticket]: expectedPatientVersion + 1 },
+    patientVersions: {
+      ...snapshot.patientVersions,
+      [ticket]: expectedPatientVersion + 1,
+    },
   };
   publishSnapshot(nextSnapshot);
   return { ok: true, snapshot, entry: undoEntry };
@@ -229,11 +429,15 @@ export const deletePatient = (
   expectedPatientVersion: number,
   now = new Date(),
 ): QueueMutationResult => {
-  if (role !== "RECEPCIONISTA" && role !== "ADMIN") return { ok: false, reason: "unauthorized", snapshot };
-  if ((snapshot.patientVersions[ticket] ?? 0) !== expectedPatientVersion) return { ok: false, reason: "stale", snapshot };
+  if (role !== "RECEPCIONISTA" && role !== "ADMIN")
+    return { ok: false, reason: "unauthorized", snapshot };
+  if ((snapshot.patientVersions[ticket] ?? 0) !== expectedPatientVersion)
+    return { ok: false, reason: "stale", snapshot };
   const patient = snapshot.patients.find((item) => item.ticket === ticket);
-  if (!patient || patient.status !== "waiting") return { ok: false, reason: "patient-unavailable", snapshot };
-  if (deletionReason === "Outro" && description.trim().length < 10) return { ok: false, reason: "invalid-deletion-reason", snapshot };
+  if (!patient || patient.status !== "waiting")
+    return { ok: false, reason: "patient-unavailable", snapshot };
+  if (deletionReason === "Outro" && description.trim().length < 10)
+    return { ok: false, reason: "invalid-deletion-reason", snapshot };
 
   const entry: PriorityAuditEntry = {
     id: crypto.randomUUID(),
@@ -247,15 +451,24 @@ export const deletePatient = (
     status: "excluída",
     type: "exclusão",
     deletionReason,
-    ...(patient.priority === "urgent" && snapshot.auditEntries.some((audit) => audit.ticket === ticket && audit.alertStatus === "active")
+    ...(patient.priority === "urgent" &&
+    snapshot.auditEntries.some(
+      (audit) => audit.ticket === ticket && audit.alertStatus === "active",
+    )
       ? { alertStatus: "active" as const }
       : {}),
   };
   const nextSnapshot: QueueSnapshot = {
-    patients: snapshot.patients.map((item) => item.ticket === ticket ? { ...item, status: "deleted" } : item),
+    ...snapshot,
+    patients: snapshot.patients.map((item) =>
+      item.ticket === ticket ? { ...item, status: "deleted" } : item,
+    ),
     auditEntries: [...snapshot.auditEntries, entry],
     revision: snapshot.revision + 1,
-    patientVersions: { ...snapshot.patientVersions, [ticket]: expectedPatientVersion + 1 },
+    patientVersions: {
+      ...snapshot.patientVersions,
+      [ticket]: expectedPatientVersion + 1,
+    },
   };
   publishSnapshot(nextSnapshot);
   return { ok: true, snapshot, entry };
@@ -264,8 +477,11 @@ export const deletePatient = (
 export const getDeletionUndoEntry = (ticket: string, now = Date.now()) => {
   const patient = snapshot.patients.find((item) => item.ticket === ticket);
   if (!patient || patient.status !== "deleted") return null;
-  const latest = [...snapshot.auditEntries].reverse().find((entry) => entry.ticket === ticket);
-  if (!latest || latest.type !== "exclusão" || latest.status !== "excluída") return null;
+  const latest = [...snapshot.auditEntries]
+    .reverse()
+    .find((entry) => entry.ticket === ticket);
+  if (!latest || latest.type !== "exclusão" || latest.status !== "excluída")
+    return null;
   if (Date.parse(latest.occurredAt) + 15_000 < now) return null;
   return latest;
 };
@@ -278,12 +494,16 @@ export const undoPatientDeletion = (
   expectedPatientVersion: number,
   now = new Date(),
 ): QueueMutationResult => {
-  if (role !== "RECEPCIONISTA" && role !== "ADMIN") return { ok: false, reason: "unauthorized", snapshot };
-  if ((snapshot.patientVersions[ticket] ?? 0) !== expectedPatientVersion) return { ok: false, reason: "stale", snapshot };
+  if (role !== "RECEPCIONISTA" && role !== "ADMIN")
+    return { ok: false, reason: "unauthorized", snapshot };
+  if ((snapshot.patientVersions[ticket] ?? 0) !== expectedPatientVersion)
+    return { ok: false, reason: "stale", snapshot };
   const original = getDeletionUndoEntry(ticket, now.getTime());
-  if (!original || original.id !== entryId) return { ok: false, reason: "undo-blocked", snapshot };
+  if (!original || original.id !== entryId)
+    return { ok: false, reason: "undo-blocked", snapshot };
   const patient = snapshot.patients.find((item) => item.ticket === ticket);
-  if (!patient || patient.status !== "deleted") return { ok: false, reason: "patient-unavailable", snapshot };
+  if (!patient || patient.status !== "deleted")
+    return { ok: false, reason: "patient-unavailable", snapshot };
 
   const undoEntry: PriorityAuditEntry = {
     id: crypto.randomUUID(),
@@ -298,14 +518,29 @@ export const undoPatientDeletion = (
     type: "Exclusão desfeita",
     originalEntryId: original.id,
   };
-  const auditEntries = snapshot.auditEntries.map((entry) => entry.id === original.id
-    ? { ...entry, status: "desfeita" as const, alertStatus: entry.alertStatus === "active" ? "cancelled" as const : entry.alertStatus }
-    : entry);
+  const auditEntries = snapshot.auditEntries.map((entry) =>
+    entry.id === original.id
+      ? {
+          ...entry,
+          status: "desfeita" as const,
+          alertStatus:
+            entry.alertStatus === "active"
+              ? ("cancelled" as const)
+              : entry.alertStatus,
+        }
+      : entry,
+  );
   const nextSnapshot: QueueSnapshot = {
-    patients: snapshot.patients.map((item) => item.ticket === ticket ? { ...item, status: "waiting" } : item),
+    ...snapshot,
+    patients: snapshot.patients.map((item) =>
+      item.ticket === ticket ? { ...item, status: "waiting" } : item,
+    ),
     auditEntries: [...auditEntries, undoEntry],
     revision: snapshot.revision + 1,
-    patientVersions: { ...snapshot.patientVersions, [ticket]: expectedPatientVersion + 1 },
+    patientVersions: {
+      ...snapshot.patientVersions,
+      [ticket]: expectedPatientVersion + 1,
+    },
   };
   publishSnapshot(nextSnapshot);
   return { ok: true, snapshot, entry: undoEntry };
