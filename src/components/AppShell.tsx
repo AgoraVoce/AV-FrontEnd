@@ -10,6 +10,7 @@ import {
   Stethoscope,
   User,
   UserPlus,
+  Users,
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -78,6 +79,11 @@ export function AppShell({
     import.meta.env.DEV && state.status !== "authenticated"
       ? "/admin?dev=admin"
       : "/admin";
+  const managementPath = activeRole === "ADMIN"
+    ? (import.meta.env.DEV && state.status !== "authenticated"
+        ? "/admin/usuarios?dev=admin" : "/admin/usuarios")
+    : (import.meta.env.DEV && state.status !== "authenticated"
+        ? "/recepcao/usuarios?dev=recepcionista" : "/recepcao/usuarios");
   const unitContext = headerContext ?? (
     <span className="app-unit-chip">
       <Building2 size={14} aria-hidden="true" />
@@ -179,6 +185,18 @@ export function AppShell({
                   <span>{label}</span>
                 </NavLink>
               ))}
+              {activeRole !== "MEDICO" && (
+                <NavLink
+                  to={managementPath}
+                  title="Gestão de Usuários"
+                  className={({ isActive }) =>
+                    `nav-item${isActive ? " is-active" : ""}`
+                  }
+                >
+                  <Users size={18} aria-hidden="true" />
+                  <span>Gestão de Usuários</span>
+                </NavLink>
+              )}
             </div>
 
             <div className="nav-group">

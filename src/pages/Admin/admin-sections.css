@@ -114,7 +114,12 @@
 }
 .admin-section-form h3, .admin-report-panel h3 { margin: 0 0 14px; font-size: 17px; color: #142733; }
 .admin-section-form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
-.admin-section-form-grid label { display: flex; flex-direction: column; gap: 6px; color: #33475a; font-size: 12px; font-weight: 700; }
+.admin-section-form-grid label,
+.admin-section-form-grid .admin-section-field { display: flex; flex-direction: column; gap: 6px; color: #33475a; font-size: 12px; font-weight: 700; }
+.admin-section-form-grid .admin-section-field .av-role-select { flex: 1; }
+.admin-section-form-grid input { min-height: 48px; width: 100%; }
+.admin-section-form-grid .admin-section-field > span { display: block; }
+
 .admin-section-form-grid input:focus-visible, .admin-section-form-grid select:focus-visible, .admin-section-filter select:focus-visible { outline: 2px solid #007b78; outline-offset: 2px; }
 .admin-section-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin-top: 17px; flex-wrap: wrap; }
 .admin-section-ghost { padding: 10px 16px; border: 1px solid #b8c6d0; border-radius: 9px; background: white; color: #142733; font: inherit; font-weight: 700; cursor: pointer; }
