@@ -23,9 +23,8 @@ export function MedicalDischargeModal({
   const [prescription, setPrescription] = useState("");
   const [guidance, setGuidance] = useState("");
   const summaryRef = useRef<HTMLTextAreaElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   const confirmed = summary.trim().length >= 10 && prescription.trim().length >= 10;
 
   useEffect(() => {
@@ -67,7 +66,7 @@ export function MedicalDischargeModal({
       <section className="doctor-discharge-dialog" role="dialog" aria-modal="true" aria-labelledby="doctor-discharge-title" aria-describedby="doctor-discharge-description">
         <div className="doctor-discharge-header">
           <div><p>REGISTRO DO CASO · DEMONSTRAÇÃO</p><h2 id="doctor-discharge-title"><ClipboardCheck size={21} aria-hidden="true" />Finalização do atendimento</h2></div>
-          <button ref={closeRef} type="button" className="doctor-discharge-close" aria-label="Fechar modal" onClick={onClose}><X size={19} aria-hidden="true" /></button>
+          <button type="button" className="doctor-discharge-close" aria-label="Fechar modal" onClick={onClose}><X size={19} aria-hidden="true" /></button>
         </div>
         <p className="doctor-discharge-description" id="doctor-discharge-description">Confira o paciente e preencha a conclusão clínica antes de liberar a fila. Cancelar não altera o atendimento.</p>
         <div className="doctor-discharge-patient">
