@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   ArrowDownToLine,
@@ -33,7 +33,9 @@ import {
   sortPatientsByPriorityAndWait,
 } from "../../reception/types";
 import type { Priority, QueuePatient } from "../../reception/types";
+import { QueueSection, ReportsSection, UsersSection } from "./sections";
 import "./admin.css";
+import "./admin-sections.css";
 
 const REPORT_KPIS = {
   attendedToday: 86,
@@ -188,7 +190,15 @@ export default function AdminPage() {
     getQueueSnapshot,
   );
   const [clock, setClock] = useState(getBrasiliaTime);
-  const [selectedTab, setSelectedTab] = useState("Visão Geral");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const selectedTab = location.pathname.endsWith("/usuarios")
+    ? "Usuários"
+    : location.pathname.endsWith("/fila")
+      ? "Fila de Espera"
+      : location.pathname.endsWith("/relatorios")
+        ? "Relatórios"
+        : "Visão Geral";
   const [now, setNow] = useState(() => Date.now());
   const waitingPatients = useMemo(
     () =>
@@ -239,13 +249,15 @@ export default function AdminPage() {
   const exportReport = () =>
     exportDailyReport([
       ["Indicador", "Valor"],
+      ["Escopo", "Retrato da sessão local - dados simulados"],
+      ["Gerado em", new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })],
       ["Pacientes em espera", String(waitingPatients.length)],
-      ["Urgentes", String(queueCounts.urgent)],
-      ["Alertas", String(queueCounts.alert)],
-      ["Tranquilos", String(queueCounts.calm)],
-      ["Atendidos hoje", String(REPORT_KPIS.attendedToday)],
-      ["Tempo médio de espera (min)", String(REPORT_KPIS.averageWait)],
-      ["Casos urgentes hoje", String(REPORT_KPIS.urgentToday)],
+      ["Urgentes em espera", String(queueCounts.urgent)],
+      ["Alertas em espera", String(queueCounts.alert)],
+      ["Tranquilos em espera", String(queueCounts.calm)],
+      ["Em atendimento", String(queueSnapshot.patients.filter((patient) => patient.status === "in-care" || patient.status === "called").length)],
+      ["Finalizados nesta sessão", String(queueSnapshot.patients.filter((patient) => patient.status === "completed").length)],
+      ["Eventos auditados na fila", String(queueSnapshot.auditEntries.length)],
     ]);
 
   return (
@@ -262,7 +274,12 @@ export default function AdminPage() {
                 key={label}
                 className={`admin-tab${selectedTab === label ? " is-active" : ""}`}
                 aria-pressed={selectedTab === label}
-                onClick={() => setSelectedTab(label)}
+                onClick={() => navigate(
+                  label === "Usuários" ? "/admin/usuarios"
+                    : label === "Fila de Espera" ? "/admin/fila"
+                    : label === "Relatórios" ? "/admin/relatorios"
+                    : "/admin"
+                )}
               >
                 <Icon size={14} aria-hidden="true" />
                 {label}
@@ -271,10 +288,12 @@ export default function AdminPage() {
           </div>
           <div className="admin-sync-status">
             <span aria-hidden="true" />
-            Atualização em tempo real (Sincronizado)
+            Sincronização local (demonstração)
           </div>
         </nav>
 
+        {selectedTab === "Visão Geral" ? (
+          <>
         <header className="admin-page-heading">
           <div>
             <p className="admin-eyebrow">
@@ -284,7 +303,7 @@ export default function AdminPage() {
             </p>
             <h1>Painel Administrativo - Visão Geral do Pronto-Socorro</h1>
             <p className="admin-page-subtitle">
-              Métricas operacionais em tempo real e gerenciamento de equipe
+              Visão geral demonstrativa; indicadores históricos ilustrativos e fila local em tempo real
             </p>
           </div>
           <button
@@ -502,7 +521,7 @@ export default function AdminPage() {
                   <p>Colaboradores ativos alocados nas salas e guichês</p>
                 </div>
               </div>
-              <button className="admin-add-button" type="button">
+              <button className="admin-add-button" type="button" onClick={() => navigate("/admin/usuarios")}>
                 + Adicionar Usuário
               </button>
             </div>
@@ -559,8 +578,8 @@ export default function AdminPage() {
               </table>
             </div>
             <footer className="admin-staff-footer">
-              <span>Mostrando 4 de 12 profissionais cadastrados</span>
-              <button type="button" className="admin-inline-action">
+              <span>Mostrando {STAFF.length} profissionais demonstrativos</span>
+              <button type="button" className="admin-inline-action" onClick={() => navigate("/admin/usuarios")}>
                 <BookOpenText size={13} aria-hidden="true" />
                 Ver equipe completa <ArrowRight size={13} aria-hidden="true" />
               </button>
@@ -575,7 +594,7 @@ export default function AdminPage() {
               </div>
               <Link
                 className="admin-inline-action"
-                to="/recepcao?dev=recepcionista"
+                to="/admin/fila"
               >
                 Painel Geral <ExternalLink size={13} aria-hidden="true" />
               </Link>
@@ -599,8 +618,8 @@ export default function AdminPage() {
                 <span className="admin-queue-footer-dot" aria-hidden="true" />
                 Ordem calculada pelo Protocolo de Triagem
               </span>
-              <Link className="admin-call-next" to="/medico?dev=medico">
-                Chamar Próximo <ArrowUpRight size={14} aria-hidden="true" />
+              <Link className="admin-call-next" to="/admin/fila">
+                Ver fila completa <ArrowUpRight size={14} aria-hidden="true" />
               </Link>
             </footer>
           </article>
@@ -613,17 +632,25 @@ export default function AdminPage() {
           <div className="admin-audit-copy">
             <h2>Auditoria e Conformidade Sanitária</h2>
             <p>
-              Todos os registros são assinados digitalmente conforme as
-              diretrizes do CFM e Ministério da Saúde.
+              Demonstração local: registros clínicos e eventos de fila ainda não
+              possuem assinatura digital nem persistência em servidor.
             </p>
           </div>
           <p className="admin-backup">
             Último backup: <strong>Hoje, 14:00</strong>
           </p>
-          <button className="admin-logs-button" type="button">
+          <button className="admin-logs-button" type="button" onClick={() => navigate("/admin/relatorios")}>
             Ver Logs do Sistema
           </button>
         </section>
+          </>
+        ) : selectedTab === "Usuários" ? (
+          <UsersSection initialUsers={STAFF} />
+        ) : selectedTab === "Fila de Espera" ? (
+          <QueueSection patients={queueSnapshot.patients} now={now} />
+        ) : (
+          <ReportsSection patients={queueSnapshot.patients} now={now} auditCount={queueSnapshot.auditEntries.length} onExport={exportReport} />
+        )}
       </div>
     </AppShell>
   );
