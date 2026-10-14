@@ -177,6 +177,7 @@ export default function NovoCadastroPage() {
           heartRate: 0,
           oxygenSaturation: 0,
           temperature: Number(form.temperatura) || 0,
+          painScale: form.dor,
         },
       },
       role,
