@@ -77,6 +77,17 @@ export default function App() {
             </ProtectedArea>
           }
         />
+        {["usuarios", "fila", "relatorios"].map((section) => (
+          <Route
+            key={section}
+            path={`/admin/${section}`}
+            element={
+              <ProtectedArea role="ADMIN">
+                <AdminPage />
+              </ProtectedArea>
+            }
+          />
+        ))}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </div>
