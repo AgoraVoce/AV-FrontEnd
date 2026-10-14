@@ -11,7 +11,6 @@ import {
   Building2,
   CheckCircle2,
   Clock3,
-  DoorOpen,
   ExternalLink,
   FileText,
   HeartPulse,
@@ -34,6 +33,7 @@ import {
 } from "../../reception/types";
 import type { Priority, QueuePatient } from "../../reception/types";
 import { QueueSection, ReportsSection, UsersSection } from "./sections";
+import { STAFF } from "./team-data";
 import "./admin.css";
 import "./admin-sections.css";
 
@@ -43,45 +43,6 @@ const REPORT_KPIS = {
   averageWait: 23,
   urgentToday: 18,
 };
-
-const STAFF = [
-  {
-    initials: "MA",
-    name: "Dr. Marcelo Arantes",
-    registration: "CRM/SP 148.920",
-    role: "Médico / Clínica Geral",
-    location: "Consultório 04",
-    status: "Em atendimento",
-    icon: DoorOpen,
-  },
-  {
-    initials: "HM",
-    name: "Dra. Helena Martins",
-    registration: "CRM/SP 204.118",
-    role: "Médica / Cardiologia",
-    location: "Consultório 03",
-    status: "Em atendimento",
-    icon: DoorOpen,
-  },
-  {
-    initials: "CB",
-    name: "Camila Barreto",
-    registration: "COREN/SP 432.890",
-    role: "Recepcionista / Triagem — Classificação Manchester",
-    location: "Recepção 01",
-    status: "Ativa",
-    icon: Activity,
-  },
-  {
-    initials: "LV",
-    name: "Lucas Vasconcelos",
-    registration: "Matrícula ADM-891",
-    role: "Administrador / Gestão Hospitalar",
-    location: "Coordenação",
-    status: "Ativo",
-    icon: Building2,
-  },
-];
 
 const FLOW_POINTS = [
   { time: "08:00", intake: 20, finished: 12 },
@@ -646,7 +607,7 @@ export default function AdminPage() {
         </section>
           </>
         ) : selectedTab === "Usuários" ? (
-          <UsersSection initialUsers={STAFF} />
+          <UsersSection initialUsers={STAFF} actorRole="ADMIN" />
         ) : selectedTab === "Fila de Espera" ? (
           <QueueSection patients={queueSnapshot.patients} now={now} />
         ) : (
