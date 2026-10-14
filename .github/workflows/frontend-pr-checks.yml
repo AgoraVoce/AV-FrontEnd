@@ -1,0 +1,35 @@
+name: Frontend PR checks
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Check tokens
+        run: npm run tokens:check
+      - name: Check design specification
+        run: npm run design:lint
+      - name: Playwright
+        run: npx playwright test --workers=1
