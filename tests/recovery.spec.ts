@@ -550,6 +550,9 @@ for (const width of [320, 390, 768, 1024, 1504]) {
     });
     await start(page);
     async function check(name: string) {
+      await page.locator(".route-transition").evaluate(async (element) => {
+        await Promise.all(element.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
+      });
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= innerWidth,

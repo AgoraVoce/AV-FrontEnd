@@ -521,6 +521,24 @@ export function QueuePage() {
           ),
         1500,
       );
+    } else if (ledAnimation.phase === "snake") {
+      // Some browsers may skip animationend under heavy load or tab throttling.
+      // Keep animationend as the normal path; this timer is only a fallback.
+      ledTimerRef.current = window.setTimeout(() => {
+        setLedAnimation((current) =>
+          current?.id === ledAnimation.id && current.phase === "snake"
+            ? { ...current, phase: "blink" }
+            : current,
+        );
+      }, 1450);
+    } else if (ledAnimation.phase === "blink") {
+      ledTimerRef.current = window.setTimeout(() => {
+        setLedAnimation((current) =>
+          current?.id === ledAnimation.id && current.phase === "blink"
+            ? null
+            : current,
+        );
+      }, ledAnimation.priority === "calm" ? 500 : 800);
     }
     return () => {
       if (ledTimerRef.current !== null)

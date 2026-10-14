@@ -23,7 +23,9 @@ import {
   getQueueSnapshot,
   subscribeQueue,
 } from "../../reception/queue-store";
+import { MedicalDischargeModal, type DischargeRecord } from "./MedicalDischargeModal";
 import "./medico.css";
+import "./medical-discharge.css";
 
 const DOCTOR = {
   name: "Dr. Marcelo Arantes",
@@ -90,6 +92,13 @@ export default function MedicoPage() {
   const [currentTime, setCurrentTime] = useState(getBrasiliaTime);
   const [queueNow, setQueueNow] = useState(() => Date.now());
   const [callError, setCallError] = useState("");
+  const [dischargePatient, setDischargePatient] = useState<QueuePatient | null>(null);
+  const [dischargeRevision, setDischargeRevision] = useState<number | null>(null);
+  const [lastDischarge, setLastDischarge] = useState<{
+    patient: QueuePatient;
+    record: DischargeRecord;
+    at: string;
+  } | null>(null);
   const currentPatient =
     queueSnapshot.patients.find(
       (patient) => patient.ticket === queueSnapshot.activeConsultationTicket,
@@ -114,23 +123,30 @@ export default function MedicoPage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  // Finaliza a consulta atual e mantém a última chamada na TV.
-  function handleFinishAppointment() {
-    if (!currentPatient) return;
+  // Confirma a conclusão clínica antes de liberar o paciente da fila local.
+  function handleFinishAppointment(record: DischargeRecord): boolean {
+    if (!currentPatient || !dischargePatient || currentPatient.ticket !== dischargePatient.ticket || dischargeRevision === null) {
+      setCallError("O paciente em atendimento mudou. Feche o formulário e confira a fila.");
+      return false;
+    }
     const result = finalizeAppointment(
-      currentPatient.ticket,
+      dischargePatient.ticket,
       "MEDICO",
-      queueSnapshot.revision,
+      dischargeRevision,
     );
     if (!result.ok) {
       setCallError(
         result.reason === "stale"
-          ? "A fila foi atualizada em outra tela. Confira os dados e tente novamente."
+          ? "A fila foi atualizada em outra tela. Feche o formulário, confira os dados e tente novamente."
           : "Não foi possível finalizar este atendimento.",
       );
-      return;
+      return false;
     }
+    setLastDischarge({ patient: dischargePatient, record, at: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) });
+    setDischargePatient(null);
+    setDischargeRevision(null);
     setCallError("");
+    return true;
   }
 
   // Chama o próximo paciente da fila compartilhada, por prioridade e espera.
@@ -184,7 +200,7 @@ export default function MedicoPage() {
           <div className="doctor-summary-main">
             <div className="doctor-summary-icon">
               <Stethoscope size={22} aria-hidden="true" />
-              <span aria-label="Disponível" />
+              <span aria-label={currentPatient ? "Em atendimento" : "Disponível"} />
             </div>
             <div className="doctor-summary-copy">
               <div className="doctor-name-line">
@@ -200,7 +216,7 @@ export default function MedicoPage() {
           </div>
           <div className="doctor-summary-status">
             <span className="doctor-status-pill">
-              <span aria-hidden="true">●</span> Em atendimento
+              <span aria-hidden="true">●</span> {currentPatient ? "Em atendimento" : "Disponível"}
             </span>
             <span className="doctor-summary-divider" aria-hidden="true" />
             <span className="doctor-current-time">
@@ -266,7 +282,12 @@ export default function MedicoPage() {
                 <button
                   className="doctor-action-button is-finish"
                   type="button"
-                  onClick={handleFinishAppointment}
+                  onClick={() => {
+                    if (!currentPatient) return;
+                    setCallError("");
+                    setDischargePatient(currentPatient);
+                    setDischargeRevision(queueSnapshot.revision);
+                  }}
                 >
                   <CheckCircle2 size={15} aria-hidden="true" />
                   Finalizar Atendimento
@@ -342,6 +363,20 @@ export default function MedicoPage() {
           </section>
         </div>
 
+
+        {lastDischarge && (
+          <section className="doctor-discharge-receipt" aria-labelledby="doctor-discharge-receipt-title">
+            <div className="doctor-discharge-receipt-header"><CheckCircle2 size={18} aria-hidden="true" /><h2 id="doctor-discharge-receipt-title">Atendimento finalizado nesta sessão</h2></div>
+            <p><strong>{lastDischarge.patient.name}</strong> · Senha {lastDischarge.patient.ticket} · {lastDischarge.at}</p>
+            <p><b>Resumo clínico:</b> <strong>{lastDischarge.record.summary}</strong></p>
+            <p><b>Prescrição / conduta:</b> <strong>{lastDischarge.record.prescription}</strong></p>
+            {lastDischarge.record.guidance && <p><b>Orientações:</b> <strong>{lastDischarge.record.guidance}</strong></p>}
+            <p><b>Profissional:</b> {DOCTOR.name} · {DOCTOR.crm}</p>
+            <p className="doctor-discharge-print-notice">Resumo demonstrativo, não assinado digitalmente e não persistido no servidor. Não substitui receita ou prontuário oficial.</p>
+            <button type="button" onClick={() => window.print()}>Imprimir resumo demonstrativo</button>
+          </section>
+        )}
+
         <section className="doctor-queue-card">
           <div className="doctor-queue-heading">
             <div>
@@ -400,6 +435,14 @@ export default function MedicoPage() {
             </table>
           </div>
         </section>
+        {dischargePatient && currentPatient?.ticket === dischargePatient.ticket && (
+          <MedicalDischargeModal
+            patient={dischargePatient}
+            error={callError}
+            onClose={() => { setDischargePatient(null); setDischargeRevision(null); setCallError(""); }}
+            onConfirm={handleFinishAppointment}
+          />
+        )}
       </div>
     </AppShell>
   );

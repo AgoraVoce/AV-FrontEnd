@@ -265,6 +265,20 @@ test("LED serpente usa a nova gravidade, pisca na quantidade certa e remove o ov
   }
 });
 
+test("LED avança mesmo se o navegador não emitir animationend", async ({ page }) => {
+  await page.goto(receptionUrl);
+  await page.addStyleTag({
+    content: ".queue-led-snake { animation-play-state: paused !important; }",
+  });
+  await changeAnaToUrgent(page);
+  const overlay = page.locator(".queue-led-overlay.led-urgent");
+  await expect(overlay).toHaveAttribute("data-led-phase", "snake");
+  await expect(overlay).toHaveAttribute("data-led-phase", "blink", {
+    timeout: 4000,
+  });
+  await expect(overlay).toHaveCount(0, { timeout: 2500 });
+});
+
 test("prefers-reduced-motion usa destaque estático e limpa após 1,5s", async ({
   browser,
 }) => {

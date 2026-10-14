@@ -1,0 +1,68 @@
+.doctor-discharge-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  background: rgb(12 30 40 / 67%);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+.doctor-discharge-dialog {
+  width: min(680px,100%);
+  max-height: min(92dvh,920px);
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 25px 90px rgb(0 0 0 / 27%);
+  padding: clamp(16px,3vw,27px);
+  color: #142733;
+}
+.doctor-discharge-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.doctor-discharge-header p { color: #006561; letter-spacing: .09em; font-size: 10px; font-weight: 800; margin: 0 0 6px; }
+.doctor-discharge-header h2 { display: flex; align-items: center; gap: 9px; font-size: clamp(19px,2vw,23px); margin: 0; }
+.doctor-discharge-header h2 svg { color: #007b78; }
+.doctor-discharge-close { border: 1px solid #cbd5dc; color: #33475a; border-radius: 9px; padding: 7px; background: #fff; display: grid; place-items: center; cursor: pointer; }
+.doctor-discharge-close:hover { background: #f2f5f8; }
+.doctor-discharge-description { color: #52687a; font-size: 13px; line-height: 1.6; margin: 13px 0 15px; }
+.doctor-discharge-patient { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: #f2f7f8; border: 1px solid #e3e9ed; border-radius: 12px; padding: 13px 15px; }
+.doctor-discharge-patient > span:first-child { display: flex; flex-direction: column; gap: 4px; }
+.doctor-discharge-patient strong { font-size: 15px; }
+.doctor-discharge-patient small { color: #52687a; font-size: 12px; }
+.doctor-discharge-priority { color: #075e5a; background: #dcefeb; padding: 6px 10px; border-radius: 100px; font-size: 12px; font-weight: 800; }
+.doctor-discharge-complaint { color: #33475a; font-size: 12px; line-height: 1.6; margin: 12px 0 17px; }
+.doctor-discharge-form { display: flex; flex-direction: column; gap: 7px; }
+.doctor-discharge-form label { font-size: 13px; font-weight: 750; margin-top: 8px; }
+.doctor-discharge-form label span { color: #b52d36; }
+.doctor-discharge-form textarea { resize: vertical; width: 100%; min-height: 68px; padding: 11px 13px; border: 1px solid #a9bac6; border-radius: 10px; color: #142733; background: #fff; font: inherit; font-size: 13px; line-height: 1.55; }
+.doctor-discharge-form textarea:focus-visible, .doctor-discharge-dialog button:focus-visible { outline: 3px solid #007b78; outline-offset: 2px; }
+.doctor-discharge-helper { display: flex; align-items: flex-start; gap: 7px; font-size: 11px; color: #52687a; margin: 8px 0; line-height: 1.5; }
+.doctor-discharge-helper svg { flex-shrink: 0; }
+.doctor-discharge-error { margin: 4px 0; padding: 9px 11px; border-left: 3px solid #b52d36; background: #fff0f1; color: #7d2229; font-size: 12px; }
+.doctor-discharge-footer { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid #e3e9ed; margin-top: 10px; }
+.doctor-discharge-cancel, .doctor-discharge-confirm { min-height: 43px; padding: 10px 15px; border-radius: 9px; font-size: 13px; font-weight: 800; cursor: pointer; }
+.doctor-discharge-cancel { background: white; color: #33475a; border: 1px solid #b8c6d0; }
+.doctor-discharge-confirm { border: 1px solid #007b78; background: #007b78; color: white; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.doctor-discharge-confirm:disabled { opacity: .5; cursor: not-allowed; }
+.doctor-discharge-confirm:hover:not(:disabled) { background: #006561; }
+.doctor-discharge-receipt { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; border: 1px solid #bed9d4; background: #f0f9f7; border-radius: 13px; padding: 16px; color: #193e39; }
+.doctor-discharge-receipt h2 { font-size: 17px; margin: 0; }
+.doctor-discharge-receipt p { margin: 0; font-size: 12px; line-height: 1.55; }
+.doctor-discharge-receipt strong { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 650; }
+.doctor-discharge-receipt-header { display: flex; gap: 9px; align-items: center; }
+.doctor-discharge-receipt > button { align-self: flex-start; border-radius: 9px; background: #007b78; color: white; border: 0; padding: 9px 15px; font-weight: 800; cursor: pointer; }
+.doctor-discharge-print-notice { font-size: 11px !important; color: #52687a; }
+@media (max-width: 500px) {
+  .doctor-discharge-dialog { max-height: 95dvh; }
+  .doctor-discharge-footer > button { flex: 1 1 100%; }
+}
+@media print {
+  body:has(.doctor-discharge-receipt) .app-shell * { visibility: hidden !important; }
+  body:has(.doctor-discharge-receipt) .doctor-discharge-receipt,
+  body:has(.doctor-discharge-receipt) .doctor-discharge-receipt * { visibility: visible !important; }
+  body:has(.doctor-discharge-receipt) .doctor-discharge-receipt { position: fixed; inset: 0; margin: 0; border: 0; background: white; }
+  body:has(.doctor-discharge-receipt) .doctor-discharge-receipt > button { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doctor-discharge-dialog, .doctor-discharge-overlay { scroll-behavior: auto; }
+}

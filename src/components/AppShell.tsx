@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Building2,
@@ -39,12 +39,29 @@ export function AppShell({
 }) {
   const { state, signOut, invalidateSession } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState("");
-  const userName =
-    state.status === "authenticated" ? state.user.name : "Dra. Mariana Rios";
-  const profile = "Triagem & Recepção";
+  const activeRole = state.status === "authenticated"
+    ? state.user.role
+    : location.pathname.startsWith("/medico")
+      ? "MEDICO"
+      : location.pathname.startsWith("/admin")
+        ? "ADMIN"
+        : "RECEPCIONISTA";
+  const userName = state.status === "authenticated"
+    ? state.user.name
+    : activeRole === "MEDICO"
+      ? "Dr. Marcelo Arantes"
+      : activeRole === "ADMIN"
+        ? "Lucas Vasconcelos"
+        : "Dra. Mariana Rios";
+  const profile = activeRole === "MEDICO"
+    ? "Corpo Clínico"
+    : activeRole === "ADMIN"
+      ? "Administração"
+      : "Triagem & Recepção";
   const receptionPath =
     import.meta.env.DEV && state.status !== "authenticated"
       ? "/recepcao?dev=recepcionista"
@@ -119,7 +136,7 @@ export function AppShell({
             {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
 
-          <div className="header-user" aria-label="Usuário autenticado">
+          <div className="header-user" aria-label={state.status === "authenticated" ? "Usuário autenticado" : "Perfil de demonstração"}>
             <div className="header-user-info">
               <strong>{userName}</strong>
               <small>{profile}</small>

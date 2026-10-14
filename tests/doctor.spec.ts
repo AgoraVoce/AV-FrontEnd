@@ -7,6 +7,16 @@ async function useAnonymousSession(page: Page) {
   });
 }
 
+async function completeCurrentAppointment(page: Page) {
+  await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+  const dialog = page.getByRole("dialog", { name: "Finalização do atendimento" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel(/Resumo clínico/).fill("Paciente reavaliado e em condições de alta nesta simulação.");
+  await dialog.getByLabel(/Prescrição ou conduta adotada/).fill("Orientações clínicas registradas em atendimento demonstrativo.");
+  await dialog.getByRole("button", { name: "Confirmar finalização" }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
 test("exibe o consultório médico e permite navegar de ida e volta", async ({
   page,
 }) => {
@@ -48,7 +58,7 @@ test("finaliza a consulta e transfere o próximo paciente quando liberado", asyn
   });
   await expect(callButton).toBeDisabled();
 
-  await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+  await completeCurrentAppointment(page);
   await expect(page.getByText("Nenhum paciente em consulta.")).toBeVisible();
   await page
     .getByRole("button", { name: "Chamar Próximo Paciente (U-038)" })
@@ -72,7 +82,7 @@ test("compartilha a chamada do médico com a TV e mantém a última chamada ao f
   await page.goto("/medico?dev=medico");
   await tv.goto("/transmissao/tv");
 
-  await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+  await completeCurrentAppointment(page);
   await page
     .getByRole("button", { name: "Chamar Próximo Paciente (U-038)" })
     .click();
@@ -93,7 +103,7 @@ test("compartilha a chamada do médico com a TV e mantém a última chamada ao f
     "Dr. Marcelo Arantes",
   );
 
-  await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+  await completeCurrentAppointment(page);
   await expect(tv.locator(".chamada-ticket")).toHaveText("U-038");
 });
 
@@ -102,7 +112,7 @@ test("desabilita a chamada quando todos os pacientes aguardando são atendidos",
 }) => {
   await useAnonymousSession(page);
   await page.goto("/medico?dev=medico");
-  await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+  await completeCurrentAppointment(page);
 
   while ((await page.locator(".doctor-queue-table tbody tr").count()) > 0) {
     const nextCall = page.getByRole("button", {
@@ -110,7 +120,7 @@ test("desabilita a chamada quando todos os pacientes aguardando são atendidos",
     });
     await expect(nextCall).toBeEnabled();
     await nextCall.click();
-    await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+    await completeCurrentAppointment(page);
   }
 
   await expect(page.getByRole("button", { name: "Fila vazia" })).toBeDisabled();
@@ -133,4 +143,22 @@ test("mostra o horário de Brasília sincronizado e atualiza os segundos", async
     .poll(async () => officeClock.innerText(), { timeout: 2500 })
     .not.toBe(initialTime);
   await expect(headerClock).toHaveText(await officeClock.innerText());
+});
+
+test("finalização clínica exige informações e permite cancelar sem liberar paciente", async ({ page }) => {
+  await useAnonymousSession(page);
+  await page.goto("/medico?dev=medico");
+  await page.getByRole("button", { name: "Finalizar Atendimento" }).click();
+  const dialog = page.getByRole("dialog", { name: "Finalização do atendimento" });
+  await expect(dialog).toContainText("Roberto Souza Lima");
+  await expect(dialog.getByRole("button", { name: "Confirmar finalização" })).toBeDisabled();
+  await dialog.getByLabel(/Resumo clínico/).fill("Avaliação inicial do paciente.");
+  await expect(dialog.getByRole("button", { name: "Confirmar finalização" })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Voltar ao atendimento" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".doctor-consult-card.is-current")).toContainText("Roberto Souza Lima");
+
+  await completeCurrentAppointment(page);
+  await expect(page.locator(".doctor-discharge-receipt")).toContainText("Atendimento finalizado nesta sessão");
+  await expect(page.locator(".doctor-discharge-receipt")).toContainText("Prescrição / conduta");
 });

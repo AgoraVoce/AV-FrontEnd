@@ -25,6 +25,7 @@ test("painel administrativo apresenta métricas, equipe e fila compartilhada", a
   );
 
   await page.getByRole("button", { name: "Usuários" }).click();
+  await expect(page).toHaveURL("/admin/usuarios?dev=admin");
   await expect(page.getByRole("button", { name: "Usuários" })).toHaveAttribute(
     "aria-pressed",
     "true",
@@ -32,6 +33,11 @@ test("painel administrativo apresenta métricas, equipe e fila compartilhada", a
   await expect(
     page.getByRole("heading", { name: "Gestão de Usuários e Equipe" }),
   ).toBeVisible();
+
+  await page.getByRole("button", { name: "Relatórios" }).click();
+  await expect(page).toHaveURL("/admin/relatorios?dev=admin");
+  await expect(page.getByRole("heading", { name: "Relatórios Operacionais" })).toBeVisible();
+  await page.getByRole("button", { name: "Visão Geral" }).click();
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Exportar Relatório Diário" }).click();
