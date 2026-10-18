@@ -52,7 +52,7 @@ export default function App() {
           path="/recepcao"
           element={
             <ProtectedArea role="RECEPCIONISTA">
-              {API_MODE && !location.search.includes("dev=") ? <LocalQueuePage kind="reception" /> : <QueuePage />}
+              {API_MODE ? <LocalQueuePage kind="reception" /> : <QueuePage />}
             </ProtectedArea>
           }
         />
@@ -60,7 +60,7 @@ export default function App() {
           path="/recepcao/usuarios"
           element={
             <ProtectedArea role="RECEPCIONISTA">
-              {API_MODE && !location.search.includes("dev=") ? <LocalStaffPage actor="RECEPCIONISTA" /> : <ReceptionUsersPage />}
+              {API_MODE ? <LocalStaffPage actor="RECEPCIONISTA" /> : <ReceptionUsersPage />}
             </ProtectedArea>
           }
         />
@@ -68,7 +68,7 @@ export default function App() {
           path="/novo-cadastro"
           element={
             <ProtectedArea role="RECEPCIONISTA">
-              {API_MODE && !location.search.includes("dev=") ? <LocalPatientPage /> : <NovoCadastroPage />}
+              {API_MODE ? <LocalPatientPage /> : <NovoCadastroPage />}
             </ProtectedArea>
           }
         />
@@ -76,7 +76,7 @@ export default function App() {
           path="/medico"
           element={
             <ProtectedArea role="MEDICO">
-              {API_MODE && !location.search.includes("dev=") ? <LocalQueuePage kind="doctor" /> : <MedicoPage />}
+              {API_MODE ? <LocalQueuePage kind="doctor" /> : <MedicoPage />}
             </ProtectedArea>
           }
         />
@@ -84,7 +84,7 @@ export default function App() {
           path="/admin"
           element={
             <ProtectedArea role="ADMIN">
-              {API_MODE && !location.search.includes("dev=") ? <LocalStaffPage actor="ADMIN" /> : <AdminPage />}
+              {API_MODE ? <LocalStaffPage actor="ADMIN" /> : <AdminPage />}
             </ProtectedArea>
           }
         />
@@ -94,7 +94,7 @@ export default function App() {
             path={`/admin/${section}`}
             element={
               <ProtectedArea role="ADMIN">
-                {API_MODE && !location.search.includes("dev=") ? (section === "usuarios" ? <LocalStaffPage actor="ADMIN" /> : <LocalUnavailablePage title={section === "fila" ? "Fila administrativa ainda sem API" : "Relatórios ainda sem API"} description="Este módulo ainda depende de uma rota de consulta autorizada no backend. O painel não apresenta dados simulados como reais." />) : <AdminPage />}
+                {API_MODE ? (section === "usuarios" ? <LocalStaffPage actor="ADMIN" /> : <LocalUnavailablePage title={section === "fila" ? "Fila administrativa ainda sem API" : "Relatórios ainda sem API"} description="Este módulo ainda depende de uma rota de consulta autorizada no backend. O painel não apresenta dados simulados como reais." />) : <AdminPage />}
               </ProtectedArea>
             }
           />
