@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AuthContext } from "./context";
 import type { SessionState } from "./context";
-import { authApi, AuthError } from "./api";
+import { authApi, AuthError, clearLocalSession } from "./api";
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SessionState>({
     status: "checking",
@@ -52,7 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     document.addEventListener("visibilitychange", onVisible);
     if (typeof BroadcastChannel !== "undefined") {
       channel.current = new BroadcastChannel("av-auth");
-      channel.current.onmessage = () => {
+      channel.current.onmessage = (event) => {
+        if (event.data === "signed-out") clearLocalSession();
         void restore();
       };
     }
@@ -93,17 +94,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       if (!signal.aborted && stamp === version.current) {
         setState({ status: "anonymous", user: null });
-        channel.current?.postMessage("session-changed");
+        channel.current?.postMessage("signed-out");
       }
     } finally {
       mutation.current = false;
     }
   }, []);
   const invalidateSession = useCallback(() => {
+    clearLocalSession();
     ++version.current;
     current.current?.abort();
     setState({ status: "anonymous", user: null });
-    channel.current?.postMessage("session-changed");
+    channel.current?.postMessage("signed-out");
   }, []);
   return (
     <AuthContext.Provider
