@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes, Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { RecoveryPage } from "./auth/RecoveryPage";
+import { API_MODE } from "./auth/api";
+import { LocalQueuePage, LocalPatientPage, LocalStaffPage, LocalUnavailablePage } from "./integrations/LocalPages";
 import { LoginPage } from "./auth/LoginPage";
 import { ProtectedArea } from "./auth/ProtectedArea";
 import { QueuePage } from "./auth/reception/QueuePage";
@@ -37,20 +39,20 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/recuperar-senha" element={<RecoveryPage />} />
+        <Route path="/recuperar-senha" element={API_MODE ? <LocalUnavailablePage title="Recuperação indisponível" description="O backend ainda não oferece recuperação de senha. Entre em contato com a administração para recuperar seu acesso." /> : <RecoveryPage />} />
         <Route
           path="/transmissao/tv"
-          element={<PainelPublicoPage presentation="tv" />}
+          element={API_MODE ? <LocalUnavailablePage title="TV aguardando API" description="A tela pública exige uma sessão autorizada e uma API de transmissão. Não exibimos dados locais fictícios." /> : <PainelPublicoPage presentation="tv" />}
         />
         <Route
           path="/transmissao"
-          element={<PainelPublicoPage presentation="admin" />}
+          element={API_MODE ? <LocalUnavailablePage title="Transmissão em integração" description="A API não oferece um canal público de chamadas. A fila de espera só pode ser consultada com credenciais da recepção." /> : <PainelPublicoPage presentation="admin" />}
         />
         <Route
           path="/recepcao"
           element={
             <ProtectedArea role="RECEPCIONISTA">
-              <QueuePage />
+              {API_MODE && !location.search.includes("dev=") ? <LocalQueuePage kind="reception" /> : <QueuePage />}
             </ProtectedArea>
           }
         />
@@ -58,7 +60,7 @@ export default function App() {
           path="/recepcao/usuarios"
           element={
             <ProtectedArea role="RECEPCIONISTA">
-              <ReceptionUsersPage />
+              {API_MODE && !location.search.includes("dev=") ? <LocalStaffPage actor="RECEPCIONISTA" /> : <ReceptionUsersPage />}
             </ProtectedArea>
           }
         />
@@ -66,7 +68,7 @@ export default function App() {
           path="/novo-cadastro"
           element={
             <ProtectedArea role="RECEPCIONISTA">
-              <NovoCadastroPage />
+              {API_MODE && !location.search.includes("dev=") ? <LocalPatientPage /> : <NovoCadastroPage />}
             </ProtectedArea>
           }
         />
@@ -74,7 +76,7 @@ export default function App() {
           path="/medico"
           element={
             <ProtectedArea role="MEDICO">
-              <MedicoPage />
+              {API_MODE && !location.search.includes("dev=") ? <LocalQueuePage kind="doctor" /> : <MedicoPage />}
             </ProtectedArea>
           }
         />
@@ -82,7 +84,7 @@ export default function App() {
           path="/admin"
           element={
             <ProtectedArea role="ADMIN">
-              <AdminPage />
+              {API_MODE && !location.search.includes("dev=") ? <LocalStaffPage actor="ADMIN" /> : <AdminPage />}
             </ProtectedArea>
           }
         />
@@ -92,7 +94,7 @@ export default function App() {
             path={`/admin/${section}`}
             element={
               <ProtectedArea role="ADMIN">
-                <AdminPage />
+                {API_MODE && !location.search.includes("dev=") ? (section === "usuarios" ? <LocalStaffPage actor="ADMIN" /> : <LocalUnavailablePage title={section === "fila" ? "Fila administrativa ainda sem API" : "Relatórios ainda sem API"} description="Este módulo ainda depende de uma rota de consulta autorizada no backend. O painel não apresenta dados simulados como reais." />) : <AdminPage />}
               </ProtectedArea>
             }
           />
