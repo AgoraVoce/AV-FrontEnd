@@ -60,9 +60,9 @@ export function LocalQueuePage({ kind }: { kind: "reception" | "doctor" }) {
     }
   }, [kind]);
   useEffect(() => {
-    void load(true);
+    const initial = window.setTimeout(() => void load(true), 0);
     const timer = window.setInterval(() => void load(), 30000);
-    return () => { window.clearInterval(timer); activeRequest.current?.abort(); };
+    return () => { window.clearTimeout(initial); window.clearInterval(timer); activeRequest.current?.abort(); };
   }, [load]);
   const visible = useMemo(() => {
     const term = query.trim().toLocaleLowerCase("pt-BR");
