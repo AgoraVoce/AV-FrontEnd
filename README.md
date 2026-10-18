@@ -1,63 +1,83 @@
-# AV-FrontEnd · Agora Você
+# Agora Você — Frontend
 
-Frontend React + TypeScript + Vite para a issue [AV-Documents #17](https://github.com/AgoraVoce/AV-Documents/issues/17) (RF01/RNF04). A entrega tem apenas telas e comportamento frontend. O backend ainda não disponibiliza API; os testes usam respostas HTTP simuladas.
+Interface React 19 + TypeScript + Vite. A aplicação tem **integração local** com [AV-Backend](https://github.com/AgoraVoce/AV-Backend) (Express + Prisma/PostgreSQL) na branch de integração. Não foi feito deploy.
 
-## Executar
+## Iniciar com a API real (localhost)
 
-Requer Node.js 22.13+ e npm.
+Requisitos: Node.js 22.13+, npm e PostgreSQL configurado no backend.
+
+**Terminal 1 — AV-Backend**
 
 ```bash
 npm ci
+cp .env.example .env
+# Configure DATABASE_URL e AUTH_JWT_SECRET (chave forte) no .env
+npm run prisma:generate
+npm run prisma:validate
 npm run dev
 ```
 
-Abra http://localhost:5173/login. O Vite encaminha `/auth/*` para `http://127.0.0.1:3001` por padrão. Copie `.env.example` para `.env` e ajuste API_PROXY_TARGET se necessário. Sem backend, a tela mostra no formulário que não foi possível verificar a sessão e oferece nova tentativa; nunca autoriza acesso fictício.
+O backend escuta **http://localhost:3000** e oferece Swagger em `http://localhost:3000/api-docs`. **Importante:** no commit atual do backend, as migrations iniciais ainda não foram incorporadas. As tabelas do Prisma precisam estar criadas em um **banco local descartável**, de forma controlada, antes de testar login/cadastros; jamais aponte comandos de alteração estrutural para banco compartilhado ou produção. Depois do banco pronto, execute `npm run user:provision` no terminal interativo do backend para criar a primeira conta ADMIN ou RECEPCIONISTA.
 
-Para visualizar a fila de recepção localmente sem backend, abra http://localhost:5173/recepcao?dev=recepcionista. Esse bypass existe apenas no servidor de desenvolvimento; não é incluído no build de produção.
+O arquivo de ambiente do backend deve ter `FRONTEND_ORIGIN=http://localhost:5173`. As configurações sensíveis **nunca** vão para arquivos `VITE_*`.
 
-## Telas
-
-- `/login`: acesso único por e-mail e senha para todos os perfis.
-- `/recuperar-senha`: e-mail → código com reenvio/expiração → nova senha e confirmação → retorno ao login. Recuperação adicionada por solicitação posterior à issue original; somente frontend, aguardando API real.
-- `/recepcao`, `/medico`, `/admin`: destinos mínimos após login para verificar sessão, perfil e logout. Painéis operacionais não fazem parte desta entrega.
-
-O perfil retornado pela API define o destino. Query strings como `?area=ADMIN` são ignoradas e não alteram apresentação, payload ou permissões. A logo original está em `public/agora-voce-logo.png`.
-
-Os campos ficam editáveis durante GET /auth/me e após falha de restauração. Entrar fica desabilitado enquanto e-mail ou senha estiverem vazios. Erros de credenciais usam toast e campos vermelhos; falhas de restauração aparecem no formulário com ação explícita de nova tentativa. Ao corrigir um campo, sua marcação é removida. Um novo login cancela a leitura anterior, evitando que uma resposta antiga sobrescreva a sessão. Durante POST /auth/login, o formulário bloqueia duplicidade.
-
-`src/auth/permissions.ts` centraliza permissões de visualização das três áreas, derivadas do role autenticado. Não há acesso automático de Admin às outras áreas. A autorização efetiva continua no backend; permissões por ação operacional dependem do catálogo oficial e das futuras telas.
-
-## Estrutura
-
-- `src/auth/`: API, contrato tipado, contexto/sessão, login e guards visuais.
-- `src/components/`: marca, feedback e loading compartilhados.
-- `src/styles/`: CSS responsivo e tokens gerados.
-- `tests/auth.spec.ts`: testes de navegador com HTTP interceptado e axe.
-- `tests/recovery.spec.ts`: recuperação, falhas, duplicidade, expiração, privacidade e acessibilidade com API interceptada.
-- `docs/auth-api.md`: contrato proposto para combinar com a equipe de backend.
-- `docs/password-recovery-api.md`: contrato proposto de recuperação e pendências de segurança do servidor.
-- `DESIGN.md`, `UX-CONTRACT.md`: identidade e comportamento; tokens gerados a partir do DESIGN.
-
-## Validação
+**Terminal 2 — AV-FrontEnd**
 
 ```bash
-npx playwright install chromium
+npm ci
+cp .env.example .env
+npm run dev
+```
+
+Abra **http://localhost:5173/login**. O Vite encaminha `/api/*` para `http://127.0.0.1:3000` via `API_PROXY_TARGET`, evitando configurar CORS diretamente no navegador.
+
+### O que está integrado
+
+| Perfil | Operação | API |
+| --- | --- | --- |
+| Todos os perfis internos | Login com e-mail/senha, JWT Bearer | `POST /api/v1/auth/login` |
+| Recepção | Fila em espera, atualizada a cada 30 s | `GET /api/v1/queues/waiting` |
+| Recepção | Cadastrar paciente | `POST /api/v1/patients` |
+| Recepção | Registrar entrada em espera com classificação manual | `POST /api/v1/entries` |
+| Médico | Consultar somente a fila atribuída ao próprio médico | `GET /api/v1/queues/me` |
+| Administrador | Cadastrar funcionário e definir perfil | `POST /api/v1/employees` |
+
+Erros 400/401/403/409/429/rede têm respostas visíveis; ao receber 401 o frontend encerra a sessão local. Não exibimos pacientes, médicos, indicadores ou relatórios de demonstração nas páginas integradas.
+
+### Limitações atuais do backend
+
+- **Não há `GET /auth/me` nem logout/revogação no servidor.** JWT válido por até 15 minutos, guardado **somente em memória** (não em cookies, localStorage ou sessionStorage). Recarregar a página exige novo login. Logout apaga o token local; não revoga JWT no backend.
+- **Não há recuperação de senha**; a tela integrada informa indisponibilidade, sem prometer envio de e-mail.
+- **Não há GET de funcionários/pacientes nem busca por CPF.** A listagem administrativa mostra somente as contas criadas naquela aba, não todo o banco. Para adicionar nova entrada a paciente existente, é necessário o UUID dele.
+- **Recepcionista não pode cadastrar funcionário:** essa é a regra efetiva da API atual (`POST /employees` exige ADMIN), mesmo que telas anteriores permitissem uma simulação local.
+- **Não há chamadas, prescrição ou finalização por API, nem consulta administrativa da fila e relatórios.** Não há persistência simulada desses fluxos.
+- Cadastro de entrada atual envia `symptomIds: []` e texto em `otherSymptoms`. A cor é selecionada manualmente e a entrada é criada sem médico e sem senha, como permitido pelo contrato. Para aparecer na fila do médico, é necessário atribuí-lo pelo fluxo/API que ainda será implementado.
+- A TV não é pública na API atual; `GET /queues/waiting` exige autenticação de RECEPCIONISTA. O frontend não expõe esses dados sem autorização.
+
+A identidade visual original, os componentes existentes e as telas de demonstração continuam disponíveis para teste isolado com `VITE_AV_LOCAL_API=false`, somente durante desenvolvimento. Nesse modo, as rotas `?dev=recepcionista` e semelhantes permitem testar o layout **sem criar dados reais**. O build normal integra a API local.
+
+## Qualidade
+
+```bash
 npm run lint
 npm run tokens:check
 npm run design:lint
 npm run format:check
-npm test
 npm run build
+npm test                 # testes legados em modo de demonstração isolado
+npm run test:local-api    # smoke HTTP interceptado do modo de integração local
 ```
 
-Testes cobrem login por perfil, refresh, logout, inativo/credenciais inválidas simulados, campos vazios, duplicidade, rede/5xx, timeout, 429, resposta malformada, acesso de perfil diferente, teclado/reveal, ausência de senha em console/storage e responsividade 320–1504px. Axe cobre violações detectáveis de WCAG AA no login único, inclusive quando recebe parâmetros antigos de área. Para gerar tokens após atualizar o DESIGN: `npm run tokens:generate`.
+Os testes da integração usam respostas HTTP controladas; **não** demonstram uma execução real contra PostgreSQL. Essa validação precisa ser realizada manualmente com as duas aplicações e banco local preparados.
 
-## Integração e publicação
+## Arquitetura
 
-A API proposta é POST /auth/login, GET /auth/me e POST /auth/logout. Detalhes e limites em `docs/auth-api.md`. Não há contas, credenciais de demonstração ou mocks incorporados no build. Não colocar segredos em variáveis VITE_*.
+- `src/auth/`: login, sessão efêmera e proteção visual de perfis.
+- `src/integrations/client.ts`: API tipada, Bearer JWT, erros e timeout.
+- `src/integrations/LocalPages.tsx`: filas e formulários integrados.
+- `src/components/` e `src/styles/`: design system, tokens e estrutura existentes.
+- `e2e-local/`: testes de contrato da interface integrada.
+- `DESIGN.md` / `UX-CONTRACT.md`: referências de design e UX.
+- `docs/auth-api.md` / `docs/password-recovery-api.md`: contratos históricos, não implementações do backend presente.
 
-A recuperação propõe POST /auth/password/request, /verify e /reset, isolados em `recovery-api.ts`. A UI só avança após respostas válidas e só confirma alteração após 2xx do reset. Código, autorização e senha ficam em memória; refresh recomeça. Política de senha, duração e espera de reenvio vêm da API. O backend ainda precisa implementar envio, verificação, uso único e revogação; veja `docs/password-recovery-api.md`.
-
-`npm run build` gera `dist/`. Hospede com HTTPS; configure fallback de rotas SPA para index.html e encaminhe `/auth/*` para a API da mesma origem antes do fallback. `npm run preview` é somente verificação local de build, não servidor de produção.
-
-O backend deve assegurar autorização, bloqueio de inativos e revogação. Guards no React servem à UX. A integração real e suas evidências são pendências da equipe backend; passar testes simulados não encerra o DoD integrado da issue.
+Antes de qualquer deploy, negociar endpoints faltantes, revogação/restauração de sessão e estratégia de autenticação segura com o time de backend.
