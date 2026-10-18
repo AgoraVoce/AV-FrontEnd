@@ -27,15 +27,15 @@ export function parseUser(payload: unknown): User {
     !data.id ||
     typeof data.name !== "string" ||
     !data.name ||
-    typeof data.login !== "string" ||
-    !data.login ||
+    typeof (data.login ?? data.email) !== "string" ||
+    !(data.login ?? data.email) ||
     !ROLES.includes(data.role as Role)
   )
     throw new Error("invalid-session");
   return {
     id: data.id,
     name: data.name,
-    login: data.login,
+    login: (data.login ?? data.email) as string,
     role: data.role as Role,
   };
 }

@@ -16,7 +16,7 @@ import {
 import type { ReactNode } from "react";
 import { Brand } from "./Brand";
 import { useAuth } from "../auth/context";
-import { ERROR_COPY, AuthError } from "../auth/api";
+import { ERROR_COPY, AuthError, API_MODE } from "../auth/api";
 
 const MAIN_MENU = [
   { to: "/recepcao", label: "Triagem & Fila", icon: ListChecks },
@@ -87,7 +87,7 @@ export function AppShell({
   const unitContext = headerContext ?? (
     <span className="app-unit-chip">
       <Building2 size={14} aria-hidden="true" />
-      PRONTO-SOCORRO CENTRAL
+      {API_MODE ? "API LOCAL · AGORA VOCÊ" : "PRONTO-SOCORRO CENTRAL"}
     </span>
   );
 
@@ -157,12 +157,12 @@ export function AppShell({
       <div className="app-body">
         <aside
           className={`sidebar${sidebarOpen ? " is-open" : ""}`}
-          aria-label="Navegação da recepção"
+          aria-label="Navegação principal"
         >
           <nav className="sidebar-nav" aria-label="Módulos de atendimento">
             <div className="nav-group">
               <p className="nav-group-title">MÓDULOS DE ATENDIMENTO</p>
-              {MAIN_MENU.map(({ to, label, icon: Icon }) => (
+              {MAIN_MENU.filter(({ to }) => !API_MODE || (activeRole === "RECEPCIONISTA" && ["/recepcao", "/novo-cadastro"].includes(to)) || (activeRole === "MEDICO" && to === "/medico") || (activeRole === "ADMIN" && to === "/admin")).map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={
@@ -201,7 +201,7 @@ export function AppShell({
 
             <div className="nav-group">
               <p className="nav-group-title">TRANSMISSÃO</p>
-              {TRANSMISSION_MENU.map(({ to, label, icon: Icon }) => (
+              {!API_MODE && TRANSMISSION_MENU.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -234,7 +234,7 @@ export function AppShell({
 
           <div className="sidebar-footer">
             <span className="service-status-dot" aria-hidden="true" />
-            <span>Serviço Ativo</span>
+            <span>{API_MODE ? "Ambiente local" : "Serviço Ativo"}</span>
             <strong>v2.4</strong>
           </div>
         </aside>

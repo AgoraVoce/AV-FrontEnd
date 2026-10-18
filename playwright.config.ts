@@ -27,6 +27,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run dev",
+    env: { VITE_AV_LOCAL_API: process.env.PLAYWRIGHT_API_MODE === "1" ? "true" : "false" },
     url: "http://localhost:5173",
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,

@@ -5,7 +5,7 @@ import { Brand } from "../components/Brand";
 import { Feedback, Spinner } from "../components/Feedback";
 import { usePageTitle } from "../components/usePageTitle";
 import { useAuth } from "./context";
-import { AuthError, ERROR_COPY } from "./api";
+import { API_MODE, AuthError, ERROR_COPY } from "./api";
 import { HOME_BY_ROLE, LABEL_BY_ROLE } from "./types";
 import type { Role } from "./types";
 import { AREA_PERMISSION_BY_ROLE, hasPermission } from "./permissions";
@@ -18,7 +18,7 @@ export function ProtectedArea({
 }) {
   const { state, signOut } = useAuth();
   const devBypass =
-    import.meta.env.DEV &&
+    !API_MODE && import.meta.env.DEV &&
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("dev")?.toLowerCase() ===
       role.toLowerCase();
