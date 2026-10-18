@@ -107,6 +107,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ status: "anonymous", user: null });
     channel.current?.postMessage("signed-out");
   }, []);
+  useEffect(() => {
+    const onExpired = () => invalidateSession();
+    window.addEventListener("av:session-expired", onExpired);
+    return () => window.removeEventListener("av:session-expired", onExpired);
+  }, [invalidateSession]);
   return (
     <AuthContext.Provider
       value={{ state, restore, signIn, signOut, invalidateSession }}
