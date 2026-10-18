@@ -8,8 +8,12 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: true,
       proxy: {
+        "/api": {
+          target: env.API_PROXY_TARGET || "http://127.0.0.1:3000",
+          changeOrigin: false,
+        },
         "/auth": {
-          target: env.API_PROXY_TARGET || "http://127.0.0.1:3001",
+          target: env.LEGACY_AUTH_PROXY_TARGET || "http://127.0.0.1:3001",
           changeOrigin: false,
         },
       },
