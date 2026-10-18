@@ -33,3 +33,5 @@ jobs:
         run: npm run design:lint
       - name: Playwright
         run: npx playwright test --workers=1
+      - name: Integração local (API interceptada)
+        run: npm run test:local-api -- --workers=1
