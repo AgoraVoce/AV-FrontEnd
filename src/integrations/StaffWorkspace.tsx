@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, RefreshCw, ShieldAler
 import { Link, useNavigate } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
-import { useToast } from "../components/Toast";
+import { useToast } from "../components/useToast";
 import { createEmployee, type EmployeeRecord } from "./client";
 import { operations, type Employee, type Page } from "./operational-api";
 import { errorText } from "./shared-helpers";
