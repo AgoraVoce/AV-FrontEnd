@@ -49,6 +49,7 @@ test("login usa Bearer real e a recepção exibe a fila do backend",async({page}
 test("recepção busca paciente existente por nome e registra entrada com médico",async({page})=>{
   await mockQueue(page);
   await mockDoctors(page);
+  await page.route("**/api/v1/patients/"+patientId,route=>route.fulfill({json:{id:patientId,fullName:"Pessoa Existente",cpf:"52998224725",birthDate:null,email:null,phone:null,createdAt:"2026-10-19T09:00:00Z",updatedAt:"2026-10-19T09:00:00Z"}}));
   await page.route("**/api/v1/patients?*",route=>route.fulfill({json:{items:[{
     id:patientId,fullName:"Pessoa Existente",cpf:"52998224725",birthDate:null,email:null,phone:null,createdAt:"2026-10-19T09:00:00Z",updatedAt:"2026-10-19T09:00:00Z",
   }],page:1,pageSize:10,total:1}}));
