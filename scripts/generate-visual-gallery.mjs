@@ -20,7 +20,7 @@ function escapeHtml(value) {
 const frames = walk(root).map((file) => JSON.parse(readFileSync(file, "utf8"))).sort((a, b) =>
   (a.mode + "/" + a.viewport + "/" + a.screen).localeCompare(b.mode + "/" + b.viewport + "/" + b.screen, "pt-BR"),
 );
-const warnings = frames.filter((item) => item.overflowPx > 8 || item.brokenImages.length > 0 || item.pageErrors.length > 0);
+const warnings = frames.filter((item) => item.overflowPx > 8 || item.brokenImages.length > 0 || item.pageErrors.length > 0 || (item.horizontalScrollRegions || []).length > 0);
 const groups = [
   ["api", "Integração com API simulada (sem dados reais)"],
   ["demo", "Prévia de design (dados fictícios)"],
@@ -30,6 +30,7 @@ const cards = (items) => items.map((item) => {
   const errors = [
     item.overflowPx > 8 ? "Overflow: " + item.overflowPx + "px" : "",
     ...(item.brokenImages || []).map((x) => "Imagem quebrada: " + x),
+    ...(item.horizontalScrollRegions || []).map((x) => "Rolagem horizontal interna (" + x.element + "): +" + x.hiddenWidthPx + "px. Conferir acesso aos controles."),
     ...(item.pageErrors || []).map((x) => "JS: " + x),
   ].filter(Boolean);
   const issue = errors.length ? "<p class='warning'>" + errors.map(escapeHtml).join("<br>") + "</p>" : "<p class='ok'>Sem problemas detectados automaticamente</p>";
@@ -88,7 +89,8 @@ const markdown = [
     "- [" + item.mode + "/" + item.viewport + "/" + item.screen + "](" + item.image + ")" +
     (item.overflowPx > 8 ? " — overflow " + item.overflowPx + "px" : "") +
     (item.pageErrors.length ? " — erro JavaScript" : "") +
-    (item.brokenImages.length ? " — imagem quebrada" : ""),
+    (item.brokenImages.length ? " — imagem quebrada" : "") +
+    ((item.horizontalScrollRegions || []).length ? " — rolagem horizontal interna" : ""),
   ),
   "",
   "## Checklist para revisão humana",
