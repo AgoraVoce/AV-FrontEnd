@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, CheckCircle2, ChevronLeft, ClipboardList, RefreshCw, Search, UserPlus, XCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, ChevronLeft, ClipboardList, RefreshCw, UserPlus, XCircle } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
 import { createPatient, getWaitingQueue, type WaitingItem } from "./client";
