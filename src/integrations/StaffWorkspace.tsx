@@ -5,7 +5,7 @@ import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
 import { createEmployee, type EmployeeRecord } from "./client";
 import { operations, type Employee, type Page } from "./operational-api";
-import { errorText } from "./shared-ui";
+import { errorText } from "./shared-helpers";
 import "./local.css";
 import "./operations.css";
 
