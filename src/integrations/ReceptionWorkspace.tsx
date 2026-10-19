@@ -229,7 +229,7 @@ export function PatientWorkspace() {
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   useEffect(() => {
-    if (!patientId) { setLoadingExisting(false); return; }
+    if (!patientId) return;
     const controller = new AbortController();
     void operations.patient(patientId, controller.signal).then(record => {
       if (!controller.signal.aborted) setChosen({ id: record.id, name: record.fullName });
