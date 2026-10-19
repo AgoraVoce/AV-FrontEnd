@@ -113,7 +113,14 @@ export function ReceptionWorkspace() {
       </tr></thead><tbody>{visible.map(item=><tr key={item.entryId}>
         <td><strong>{item.fullName}</strong></td><td><span className="local-code">{item.queueCode || "Sem senha"}</span></td>
         <td><button className="local-secondary-button operational-small-button" type="button" onClick={()=>void openDetails(item.entryId)}>Ver detalhes</button></td>
-      </tr>)}</tbody></table></div>}
+      </tr>)}</tbody></table>
+      <div className="operational-mobile-cards" aria-label="Pacientes na fila de espera">
+        {visible.map(item => <article className="operational-mobile-card" key={item.entryId}>
+          <div><strong>{item.fullName}</strong><span className="local-code">{item.queueCode || "Sem senha"}</span></div>
+          <button className="local-secondary-button operational-small-button" type="button" onClick={() => void openDetails(item.entryId)}>Ver detalhes <ArrowRight size={15} aria-hidden="true" /></button>
+        </article>)}
+      </div>
+      </div>}
     {(detailsBusy || detailError || selected) && <section className="local-form operational-detail" aria-label="Detalhes da entrada">
       <div className="operational-row"><h2>Detalhes do atendimento</h2><button type="button" className="operational-close" onClick={()=>{setSelected(null);setDetailError("");setConfirmCancel(false);}} aria-label="Fechar detalhes"><XCircle size={21}/></button></div>
       {detailsBusy && <p role="status">Consultando prontidão da fila…</p>}
