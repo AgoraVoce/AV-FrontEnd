@@ -158,6 +158,7 @@ export function PatientWorkspace() {
   const [mode,setMode] = useState<"search"|"new">("search");
   const [search,setSearch] = useState("");
   const [results,setResults] = useState<Patient[]>([]);
+  const [resultsFor,setResultsFor] = useState("");
   const [searching,setSearching] = useState(false);
   const [searchError,setSearchError] = useState("");
   const [patient,setPatient] = useState(EMPTY);
@@ -179,7 +180,7 @@ export function PatientWorkspace() {
       setSearching(true);setSearchError("");
       const cpf=searched.replace(/\D/g,"");
       const filter=cpf.length===11 && /^[\d.\-\s]+$/.test(searched) ? {cpf:searched,pageSize:10} : {name:searched,pageSize:10};
-      void operations.patients(filter,controller.signal).then(page=>setResults(page.items))
+      void operations.patients(filter,controller.signal).then(page=>{setResults(page.items);setResultsFor(searched);})
         .catch(cause=>{if(!controller.signal.aborted)setSearchError(errorText(cause));})
         .finally(()=>{if(!controller.signal.aborted)setSearching(false);});
     },350);
@@ -191,6 +192,15 @@ export function PatientWorkspace() {
     const timer=window.setTimeout(()=>{void operations.doctors({pageSize:100},ctrl.signal).then(p=>setDoctors(p.items)).catch(cause=>{if(!ctrl.signal.aborted)setError(errorText(cause));});},0);
     return()=>{window.clearTimeout(timer);ctrl.abort();};
   },[chosen]);
+  async function choosePatient(id:string) {
+    if(lock.current)return;
+    lock.current=true;setBusy(true);setSearchError("");
+    try {
+      const record=await operations.patient(id);
+      setChosen({id:record.id,name:record.fullName});
+    } catch(cause){setSearchError(errorText(cause));}
+    finally{lock.current=false;setBusy(false);}
+  }
   async function savePatient(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();if(lock.current)return;
     lock.current=true;setBusy(true);setError("");
@@ -238,9 +248,9 @@ export function PatientWorkspace() {
         <input autoFocus type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Digite pelo menos 2 caracteres" /></label>
       {searching && <p role="status" className="local-note">Pesquisando no cadastro…</p>}
       {searchError && <p role="alert" className="local-message is-error">{searchError}</p>}
-      {searched.length>=2 && !searching && !searchError && results.length===0 && <p className="local-note">Nenhum cadastro encontrado. Confira os dados ou crie um paciente.</p>}
-      {results.length>0 && <div className="operational-result-list" aria-label="Pacientes encontrados">
-        {results.map(item=><button type="button" className="operational-result" key={item.id} onClick={()=>{setChosen({id:item.id,name:item.fullName});setError("");}}>
+      {searched.length>=2 && !searching && !searchError && resultsFor===searched && results.length===0 && <p className="local-note">Nenhum cadastro encontrado. Confira os dados ou crie um paciente.</p>}
+      {resultsFor===searched && results.length>0 && <div className="operational-result-list" aria-label="Pacientes encontrados">
+        {results.map(item=><button type="button" className="operational-result" key={item.id} disabled={busy} onClick={()=>void choosePatient(item.id)}>
           <span><strong>{item.fullName}</strong><small>CPF terminando em {item.cpf.slice(-4)}</small></span><ArrowRight size={18} aria-hidden="true"/></button>)}
       </div>}
       <div className="local-actions"><button className="local-secondary-button" type="button" onClick={()=>{setMode("new");setError("");}}><UserPlus size={16}/> Novo paciente</button></div>
