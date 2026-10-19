@@ -2,7 +2,10 @@ import { Navigate, Route, Routes, Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { RecoveryPage } from "./auth/RecoveryPage";
 import { API_MODE } from "./auth/api";
-import { LocalQueuePage, LocalPatientPage, LocalStaffPage, LocalUnavailablePage } from "./integrations/LocalPages";
+import { LocalUnavailablePage } from "./integrations/LocalPages";
+import { ReceptionWorkspace, PatientWorkspace } from "./integrations/ReceptionWorkspace";
+import { DoctorWorkspace } from "./integrations/DoctorWorkspace";
+import { StaffWorkspace } from "./integrations/StaffWorkspace";
 import { LoginPage } from "./auth/LoginPage";
 import { ProtectedArea } from "./auth/ProtectedArea";
 import { QueuePage } from "./auth/reception/QueuePage";
@@ -52,7 +55,7 @@ export default function App() {
           path="/recepcao"
           element={
             <ProtectedArea role="RECEPCIONISTA">
-              {API_MODE ? <LocalQueuePage kind="reception" /> : <QueuePage />}
+              {API_MODE ? <ReceptionWorkspace /> : <QueuePage />}
             </ProtectedArea>
           }
         />
@@ -60,7 +63,7 @@ export default function App() {
           path="/recepcao/usuarios"
           element={
             <ProtectedArea role="RECEPCIONISTA">
-              {API_MODE ? <LocalStaffPage actor="RECEPCIONISTA" /> : <ReceptionUsersPage />}
+              {API_MODE ? <StaffWorkspace actor="RECEPCIONISTA" /> : <ReceptionUsersPage />}
             </ProtectedArea>
           }
         />
@@ -68,7 +71,7 @@ export default function App() {
           path="/novo-cadastro"
           element={
             <ProtectedArea role="RECEPCIONISTA">
-              {API_MODE ? <LocalPatientPage /> : <NovoCadastroPage />}
+              {API_MODE ? <PatientWorkspace /> : <NovoCadastroPage />}
             </ProtectedArea>
           }
         />
@@ -76,7 +79,7 @@ export default function App() {
           path="/medico"
           element={
             <ProtectedArea role="MEDICO">
-              {API_MODE ? <LocalQueuePage kind="doctor" /> : <MedicoPage />}
+              {API_MODE ? <DoctorWorkspace /> : <MedicoPage />}
             </ProtectedArea>
           }
         />
@@ -84,7 +87,7 @@ export default function App() {
           path="/admin"
           element={
             <ProtectedArea role="ADMIN">
-              {API_MODE ? <LocalStaffPage actor="ADMIN" /> : <AdminPage />}
+              {API_MODE ? <StaffWorkspace actor="ADMIN" /> : <AdminPage />}
             </ProtectedArea>
           }
         />
@@ -94,7 +97,7 @@ export default function App() {
             path={`/admin/${section}`}
             element={
               <ProtectedArea role="ADMIN">
-                {API_MODE ? (section === "usuarios" ? <LocalStaffPage actor="ADMIN" /> : <LocalUnavailablePage title={section === "fila" ? "Fila administrativa ainda sem API" : "Relatórios ainda sem API"} description="Este módulo ainda depende de uma rota de consulta autorizada no backend. O painel não apresenta dados simulados como reais." />) : <AdminPage />}
+                {API_MODE ? (section === "usuarios" ? <StaffWorkspace actor="ADMIN" /> : <LocalUnavailablePage title={section === "fila" ? "Fila administrativa ainda sem API" : "Relatórios ainda sem API"} description="Este módulo ainda depende de uma rota de consulta autorizada no backend. O painel não apresenta dados simulados como reais." />) : <AdminPage />}
               </ProtectedArea>
             }
           />
