@@ -2,6 +2,8 @@ import { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
+  LayoutDashboard,
+  Search,
   Building2,
   ListChecks,
   LogOut,
@@ -17,6 +19,7 @@ import type { ReactNode } from "react";
 import { Brand } from "./Brand";
 import { useAuth } from "../auth/context";
 import { ERROR_COPY, AuthError, API_MODE } from "../auth/api";
+import { useToast } from "./useToast";
 
 const MAIN_MENU = [
   { to: "/recepcao", label: "Triagem & Fila", icon: ListChecks },
@@ -40,10 +43,10 @@ export function AppShell({
 }) {
   const { state, signOut, invalidateSession } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [signOutError, setSignOutError] = useState("");
   const activeRole = state.status === "authenticated"
     ? state.user.role
     : location.pathname.startsWith("/medico")
@@ -94,7 +97,6 @@ export function AppShell({
   async function handleSignOut() {
     if (isSigningOut) return;
     setIsSigningOut(true);
-    setSignOutError("");
     if (state.status !== "authenticated") {
       invalidateSession();
       navigate("/login", { replace: true });
@@ -106,14 +108,10 @@ export function AppShell({
       await signOut(controller.signal);
       navigate("/login", { replace: true });
     } catch (error) {
-      setSignOutError(
+      toast.error("Não foi possível encerrar a sessão",
         error instanceof AuthError && error.kind === "invalid"
           ? "O serviço não confirmou o encerramento. Tente novamente."
-          : `Não foi possível encerrar sua sessão. ${
-              ERROR_COPY[
-                error instanceof AuthError ? error.kind : "unavailable"
-              ]
-            }`,
+          : ERROR_COPY[error instanceof AuthError ? error.kind : "unavailable"]
       );
     } finally {
       setIsSigningOut(false);
@@ -162,7 +160,7 @@ export function AppShell({
           <nav className="sidebar-nav" aria-label="Módulos de atendimento">
             <div className="nav-group">
               <p className="nav-group-title">MÓDULOS DE ATENDIMENTO</p>
-              {MAIN_MENU.filter(({ to }) => !API_MODE || (activeRole === "RECEPCIONISTA" && ["/recepcao", "/novo-cadastro"].includes(to)) || (activeRole === "MEDICO" && to === "/medico") || (activeRole === "ADMIN" && to === "/admin")).map(({ to, label, icon: Icon }) => (
+              {MAIN_MENU.filter(({ to }) => !API_MODE || (activeRole === "RECEPCIONISTA" && ["/recepcao", "/novo-cadastro"].includes(to)) || (activeRole === "ADMIN" && to === "/admin")).map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={
@@ -177,6 +175,8 @@ export function AppShell({
                             : to
                   }
                   title={label}
+                  end={to === "/medico" || to === "/admin"}
+                  onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) =>
                     `nav-item${isActive ? " is-active" : ""}`
                   }
@@ -185,10 +185,18 @@ export function AppShell({
                   <span>{label}</span>
                 </NavLink>
               ))}
+              {API_MODE && activeRole === "RECEPCIONISTA" && <NavLink to="/pacientes" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Search size={18} aria-hidden="true" /><span>Pacientes cadastrados</span></NavLink>}
+              {API_MODE && activeRole === "MEDICO" && <>
+                <NavLink end to="/medico" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><LayoutDashboard size={18} aria-hidden="true" /><span>Dashboard</span></NavLink>
+                <NavLink to="/medico/fila" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><ListChecks size={18} aria-hidden="true" /><span>Minha fila</span></NavLink>
+                <NavLink to="/medico/atendimento" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Stethoscope size={18} aria-hidden="true" /><span>Paciente atual</span></NavLink>
+              </>}
               {activeRole !== "MEDICO" && (!API_MODE || activeRole === "ADMIN") && (
                 <NavLink
                   to={managementPath}
                   title="Gestão de Usuários"
+                  end
+                  onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) =>
                     `nav-item${isActive ? " is-active" : ""}`
                   }
@@ -217,11 +225,6 @@ export function AppShell({
             </div>
           </nav>
 
-          {signOutError && (
-            <p className="sidebar-signout-error" role="alert">
-              {signOutError}
-            </p>
-          )}
           <button
             className="sidebar-signout-button"
             type="button"
