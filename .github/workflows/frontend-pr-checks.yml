@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# Evita que Chromium/Playwright de commits antigos da mesma PR disputem recursos.
+concurrency:
+  group: frontend-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   quality:
     runs-on: ubuntu-latest
