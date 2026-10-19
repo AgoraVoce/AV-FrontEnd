@@ -13,12 +13,12 @@ import "./operations.css";
 
 export function ReceptionWorkspace() {
   usePageTitle("Recepção · Fila de espera");
+  const toast = useToast();
   const [items, setItems] = useState<WaitingItem[]>([]);
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [selected, setSelected] = useState<EntryDetail | null>(null);
   const [detailsBusy, setDetailsBusy] = useState(false);
@@ -41,11 +41,11 @@ export function ReceptionWorkspace() {
         setUpdatedAt(new Date());
       }
     } catch (cause) {
-      if (!controller.signal.aborted) setError(errorText(cause));
+      if (!controller.signal.aborted) { setError(errorText(cause)); toast.error("Não foi possível atualizar a fila", errorText(cause)); }
     } finally {
       if (!controller.signal.aborted) { setLoading(false); setRefreshing(false); }
     }
-  }, []);
+  }, [toast]);
   useEffect(() => {
     const initial = window.setTimeout(() => void load(true), 0);
     const interval = window.setInterval(() => void load(), 30000);
@@ -55,24 +55,24 @@ export function ReceptionWorkspace() {
     s.toLocaleLowerCase("pt-BR").includes(filter.trim().toLocaleLowerCase("pt-BR")))), [items, filter]);
 
   async function openDetails(id: string) {
-    setDetailsBusy(true); setSelected(null); setDetailError(""); setNotice(""); setConfirmCancel(false);
+    setDetailsBusy(true); setSelected(null); setDetailError(""); setConfirmCancel(false);
     try {
       const [entry, physicians] = await Promise.all([operations.entry(id), operations.doctors({ pageSize: 100 })]);
       setSelected(entry); setDoctors(physicians.items); setDoctorId(entry.doctor?.id ?? "");
-    } catch (cause) { setDetailError(errorText(cause)); }
+    } catch (cause) { setDetailError(errorText(cause)); toast.error("Não foi possível consultar a entrada", errorText(cause)); }
     finally { setDetailsBusy(false); }
   }
   async function act(action: "assign" | "cancel") {
     if (!selected || actionBusy) return;
-    setActionBusy(true); setDetailError(""); setNotice("");
+    setActionBusy(true); setDetailError("");
     try {
       if (action === "assign") {
         if (!doctorId) return;
         await operations.assignDoctor(selected.id, doctorId);
-        setNotice("Médico atribuído com sucesso. A fila dele já pode ser consultada.");
+        toast.success("Médico atribuído à entrada");
       } else {
         await operations.setStatus(selected.id, "cancelled");
-        setNotice("Saída da fila registrada no servidor.");
+        toast.success("Desistência registrada na fila");
       }
       const id = selected.id;
       setConfirmCancel(false);
@@ -81,6 +81,7 @@ export function ReceptionWorkspace() {
       await load();
     } catch (cause) {
       setDetailError(errorText(cause));
+      toast.error("Não foi possível atualizar a entrada", errorText(cause));
       // On conflicts, do not keep offering an outdated action as if it could succeed.
       try { setSelected(await operations.entry(selected.id)); } catch { /* Retain error. */ }
     } finally { setActionBusy(false); }
@@ -90,7 +91,7 @@ export function ReceptionWorkspace() {
       <div><span className="local-eyebrow">Recepção · Atendimento imediato</span>
         <h1>Fila de espera</h1>
         <p>Consulte pacientes em espera, confira seus dados e atribua o médico de plantão. A chamada é feita exclusivamente pelo médico.</p></div>
-      <Link className="local-primary" to="/novo-cadastro"><UserPlus size={17} aria-hidden="true"/> Cadastrar paciente</Link>
+      <div className="local-actions"><Link className="local-secondary-button" to="/pacientes">Buscar pacientes</Link><Link className="local-primary" to="/novo-cadastro"><UserPlus size={17} aria-hidden="true"/> Cadastrar paciente</Link></div>
     </header>
     <div className="operational-summary">
       <div className="operational-kpi"><span>Pacientes aguardando</span><strong>{loading && !updatedAt ? "—" : items.length}</strong><small>Fila sincronizada com a clínica</small></div>
@@ -102,8 +103,7 @@ export function ReceptionWorkspace() {
       <button className="local-secondary-button" type="button" disabled={refreshing || loading} onClick={()=>void load()}>
         <RefreshCw size={16} aria-hidden="true"/> {refreshing ? "Atualizando…" : "Atualizar fila"}</button>
     </div>
-    {notice && <p className="local-message is-success" role="status">{notice}</p>}
-    {error && <p className="local-message is-error" role="alert">{error} <button type="button" className="operational-inline" onClick={()=>void load()}>Tentar novamente</button></p>}
+    {error && <button type="button" className="local-secondary-button" onClick={()=>void load()}>Tentar carregar a fila novamente</button>}
     {loading ? <p className="local-message" role="status">Carregando pacientes…</p> :
       !error && visible.length === 0 ? <div className="local-empty"><ClipboardList size={26} aria-hidden="true"/>
         <h2>{filter ? "Nenhum paciente encontrado" : "Nenhum paciente aguardando"}</h2>
@@ -117,7 +117,7 @@ export function ReceptionWorkspace() {
     {(detailsBusy || detailError || selected) && <section className="local-form operational-detail" aria-label="Detalhes da entrada">
       <div className="operational-row"><h2>Detalhes do atendimento</h2><button type="button" className="operational-close" onClick={()=>{setSelected(null);setDetailError("");setConfirmCancel(false);}} aria-label="Fechar detalhes"><XCircle size={21}/></button></div>
       {detailsBusy && <p role="status">Consultando prontidão da fila…</p>}
-      {detailError && <p role="alert" className="local-message is-error">{detailError}</p>}
+      {detailError && <button type="button" className="local-secondary-button" onClick={()=>{if(selected)void openDetails(selected.id);}}>Tentar novamente</button>}
       {selected && <><div className="operational-row operational-detail-head">
         <div><strong>{selected.patient.fullName}</strong><small>Entrada {formatDate(selected.enteredAt)} · {selected.queueCode || "Sem senha"}</small></div>
         <StatePill status={selected.status}/></div>
@@ -147,7 +147,7 @@ export function ReceptionWorkspace() {
           <button type="button" className="local-secondary-button" onClick={()=>setConfirmCancel(false)}>Manter na fila</button></div></div>}
       </>}
     </section>}
-    <div className="local-bottom"><Link to="/novo-cadastro" className="local-secondary-button"><UserPlus size={16}/> Novo atendimento</Link>
+    <div className="local-bottom"><Link to="/pacientes" className="local-secondary-button">Pacientes cadastrados</Link><Link to="/novo-cadastro" className="local-secondary-button"><UserPlus size={16}/> Novo atendimento</Link>
       <p className="local-note">O painel mostra somente os pacientes aguardando. Estados clínicos completos aparecem no detalhe individual.</p></div>
   </div></AppShell>;
 }
