@@ -82,3 +82,28 @@ npm run visual:report
 ```
 
 Abra `artifacts/visual-review/index.html`. O procedimento, a lista de telas e os critérios de inspeção estão em [docs/revisao-visual.md](docs/revisao-visual.md). **Testes verdes não substituem a revisão humana das capturas.**
+
+
+## Navegação operacional por perfil
+
+O modo integrado (`VITE_AV_LOCAL_API=true`) separa listagem, cadastro e atendimento em páginas independentes:
+
+| Perfil | Rota | Conteúdo |
+| --- | --- | --- |
+| ADMIN | `/admin` ou `/admin/usuarios` | Listagem, pesquisa, filtros e paginação dos funcionários |
+| ADMIN | `/admin/novo-funcionario` | Somente o formulário de novo funcionário, com voltar/cancelar |
+| RECEPCIONISTA | `/recepcao` | Triagem, fila de espera e detalhes da entrada |
+| RECEPCIONISTA | `/pacientes` | Lista de pacientes cadastrados, pesquisa por nome/CPF, paginação |
+| RECEPCIONISTA | `/novo-cadastro` | Cadastro direto de um paciente novo, sem etapa de busca |
+| RECEPCIONISTA | `/novo-cadastro?patient=<UUID>` | Entrada na fila para um paciente escolhido no diretório |
+| MEDICO | `/medico` | Dashboard com resumo da fila, status atual e próxima chamada |
+| MEDICO | `/medico/fila` | Fila individual, cada paciente clicável |
+| MEDICO | `/medico/fila/<UUID>` | Detalhes de uma entrada aguardando, somente leitura |
+| MEDICO | `/medico/atendimento` | Paciente atual, início, prescrição e finalização, sem a lista da fila |
+
+O médico **não pode escolher manualmente o paciente a chamar**: o botão Chamar próximo paciente utiliza o endpoint transacional `POST /queues/me/next`, que respeita a ordem clínica no backend. Os detalhes da fila são consultivos.
+
+Cadastros de pacientes e registros de entrada são duas operações independentes; se o cadastro já existe, comece pelo diretório `/pacientes`. Os estados de sucesso/erro operacionais usam **toasts acessíveis** em vez de banners persistentes. Na área do médico, somente o UUID da entrada ativa pode ser armazenado temporariamente; o detalhe clínico é recuperado da API.
+
+No celular, a fila da recepção e o catálogo de funcionários utilizam cards com informações e ações visíveis, sem exigir deslocamento lateral na tabela.
+
