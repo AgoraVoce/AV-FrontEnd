@@ -71,6 +71,24 @@ async function session(response: Response) {
     throw new AuthError("contract");
   }
 }
+// Session endpoints must use the exact Bearer token and never persist it in browser storage.
+async function serverSessionRequest(path: string, method: "GET" | "POST", token: string, signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT);
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  let response: Response;
+  try {
+    response = await fetch(path, { method, signal: combined, cache: "no-store", credentials: "omit",
+      headers: { Authorization: "Bearer " + token, Accept: "application/json" } });
+  } catch {
+    if (signal?.aborted) throw new DOMException("Requisição cancelada", "AbortError");
+    throw new AuthError("unavailable");
+  }
+  if (response.status === 401) throw new AuthError("invalid", 401);
+  if (response.status === 403) throw new AuthError("invalid", 403);
+  if (!response.ok) throw new AuthError("unavailable", response.status);
+  return response;
+}
+
 export const authApi = {
   async login(login: string, password: string, signal?: AbortSignal) {
     if (!API_MODE) {
@@ -100,13 +118,25 @@ export const authApi = {
   async me(signal?: AbortSignal) {
     if (API_MODE) {
       if (signal?.aborted) throw new DOMException("Requisição cancelada", "AbortError");
-      if (!getAccessToken() || !activeSession) throw new AuthError("invalid", 401);
-      return activeSession.user;
+      const token = getAccessToken();
+      if (!token) throw new AuthError("invalid", 401);
+      const response = await serverSessionRequest("/api/v1/auth/me", "GET", token, signal);
+      try { return parseUser({ user: await response.json() }); }
+      catch { throw new AuthError("contract"); }
     }
     return session(await authRequest("/auth/me", "GET", signal));
   },
   async logout(signal?: AbortSignal) {
     if (API_MODE) {
+      const token = getAccessToken();
+      if (!token) { clearLocalSession(); return; }
+      try {
+        const response = await serverSessionRequest("/api/v1/auth/logout", "POST", token, signal);
+        if (response.status !== 204) throw new AuthError("contract", response.status);
+      } catch (error) {
+        if (error instanceof AuthError && error.status === 401) clearLocalSession();
+        throw error;
+      }
       clearLocalSession();
       return;
     }

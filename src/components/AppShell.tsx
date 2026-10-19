@@ -87,7 +87,7 @@ export function AppShell({
   const unitContext = headerContext ?? (
     <span className="app-unit-chip">
       <Building2 size={14} aria-hidden="true" />
-      {API_MODE ? "API LOCAL · AGORA VOCÊ" : "PRONTO-SOCORRO CENTRAL"}
+      {API_MODE ? "PRONTO-SOCORRO · AMBIENTE LOCAL" : "PRONTO-SOCORRO CENTRAL"}
     </span>
   );
 
@@ -185,7 +185,7 @@ export function AppShell({
                   <span>{label}</span>
                 </NavLink>
               ))}
-              {activeRole !== "MEDICO" && (
+              {activeRole !== "MEDICO" && (!API_MODE || activeRole === "ADMIN") && (
                 <NavLink
                   to={managementPath}
                   title="Gestão de Usuários"

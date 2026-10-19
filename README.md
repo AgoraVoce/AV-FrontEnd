@@ -1,27 +1,15 @@
 # Agora Você — Frontend
 
-Interface React 19 + TypeScript + Vite. A aplicação tem **integração local** com [AV-Backend](https://github.com/AgoraVoce/AV-Backend) (Express + Prisma/PostgreSQL) na branch de integração. Não foi feito deploy.
+React 19 + TypeScript + Vite. Interface operacional para o pronto-socorro da clínica, integrada às **17 operações** do [AV-Backend](https://github.com/AgoraVoce/AV-Backend), versionadas em [OpenAPI](https://github.com/AgoraVoce/AV-Backend/blob/main/src/docs/openapi.yaml). A interface mantém o visual do sistema e a regra de acesso por perfil; não há agendamento de consultas.
 
-## Iniciar com a API real (localhost)
+## Executar localmente
 
-Requisitos: Node.js 22.13+, npm e PostgreSQL configurado no backend.
+Requisitos: Node.js >=22.13, npm e PostgreSQL local.
 
-**Terminal 1 — AV-Backend**
-
-```bash
-npm ci
-cp .env.example .env
-# Configure DATABASE_URL e AUTH_JWT_SECRET (chave forte) no .env
-npm run prisma:generate
-npm run prisma:validate
-npm run dev
-```
-
-O backend escuta **http://localhost:3000** e oferece Swagger em `http://localhost:3000/api-docs`. **Importante:** no commit atual do backend, as migrations iniciais ainda não foram incorporadas. As tabelas do Prisma precisam estar criadas em um **banco local descartável**, de forma controlada, antes de testar login/cadastros; jamais aponte comandos de alteração estrutural para banco compartilhado ou produção. Depois do banco pronto, execute `npm run user:provision` no terminal interativo do backend para criar a primeira conta ADMIN ou RECEPCIONISTA.
-
-O arquivo de ambiente do backend deve ter `FRONTEND_ORIGIN=http://localhost:5173`. As configurações sensíveis **nunca** vão para arquivos `VITE_*`.
-
-**Terminal 2 — AV-FrontEnd**
+1. No `AV-Backend`, configurar `.env` com `DATABASE_URL`, `AUTH_JWT_SECRET`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`, `FRONTEND_ORIGIN=http://localhost:5173`. Nunca copie segredos para `VITE_*`.
+2. Preparar o PostgreSQL **descartável** com migrations aprovadas no backend (`npm run prisma:generate`, `npm run prisma:validate`, `npm run prisma:migrate:deploy` somente com banco novo, após conferir a URL de conexão e histórico). Não use `db push` contra Aiven ou banco compartilhado.
+3. Criar usuários de teste pelo comando interativo `npm run user:provision` e preparar médico com registro `Doctor` e plantão válido se quiser testar chamada. `npm run dev` expõe o Swagger em `http://localhost:3000/api-docs`.
+4. No frontend:
 
 ```bash
 npm ci
@@ -29,55 +17,54 @@ cp .env.example .env
 npm run dev
 ```
 
-Abra **http://localhost:5173/login**. O Vite encaminha `/api/*` para `http://127.0.0.1:3000` via `API_PROXY_TARGET`, evitando configurar CORS diretamente no navegador.
+`.env` do frontend:
+```dotenv
+API_PROXY_TARGET=http://127.0.0.1:3000
+VITE_AV_LOCAL_API=true
+LEGACY_AUTH_PROXY_TARGET=http://127.0.0.1:3001
+```
 
-### O que está integrado
+Abra `http://localhost:5173/login`. O Vite envia `/api/*` para o Express em `localhost:3000`. `VITE_AV_LOCAL_API=false` isola as telas antigas de demonstração para os testes de regressão.
 
-| Perfil | Operação | API |
-| --- | --- | --- |
-| Todos os perfis internos | Login com e-mail/senha, JWT Bearer | `POST /api/v1/auth/login` |
-| Recepção | Fila em espera, atualizada a cada 30 s | `GET /api/v1/queues/waiting` |
-| Recepção | Cadastrar paciente | `POST /api/v1/patients` |
-| Recepção | Registrar entrada em espera com classificação manual | `POST /api/v1/entries` |
-| Médico | Consultar somente a fila atribuída ao próprio médico | `GET /api/v1/queues/me` |
-| Administrador | Cadastrar funcionário e definir perfil | `POST /api/v1/employees` |
+## Fluxos integrados
 
-Erros 400/401/403/409/429/rede têm respostas visíveis; ao receber 401 o frontend encerra a sessão local. Não exibimos pacientes, médicos, indicadores ou relatórios de demonstração nas páginas integradas.
+### Recepção
+- Consulta a fila real, com atualização a cada 30 segundos, busca e detalhamento de cada entrada.
+- Busca pacientes existentes por **nome ou CPF**, seleciona a ficha, ou cadastra novos pacientes.
+- Registra sintomas/gravidade manual e escolhe o médico disponível de plantão. Pacientes sem médico podem ficar em espera até a atribuição.
+- Atribui/redefine médico com `PATCH /entries/:id/doctor`; registra desistência com `PATCH /entries/:id/status` e confirmação explícita.
+- **Nunca chama o paciente**: a chamada é responsabilidade do médico.
 
-### Limitações atuais do backend
+### Médico
+- Consulta somente a sua própria fila. O botão `Chamar próximo paciente` usa `POST /queues/me/next`, respeitando prioridade e exclusão de chamadas concorrentes no servidor.
+- Confirma entrada em atendimento com `PATCH /entries/:id/status` (`in_progress`).
+- Formulário estruturado de prescrição (descrição + medicamentos com nome, dosagem e instruções + orientações opcionais), revisão e **finalização atômica** em `POST /entries/:id/complete`.
+- Em caso de timeout ou conflito ao finalizar, verifica `GET /entries/:id` antes de permitir qualquer tentativa: evita duplicar prescrições.
+- Salva **apenas o UUID da entrada ativa** no `sessionStorage` por usuário para tentar retomar no mesmo navegador. Nunca armazena dados clínicos ou JWT ali.
 
-- **Não há `GET /auth/me` nem logout/revogação no servidor.** JWT válido por até 15 minutos, guardado **somente em memória** (não em cookies, localStorage ou sessionStorage). Recarregar a página exige novo login. Logout apaga o token local; não revoga JWT no backend.
-- **Não há recuperação de senha**; a tela integrada informa indisponibilidade, sem prometer envio de e-mail.
-- **Não há GET de funcionários/pacientes nem busca por CPF.** A listagem administrativa mostra somente as contas criadas naquela aba, não todo o banco. Para adicionar nova entrada a paciente existente, é necessário o UUID dele.
-- **Recepcionista não pode cadastrar funcionário:** essa é a regra efetiva da API atual (`POST /employees` exige ADMIN), mesmo que telas anteriores permitissem uma simulação local.
-- **Não há chamadas, prescrição ou finalização por API, nem consulta administrativa da fila e relatórios.** Não há persistência simulada desses fluxos.
-- Cadastro de entrada atual envia `symptomIds: []` e texto em `otherSymptoms`. A cor é selecionada manualmente e a entrada é criada sem médico e sem senha, como permitido pelo contrato. Para aparecer na fila do médico, é necessário atribuí-lo pelo fluxo/API que ainda será implementado.
-- A TV não é pública na API atual; `GET /queues/waiting` exige autenticação de RECEPCIONISTA. O frontend não expõe esses dados sem autorização.
+### Administração
+- `GET /employees` para listar, pesquisar e filtrar funcionários com paginação real; `POST /employees` para criar contas quando autorizado. A recepção não recebe funcionalidades exclusivas do ADMIN.
 
-A identidade visual original, os componentes existentes e as telas de demonstração continuam disponíveis para teste isolado com `VITE_AV_LOCAL_API=false`, somente durante desenvolvimento. Nesse modo, as rotas `?dev=recepcionista` e semelhantes permitem testar o layout **sem criar dados reais**. O build normal integra a API local.
+### Sessões
+- `GET /auth/me` verifica a identidade com o Bearer ativo; `POST /auth/logout` revoga o token no servidor antes de atualizar a UI.
+- O accessToken permanece **somente em memória** e expira no máximo em 15 minutos; atualizar a página ainda exige login, pois não há refresh token. Resposta 401 invalida a sessão; falhas 503 não são apresentadas como logout confirmado.
 
-## Qualidade
+## Limitações e dependências do backend
+- Falta uma rota autorizada para **descobrir o atendimento ativo do médico** em outro navegador/dispositivo. Um `409 DOCTOR_BUSY` não pode ser resolvido só pela fila `GET /queues/me` (que inclui apenas pacientes aguardando).
+- O contrato de `/entries/:id/complete` exige **ao menos um medicamento**. Precisamos discutir atendimentos encerrados sem medicação.
+- Não há API pública apropriada para a TV, recuperação de senha, relatórios administrativos ou gerenciamento completo de funcionários; esses módulos não exibem dados falsos como se fossem reais.
+- **Prescrições dependem da migration `20261018191000_add_prescriptions`** no banco usado. A equipe informou que não estava aplicada ao Aiven em 18/10/2026. Não execute migrations de produção sem autorização.
+- O histórico do backend contém credenciais antigas que precisam ser rotacionadas conforme aviso da PR #3.
+
+## Testes
 
 ```bash
 npm run lint
+npm run build
 npm run tokens:check
 npm run design:lint
-npm run format:check
-npm run build
-npm test                 # testes legados em modo de demonstração isolado
-npm run test:local-api    # smoke HTTP interceptado do modo de integração local
+npm test                  # regressão em modo de demonstração isolado
+npm run test:local-api    # HTTP interceptado, fluxos novos
 ```
 
-Os testes da integração usam respostas HTTP controladas; **não** demonstram uma execução real contra PostgreSQL. Essa validação precisa ser realizada manualmente com as duas aplicações e banco local preparados.
-
-## Arquitetura
-
-- `src/auth/`: login, sessão efêmera e proteção visual de perfis.
-- `src/integrations/client.ts`: API tipada, Bearer JWT, erros e timeout.
-- `src/integrations/LocalPages.tsx`: filas e formulários integrados.
-- `src/components/` e `src/styles/`: design system, tokens e estrutura existentes.
-- `e2e-local/`: testes de contrato da interface integrada.
-- `DESIGN.md` / `UX-CONTRACT.md`: referências de design e UX.
-- `docs/auth-api.md` / `docs/password-recovery-api.md`: contratos históricos, não implementações do backend presente.
-
-Antes de qualquer deploy, negociar endpoints faltantes, revogação/restauração de sessão e estratégia de autenticação segura com o time de backend.
+O Playwright com interceptações verifica contratos e UI, mas **não substitui** um teste manual contra PostgreSQL real, médicos/plantões e as migrations. Nenhum deploy é realizado por este código.
