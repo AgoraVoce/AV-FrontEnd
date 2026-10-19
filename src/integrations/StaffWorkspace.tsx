@@ -138,7 +138,15 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
       </tr></thead><tbody>{listing.items.map(employee => <tr key={employee.id}>
         <td><strong>{employee.name}</strong></td><td>{employee.email}</td><td>{ROLE_LABEL[employee.role]}</td>
         <td><span className={"operational-state " + (employee.active ? "is-completed" : "is-cancelled")}>{employee.active ? "Ativo" : "Inativo"}</span></td>
-      </tr>)}</tbody></table></div>}
+      </tr>)}</tbody></table>
+      <div className="operational-mobile-cards" aria-label="Funcionários cadastrados">
+        {listing.items.map(employee => <article className="operational-mobile-card" key={employee.id}>
+          <div><strong>{employee.name}</strong><span className="local-secondary">{employee.email}</span></div>
+          <div className="operational-mobile-card-meta"><span>{ROLE_LABEL[employee.role]}</span>
+            <span className={"operational-state " + (employee.active ? "is-completed" : "is-cancelled")}>{employee.active ? "Ativo" : "Inativo"}</span></div>
+        </article>)}
+      </div>
+      </div>}
       {!failed && listing && <div className="operational-pagination">
         <span>{listing.total} funcionário(s) · Página {listing.page} de {Math.max(1, Math.ceil(listing.total / listing.pageSize))}</span>
         <div className="local-actions">
