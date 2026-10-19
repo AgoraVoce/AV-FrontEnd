@@ -148,19 +148,21 @@ test("médico chama, inicia e finaliza com prescrição num único endpoint",asy
     entryId,patientId,fullName:"Paciente da API",queueCode:"A012",severity:"AMARELO",enteredAt:"2026-10-19T09:00:00Z",symptoms:[],otherSymptoms:"Dor de cabeça",shortNote:null,
   }]}}));
   let call=0,started=0,finished=0;
+  let status:"waiting"|"called"|"in_progress"|"completed"="waiting";
+  await page.route("**/api/v1/entries/"+entryId,route=>route.fulfill({json:detail(status)}));
   await page.route("**/api/v1/queues/me/next",async route=>{
     expect(route.request().headers().authorization).toContain("Bearer ");
-    call++;await route.fulfill({json:detail("called")});
+    call++;status="called";await route.fulfill({json:detail("called")});
   });
   await page.route("**/api/v1/entries/"+entryId+"/status",async route=>{
     expect(route.request().method()).toBe("PATCH");
     expect(route.request().postDataJSON()).toEqual({status:"in_progress"});
-    started++;await route.fulfill({json:detail("in_progress")});
+    started++;status="in_progress";await route.fulfill({json:detail("in_progress")});
   });
   await page.route("**/api/v1/entries/"+entryId+"/complete",async route=>{
     const body=route.request().postDataJSON();
     expect(body).toEqual({prescription:{description:"Conduta de observação",medications:[{name:"Medicamento fictício",dosage:"1 comprimido",instructions:"Após refeição"}]}});
-    finished++;await route.fulfill({json:detail("completed",body.prescription)});
+    finished++;status="completed";await route.fulfill({json:detail("completed",body.prescription)});
   });
   await login(page,"MEDICO");
   await page.getByRole("button",{name:"Chamar próximo paciente"}).click();
