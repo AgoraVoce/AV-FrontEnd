@@ -84,7 +84,7 @@ test("novo paciente exige duas requisições independentes de cadastro e entrada
   await page.getByRole("link",{name:/Novo Cadastro/}).click();
   await page.getByRole("button",{name:"Novo paciente"}).click();
   await page.getByLabel("Nome completo").fill("Pessoa Teste");
-  await page.getByLabel("CPF",{exact:true}).fill("52998224725");
+  await page.getByLabel("CPF").fill("52998224725");
   await page.getByRole("button",{name:"Continuar para entrada"}).click();
   await expect(page.getByText(/Paciente selecionado:/)).toBeVisible();
   await page.getByLabel("Sintomas / queixa relatada").fill("Dor de cabeça");
@@ -129,7 +129,7 @@ test("admin lista contas reais, filtra e cadastra funcionário sem expor senha",
   await page.getByLabel("Nome completo").fill("Nova Médica");
   await page.getByLabel("E-mail corporativo").fill("medica@clinica.test");
   await page.getByLabel("Senha inicial").fill("senhaSegura123");
-  await page.getByLabel("Perfil",{exact:true}).last().selectOption("MEDICO");
+  await page.locator("form").getByLabel("Perfil").selectOption("MEDICO");
   await page.getByRole("button",{name:"Criar conta no backend"}).click();
   await expect(page.getByRole("cell",{name:"Nova Médica"})).toBeVisible();
   await expect(page.getByText("senhaSegura123")).toHaveCount(0);
@@ -160,7 +160,7 @@ test("médico chama, inicia e finaliza com prescrição num único endpoint",asy
   await page.getByRole("button",{name:/Iniciar atendimento/}).click();
   await page.getByRole("button",{name:/Prescrever e finalizar/}).click();
   await page.getByLabel("Descrição / conduta clínica").fill("Conduta de observação");
-  await page.getByLabel("Nome",{exact:true}).fill("Medicamento fictício");
+  await page.getByLabel(/^Nome/).fill("Medicamento fictício");
   await page.getByLabel("Dosagem").fill("1 comprimido");
   await page.getByLabel("Instruções").fill("Após refeição");
   await page.getByRole("button",{name:"Revisar e finalizar"}).click();
