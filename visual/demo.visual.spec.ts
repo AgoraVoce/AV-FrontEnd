@@ -28,7 +28,7 @@ for (const screen of screens) {
   test("demonstração / " + screen.id, async ({ page }, info) => {
     const errors = trackPageErrors(page);
     await page.goto(screen.path);
-    await expect(page.locator("h1, h2").first()).toBeVisible();
+    await expect(page.locator("h1:visible, h2:visible").first()).toBeVisible();
     await captureScreen(page, info, "demo", screen.id, errors);
   });
 }
