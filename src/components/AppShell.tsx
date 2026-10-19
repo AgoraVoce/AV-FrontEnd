@@ -198,7 +198,7 @@ export function AppShell({
                   end
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) =>
-                    `nav-item${isActive ? " is-active" : ""}`
+                    `nav-item${isActive || (API_MODE && activeRole === "ADMIN" && location.pathname === "/admin/novo-funcionario") ? " is-active" : ""}`
                   }
                 >
                   <Users size={18} aria-hidden="true" />
