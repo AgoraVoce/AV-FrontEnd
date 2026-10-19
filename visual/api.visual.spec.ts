@@ -121,7 +121,7 @@ for (const screen of screens) {
   test("API simulada / " + screen.id, async ({ page }, info) => {
     const errors = trackPageErrors(page);
     await page.clock.setFixedTime(new Date("2026-10-19T15:30:00-03:00"));
-    const fixtures = installApiFixtures(page, screen.role || "RECEPCIONISTA");
+    const fixtures = await installApiFixtures(page, screen.role || "RECEPCIONISTA");
     if (screen.role) {
       await enterAs(page, screen.role);
       await navigateTo(page, screen.path);
