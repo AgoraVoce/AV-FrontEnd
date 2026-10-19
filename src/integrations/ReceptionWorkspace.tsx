@@ -5,7 +5,8 @@ import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
 import { createPatient, getWaitingQueue, type WaitingItem } from "./client";
 import { operations, type Doctor, type EntryDetail, type Patient, type Severity } from "./operational-api";
-import { errorText, formatDate, RiskPill, StatePill } from "./shared-ui";
+import { errorText, formatDate } from "./shared-helpers";
+import { RiskPill, StatePill } from "./shared-ui";
 import "./local.css";
 import "./operations.css";
 
