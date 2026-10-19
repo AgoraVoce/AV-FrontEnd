@@ -187,7 +187,7 @@ export function AppShell({
               ))}
               {API_MODE && activeRole === "RECEPCIONISTA" && <NavLink to="/pacientes" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Search size={18} aria-hidden="true" /><span>Pacientes cadastrados</span></NavLink>}
               {API_MODE && activeRole === "MEDICO" && <>
-                <NavLink end to="/medico" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><LayoutDashboard size={18} aria-hidden="true" /><span>Dashboard</span></NavLink>
+                <NavLink end to="/medico" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><LayoutDashboard size={18} aria-hidden="true" /><span>Consultório Médico</span></NavLink>
                 <NavLink to="/medico/fila" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><ListChecks size={18} aria-hidden="true" /><span>Minha fila</span></NavLink>
                 <NavLink to="/medico/atendimento" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Stethoscope size={18} aria-hidden="true" /><span>Paciente atual</span></NavLink>
               </>}
