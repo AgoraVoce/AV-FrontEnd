@@ -15,7 +15,7 @@ const doctor = {
   shift: { id: "44444444-4444-4444-8444-444444444444", startsAt: "2026-10-19T08:00:00Z", endsAt: "2026-10-19T22:00:00Z", room: "Consultório 02" },
 };
 
-export function installApiFixtures(page: Page, role: VisualRole) {
+export async function installApiFixtures(page: Page, role: VisualRole) {
   let entryStatus: "waiting" | "called" | "in_progress" | "completed" = "waiting";
   const unexpected: string[] = [];
   const user = {
@@ -60,7 +60,7 @@ export function installApiFixtures(page: Page, role: VisualRole) {
     } : null,
   });
 
-  void page.route("**/api/v1/**", async (route) => {
+  await page.route("**/api/v1/**", async (route) => {
     const method = route.request().method();
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^\/api\/v1/, "");
