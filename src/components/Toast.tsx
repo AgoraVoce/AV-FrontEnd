@@ -14,7 +14,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const remove = useCallback((id: number) => setMessages((current) => current.filter((item) => item.id !== id)), []);
   return <ToastContext.Provider value={notify}>
     {children}
-    <div className="av-toast-stack" aria-label="Notificações do sistema">
+    <div className="av-toast-stack">
       {messages.map((message) => <ToastItem key={message.id} message={message} onClose={() => remove(message.id)} />)}
     </div>
   </ToastContext.Provider>;
