@@ -128,7 +128,7 @@ for (const screen of screens) {
     } else {
       await page.goto(screen.path);
     }
-    await expect(page.locator("h1, h2").first()).toBeVisible();
+    await expect(page.locator("h1:visible, h2:visible").first()).toBeVisible();
     await prepareState(page, screen);
     await captureScreen(page, info, "api", screen.id, errors);
     expect(fixtures.unexpected, "Todas as chamadas da API devem estar simuladas").toEqual([]);
