@@ -5,7 +5,8 @@ import { usePageTitle } from "../components/usePageTitle";
 import { useAuth } from "../auth/context";
 import { getDoctorQueue, type DoctorItem } from "./client";
 import { operations, type EntryDetail, type Medication, type Prescription } from "./operational-api";
-import { errorText, formatDate, RiskPill, StatePill } from "./shared-ui";
+import { errorText, formatDate } from "./shared-helpers";
+import { RiskPill, StatePill } from "./shared-ui";
 import "./local.css";
 import "./operations.css";
 
