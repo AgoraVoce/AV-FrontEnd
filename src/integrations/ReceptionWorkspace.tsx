@@ -23,11 +23,13 @@ export function ReceptionWorkspace() {
   const [selected, setSelected] = useState<EntryDetail | null>(null);
   const [detailsBusy, setDetailsBusy] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [lastDetailId, setLastDetailId] = useState<string | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [doctorId, setDoctorId] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const ongoing = useRef<AbortController | null>(null);
+  const queueErrorNotified = useRef(false);
   const load = useCallback(async (initial = false) => {
     ongoing.current?.abort();
     const controller = new AbortController();
@@ -38,10 +40,14 @@ export function ReceptionWorkspace() {
       if (!controller.signal.aborted) {
         setItems(result);
         setError("");
+        queueErrorNotified.current = false;
         setUpdatedAt(new Date());
       }
     } catch (cause) {
-      if (!controller.signal.aborted) { setError(errorText(cause)); toast.error("Não foi possível atualizar a fila", errorText(cause)); }
+      if (!controller.signal.aborted) {
+        setError(errorText(cause));
+        if (!queueErrorNotified.current) { queueErrorNotified.current = true; toast.error("Não foi possível atualizar a fila", errorText(cause)); }
+      }
     } finally {
       if (!controller.signal.aborted) { setLoading(false); setRefreshing(false); }
     }
@@ -55,6 +61,7 @@ export function ReceptionWorkspace() {
     s.toLocaleLowerCase("pt-BR").includes(filter.trim().toLocaleLowerCase("pt-BR")))), [items, filter]);
 
   async function openDetails(id: string) {
+    setLastDetailId(id);
     setDetailsBusy(true); setSelected(null); setDetailError(""); setConfirmCancel(false);
     try {
       const [entry, physicians] = await Promise.all([operations.entry(id), operations.doctors({ pageSize: 100 })]);
@@ -124,7 +131,7 @@ export function ReceptionWorkspace() {
     {(detailsBusy || detailError || selected) && <section className="local-form operational-detail" aria-label="Detalhes da entrada">
       <div className="operational-row"><h2>Detalhes do atendimento</h2><button type="button" className="operational-close" onClick={()=>{setSelected(null);setDetailError("");setConfirmCancel(false);}} aria-label="Fechar detalhes"><XCircle size={21}/></button></div>
       {detailsBusy && <p role="status">Consultando prontidão da fila…</p>}
-      {detailError && <button type="button" className="local-secondary-button" onClick={()=>{if(selected)void openDetails(selected.id);}}>Tentar novamente</button>}
+      {detailError && <button type="button" className="local-secondary-button" onClick={()=>{if(lastDetailId)void openDetails(lastDetailId);}}>Tentar novamente</button>}
       {selected && <><div className="operational-row operational-detail-head">
         <div><strong>{selected.patient.fullName}</strong><small>Entrada {formatDate(selected.enteredAt)} · {selected.queueCode || "Sem senha"}</small></div>
         <StatePill status={selected.status}/></div>
