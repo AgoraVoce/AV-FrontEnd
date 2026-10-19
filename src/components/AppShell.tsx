@@ -108,7 +108,7 @@ export function AppShell({
       await signOut(controller.signal);
       navigate("/login", { replace: true });
     } catch (error) {
-      toast.error("Não foi possível encerrar a sessão",
+      toast.error("Não foi possível encerrar sua sessão.",
         error instanceof AuthError && error.kind === "invalid"
           ? "O serviço não confirmou o encerramento. Tente novamente."
           : ERROR_COPY[error instanceof AuthError ? error.kind : "unavailable"]
