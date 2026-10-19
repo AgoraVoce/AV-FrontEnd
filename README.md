@@ -68,3 +68,17 @@ npm run test:local-api    # HTTP interceptado, fluxos novos
 ```
 
 O Playwright com interceptações verifica contratos e UI, mas **não substitui** um teste manual contra PostgreSQL real, médicos/plantões e as migrations. Nenhum deploy é realizado por este código.
+
+## Revisão visual automática (Chromium)
+
+Toda PR executa testes Chromium e gera, na sequência, capturas integrais de **todas as rotas e principais estados** no desktop, no celular e na TV Full HD. O GitHub Actions publica o artifact `revisao-visual-chromium-<PR>-<execução>` com imagens PNG e galeria `index.html` para inspeção de UI/UX. A pipeline também sinaliza overflow horizontal, imagens quebradas e erros JavaScript. Todos os dados dos screenshots são fictícios; nenhuma credencial real é usada.
+
+Para testar no Linux:
+
+```bash
+npm run test:visual:demo
+npm run test:visual:api
+npm run visual:report
+```
+
+Abra `artifacts/visual-review/index.html`. O procedimento, a lista de telas e os critérios de inspeção estão em [docs/revisao-visual.md](docs/revisao-visual.md). **Testes verdes não substituem a revisão humana das capturas.**
