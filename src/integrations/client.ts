@@ -25,6 +25,10 @@ const ERRORS: Record<string, string> = {
   INVALID_SYMPTOMS: "Alguns sintomas informados não são válidos.",
   TOO_MANY_ATTEMPTS: "Muitas tentativas. Tente novamente mais tarde.",
   VALIDATION_ERROR: "Há campos inválidos. Confira as informações preenchidas.",
+  DOCTOR_BUSY: "Você já tem um paciente chamado ou em atendimento. Conclua esse atendimento antes de chamar outro.",
+  ENTRY_STATE_CONFLICT: "O estado deste atendimento mudou. Atualize os dados antes de tentar novamente.",
+  ATTENDANCE_NOT_FOUND: "Não há atendimento iniciado para esta entrada.",
+  AUTH_SERVICE_UNAVAILABLE: "Não foi possível validar a sessão no servidor. Tente novamente.",
 };
 function explain(status: number, code: string) {
   if (ERRORS[code]) return ERRORS[code];
@@ -35,7 +39,7 @@ function explain(status: number, code: string) {
   if (status === 429) return ERRORS.TOO_MANY_ATTEMPTS;
   return "Não foi possível concluir a operação. Tente novamente.";
 }
-async function request(path: string, method: "GET" | "POST", body?: object, signal?: AbortSignal): Promise<unknown> {
+export async function request(path: string, method: "GET" | "POST" | "PATCH", body?: object, signal?: AbortSignal): Promise<unknown> {
   const token = getAccessToken();
   if (!token) {
     window.dispatchEvent(new Event("av:session-expired"));
@@ -71,6 +75,7 @@ async function request(path: string, method: "GET" | "POST", body?: object, sign
     const code = typeof error?.code === "string" ? error.code : "UNKNOWN";
     throw new ApiError(response.status, code, explain(response.status, code));
   }
+  if (response.status === 204) return null;
   try {
     return await response.json();
   } catch {
