@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { captureScreen, trackPageErrors } from "./capture";
-import { installApiFixtures, visualAccount, type VisualRole } from "./fixtures";
+import { installApiFixtures, visualAccount, entryId, patientId, type VisualRole } from "./fixtures";
 
 // Live-mode routes and meaningful screen states. No real patient, credentials,
 // production API or backend database are ever accessed.
@@ -8,7 +8,7 @@ type Screen = {
   id: string;
   path: string;
   role?: VisualRole;
-  state?: "details" | "new-patient" | "search-patient" | "select-patient" |
+  state?: "details" | "search-patient" | "select-patient" |
     "called" | "attending" | "prescribing" | "review" | "completed" | "new-employee";
 };
 
@@ -21,18 +21,20 @@ const screens: Screen[] = [
   { id: "recepcao-fila", path: "/recepcao", role: "RECEPCIONISTA" },
   { id: "recepcao-detalhes", path: "/recepcao", role: "RECEPCIONISTA", state: "details" },
   { id: "recepcao-usuarios-restrito", path: "/recepcao/usuarios", role: "RECEPCIONISTA" },
-  { id: "novo-cadastro-busca", path: "/novo-cadastro", role: "RECEPCIONISTA" },
-  { id: "novo-cadastro-resultados", path: "/novo-cadastro", role: "RECEPCIONISTA", state: "search-patient" },
-  { id: "novo-cadastro-formulario", path: "/novo-cadastro", role: "RECEPCIONISTA", state: "new-patient" },
-  { id: "novo-cadastro-entrada", path: "/novo-cadastro", role: "RECEPCIONISTA", state: "select-patient" },
-  { id: "medico-fila", path: "/medico", role: "MEDICO" },
+  { id: "pacientes-lista", path: "/pacientes", role: "RECEPCIONISTA" },
+  { id: "pacientes-busca", path: "/pacientes", role: "RECEPCIONISTA", state: "search-patient" },
+  { id: "novo-cadastro-formulario", path: "/novo-cadastro", role: "RECEPCIONISTA" },
+  { id: "novo-cadastro-entrada", path: "/novo-cadastro?patient=" + patientId, role: "RECEPCIONISTA", state: "select-patient" },
+  { id: "medico-dashboard", path: "/medico", role: "MEDICO" },
+  { id: "medico-fila", path: "/medico/fila", role: "MEDICO" },
+  { id: "medico-detalhes-paciente", path: "/medico/fila/" + entryId, role: "MEDICO" },
   { id: "medico-paciente-chamado", path: "/medico", role: "MEDICO", state: "called" },
   { id: "medico-atendimento", path: "/medico", role: "MEDICO", state: "attending" },
   { id: "medico-prescricao", path: "/medico", role: "MEDICO", state: "prescribing" },
   { id: "medico-revisao-finalizacao", path: "/medico", role: "MEDICO", state: "review" },
   { id: "medico-atendimento-concluido", path: "/medico", role: "MEDICO", state: "completed" },
   { id: "admin-funcionarios", path: "/admin", role: "ADMIN" },
-  { id: "admin-novo-funcionario", path: "/admin", role: "ADMIN", state: "new-employee" },
+  { id: "admin-novo-funcionario", path: "/admin/novo-funcionario", role: "ADMIN" },
   { id: "admin-usuarios", path: "/admin/usuarios", role: "ADMIN" },
   { id: "admin-fila-indisponivel", path: "/admin/fila", role: "ADMIN" },
   { id: "admin-relatorios-indisponivel", path: "/admin/relatorios", role: "ADMIN" },
@@ -54,7 +56,7 @@ async function enterAs(page: Page, role: VisualRole) {
 
 // Use client-side navigation to preserve the deliberately memory-only JWT.
 async function navigateTo(page: Page, route: string) {
-  if (new URL(page.url()).pathname === route) return;
+  if (new URL(page.url()).pathname + new URL(page.url()).search === route) return;
   await page.evaluate((path) => {
     window.history.pushState({}, "", path);
     window.dispatchEvent(new PopStateEvent("popstate"));
@@ -68,17 +70,11 @@ async function prepareState(page: Page, screen: Screen) {
       await page.getByRole("button", { name: "Ver detalhes" }).first().click();
       await expect(page.getByRole("region", { name: "Detalhes da entrada" })).toContainText("Paciente de Demonstração");
       break;
-    case "new-patient":
-      await page.getByRole("button", { name: "Novo paciente" }).click();
-      await expect(page.getByRole("heading", { name: "Novo paciente" })).toBeVisible();
-      break;
     case "search-patient":
       await page.getByLabel("Buscar paciente por nome ou CPF").fill("Paciente");
-      await expect(page.getByRole("button", { name: /Paciente de Demonstração/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: /Paciente de Demonstração/ })).toBeVisible();
       break;
     case "select-patient":
-      await page.getByLabel("Buscar paciente por nome ou CPF").fill("Paciente");
-      await page.getByRole("button", { name: /Paciente de Demonstração/ }).click();
       await expect(page.getByLabel("Médico de plantão")).toBeVisible();
       await page.getByLabel("Classificação informada pela recepção").selectOption("AMARELO");
       await page.getByLabel("Médico de plantão").selectOption("66666666-6666-4666-8666-666666666666");
@@ -90,7 +86,8 @@ async function prepareState(page: Page, screen: Screen) {
     case "review":
     case "completed":
       await page.getByRole("button", { name: "Chamar próximo paciente" }).click();
-      await expect(page.getByText(/Paciente chamado com sucesso/)).toBeVisible();
+      await expect(page).toHaveURL("/medico/atendimento");
+      await expect(page.getByRole("status").getByText("Paciente chamado")).toBeVisible();
       if (screen.state === "called") break;
       await page.getByRole("button", { name: /Iniciar atendimento/ }).click();
       await expect(page.getByRole("button", { name: /Prescrever e finalizar/ })).toBeVisible();
@@ -106,11 +103,7 @@ async function prepareState(page: Page, screen: Screen) {
       await expect(page.getByText("Revisar antes de finalizar")).toBeVisible();
       if (screen.state === "review") break;
       await page.getByRole("button", { name: "Confirmar finalização" }).click();
-      await expect(page.getByText(/Atendimento finalizado e prescrição salva/)).toBeVisible();
-      break;
-    case "new-employee":
-      await page.getByRole("button", { name: "Novo funcionário" }).click();
-      await expect(page.getByRole("heading", { name: "Novo funcionário" })).toBeVisible();
+      await expect(page.getByRole("status").getByText("Atendimento finalizado")).toBeVisible();
       break;
     default:
       break;
