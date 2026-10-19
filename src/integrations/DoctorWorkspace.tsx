@@ -61,9 +61,9 @@ export function DoctorWorkspace({ view = "dashboard" }: { view?: "dashboard" | "
   }, [refresh]);
 
   useEffect(() => {
-    if (!userId) { setRestoring(false); return; }
+    if (!userId) return;
     const stored = sessionStorage.getItem(cacheKey(userId));
-    if (!stored) { setRestoring(false); return; }
+    if (!stored) return;
     let cancelled = false;
     void operations.entry(stored).then(result => {
       if (cancelled) return;
