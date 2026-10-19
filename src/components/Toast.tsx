@@ -1,11 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { ToastContext, type ToastTone as Tone, type ToastNotify as Notify } from "./toast-context";
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 import "./toast.css";
 
-type Tone = "success" | "error" | "info";
 type Message = { id: number; tone: Tone; title: string; description?: string };
-type Notify = (title: string, tone?: Tone, description?: string) => void;
-const ToastContext = createContext<Notify | null>(null);
 let nextId = 0;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -38,12 +36,3 @@ function ToastItem({ message, onClose }: { message: Message; onClose: () => void
   </div>;
 }
 
-export function useToast() {
-  const notify = useContext(ToastContext);
-  if (!notify) throw new Error("useToast requer ToastProvider");
-  return useMemo(() => ({
-    success: (title: string, description?: string) => notify(title, "success", description),
-    error: (title: string, description?: string) => notify(title, "error", description),
-    info: (title: string, description?: string) => notify(title, "info", description),
-  }), [notify]);
-}
