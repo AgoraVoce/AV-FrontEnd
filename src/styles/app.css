@@ -3341,3 +3341,12 @@ body,
 .toast-dismiss:active {
   background: var(--color-border);
 }
+
+/* O contexto da unidade não deve comprimir o logo e o menu no celular. */
+@media(max-width:520px){
+  .site-header .header-context{display:none}
+  .site-header .header-left{flex:0 1 auto}
+  .site-header .header-brand-wrap{min-width:0}
+  .site-header .header-brand-wrap .brand{font-size:18px}
+  .site-header .header-right{flex-shrink:0}
+}
