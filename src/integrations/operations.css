@@ -103,3 +103,19 @@
 @media(max-width:1050px){.operational-patient-link{grid-template-columns:minmax(0,1fr) auto;gap:12px}.operational-patient-complaint{grid-column:1}.operational-open-label{grid-column:2;grid-row:2}}
 @media(max-width:680px){.operational-dashboard-actions{grid-template-columns:1fr}.operational-dash-link{padding:18px}.operational-patient-link{padding:14px}.operational-patient-link .local-severity{justify-self:end}.operational-result-action{font-size:0}.operational-result-action svg{width:18px;height:18px}}
 @media(prefers-reduced-motion:reduce){.operational-dash-link{transition:none}.operational-dash-link:hover{transform:none}}
+
+
+/* Desktop keeps the semantic data table; mobile exposes every action without horizontal scrolling. */
+.operational-mobile-cards{display:none}
+@media(max-width:680px){
+ .operational-page .local-table-wrap:has(.operational-mobile-cards){border:0;overflow:visible;background:transparent}
+ .operational-page .local-table-wrap:has(.operational-mobile-cards) > .local-table{display:none}
+ .operational-mobile-cards{display:grid;gap:10px}
+ .operational-mobile-card{min-width:0;display:grid;gap:13px;padding:15px;border:1px solid #dce6eb;background:#fff;border-radius:12px}
+ .operational-mobile-card > div:first-child{min-width:0;display:grid;gap:6px}
+ .operational-mobile-card strong{font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+ .operational-mobile-card .local-code{color:#536a79;font-size:12px}
+ .operational-mobile-card .local-secondary{margin:0;overflow-wrap:anywhere}
+ .operational-mobile-card .local-secondary-button{justify-self:stretch}
+ .operational-mobile-card-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#536a79;font-size:12px}
+}
