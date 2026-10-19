@@ -38,14 +38,14 @@ function page<T>(value: unknown): Page<T> {
   if (!Array.isArray(raw.items) || !Number.isInteger(raw.total) || !Number.isInteger(raw.page) ||
       !Number.isInteger(raw.pageSize) || Number(raw.total) < 0)
     throw new ApiError(502, "BAD_RESPONSE", "A lista recebida é inválida. Atualize a página.");
-  return raw as Page<T>;
+  return raw as unknown as Page<T>;
 }
 function detail(value: unknown): EntryDetail {
   const raw = object(value);
   if (typeof raw.id !== "string" || !["waiting","called","in_progress","completed","cancelled"].includes(String(raw.status)) ||
       !raw.patient || typeof object(raw.patient).fullName !== "string")
     throw new ApiError(502, "BAD_RESPONSE", "O atendimento retornou dados inesperados.");
-  return raw as EntryDetail;
+  return raw as unknown as EntryDetail;
 }
 const params = (filter: Record<string, string | number | undefined>) => {
   const query = new URLSearchParams();
