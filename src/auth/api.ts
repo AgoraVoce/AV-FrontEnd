@@ -1,4 +1,5 @@
 import { parseUser, type User } from "./types";
+import { apiEndpoint } from "../integrations/api-endpoint";
 
 export const API_MODE = import.meta.env.VITE_AV_LOCAL_API !== "false";
 
@@ -44,7 +45,7 @@ export async function authRequest(
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let response: Response;
   try {
-    response = await fetch(path, {
+    response = await fetch(API_MODE ? apiEndpoint(path) : path, {
       method,
       signal: combined,
       credentials: API_MODE ? "same-origin" : "include",
@@ -77,7 +78,7 @@ async function serverSessionRequest(path: string, method: "GET" | "POST", token:
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let response: Response;
   try {
-    response = await fetch(path, { method, signal: combined, cache: "no-store", credentials: "omit",
+    response = await fetch(apiEndpoint(path), { method, signal: combined, cache: "no-store", credentials: "omit",
       headers: { Authorization: "Bearer " + token, Accept: "application/json" } });
   } catch {
     if (signal?.aborted) throw new DOMException("Requisição cancelada", "AbortError");
