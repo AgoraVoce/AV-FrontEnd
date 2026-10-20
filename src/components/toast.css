@@ -1,0 +1,9 @@
+.av-toast-stack{position:fixed;top:90px;right:clamp(12px,2vw,26px);z-index:1100;display:grid;gap:10px;max-width:min(410px,calc(100vw - 24px));width:100%;pointer-events:none}
+.av-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:12px;min-height:68px;padding:15px 12px 15px 16px;background:#fff;border:1px solid #dbe5e9;border-left:4px solid #087b78;border-radius:12px;box-shadow:0 12px 36px rgba(15,46,60,.15);animation:toast-in .19s ease-out;color:#142733}
+.av-toast.is-success{border-left-color:#15803d}.av-toast.is-error{border-left-color:#b42318}.av-toast.is-info{border-left-color:#087b78}
+.av-toast-icon{flex-shrink:0;margin-top:1px;color:#087b78}.av-toast.is-success .av-toast-icon{color:#15803d}.av-toast.is-error .av-toast-icon{color:#b42318}
+.av-toast-copy{flex:1;min-width:0}.av-toast-copy strong{display:block;font-size:13px;line-height:1.4;font-weight:750;overflow-wrap:anywhere}.av-toast-copy p{font-size:12px;line-height:1.5;color:#526879;margin:5px 0 0;overflow-wrap:anywhere}
+.av-toast-close{display:grid;place-items:center;flex-shrink:0;border:0;background:transparent;border-radius:7px;color:#5a7080;width:28px;height:28px;cursor:pointer}.av-toast-close:hover{background:#edf5f5}.av-toast-close:focus-visible{outline:3px solid #11a6a0;outline-offset:2px}
+@keyframes toast-in{from{opacity:0;transform:translateY(-9px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:680px){.av-toast-stack{top:76px;left:12px;right:12px;max-width:none;width:auto}}
+@media(prefers-reduced-motion:reduce){.av-toast{animation:none}}

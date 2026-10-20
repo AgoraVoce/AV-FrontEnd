@@ -3,7 +3,7 @@ import { useState } from "react";
 import { RecoveryPage } from "./auth/RecoveryPage";
 import { API_MODE } from "./auth/api";
 import { LocalUnavailablePage } from "./integrations/LocalPages";
-import { ReceptionWorkspace, PatientWorkspace } from "./integrations/ReceptionWorkspace";
+import { ReceptionWorkspace, PatientWorkspace, PatientSearchWorkspace } from "./integrations/ReceptionWorkspace";
 import { DoctorWorkspace } from "./integrations/DoctorWorkspace";
 import { StaffWorkspace } from "./integrations/StaffWorkspace";
 import { LoginPage } from "./auth/LoginPage";
@@ -76,13 +76,19 @@ export default function App() {
           }
         />
         <Route
-          path="/medico"
-          element={
-            <ProtectedArea role="MEDICO">
-              {API_MODE ? <DoctorWorkspace /> : <MedicoPage />}
-            </ProtectedArea>
-          }
+          path="/pacientes"
+          element={<ProtectedArea role="RECEPCIONISTA">{API_MODE ? <PatientSearchWorkspace /> : <Navigate to="/recepcao" replace />}</ProtectedArea>}
         />
+        <Route
+          path="/medico"
+          element={<ProtectedArea role="MEDICO">{API_MODE ? <DoctorWorkspace view="dashboard" /> : <MedicoPage />}</ProtectedArea>}
+        />
+        {API_MODE && <>
+          <Route path="/medico/fila" element={<ProtectedArea role="MEDICO"><DoctorWorkspace view="queue" /></ProtectedArea>} />
+          <Route path="/medico/fila/:entryId" element={<ProtectedArea role="MEDICO"><DoctorWorkspace view="detail" /></ProtectedArea>} />
+          <Route path="/medico/atendimento" element={<ProtectedArea role="MEDICO"><DoctorWorkspace view="current" /></ProtectedArea>} />
+        </>}
+        <Route path="/admin/novo-funcionario" element={<ProtectedArea role="ADMIN">{API_MODE ? <StaffWorkspace actor="ADMIN" view="create" /> : <Navigate to="/admin" replace />}</ProtectedArea>} />
         <Route
           path="/admin"
           element={

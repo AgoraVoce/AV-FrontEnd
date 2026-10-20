@@ -74,3 +74,48 @@
  .operational-detail-head { align-items: flex-start; }
  .operational-page .local-table th,.operational-page .local-table td { padding: 12px; }
 }
+
+
+/* Dedicated pages: no list/form combinations, while retaining the Agora Você design system. */
+.operational-single-form { max-width: 1020px; width: 100%; }
+.operational-dashboard-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.operational-dash-link { display:grid; align-content:start; grid-template-columns:1fr auto; gap:10px; min-width:0; padding:24px; text-decoration:none; color:#142733; background:#fff; border:1px solid #dce6eb; border-radius:14px; transition:border-color .15s,box-shadow .15s,transform .15s; }
+.operational-dash-link > svg:first-child { color:#007b78; grid-column:1/-1; }
+.operational-dash-link strong { font-size:19px; letter-spacing:-.02em; grid-column:1; }
+.operational-dash-link > span { font-size:13px; color:#536a79; line-height:1.6; grid-column:1; }
+.operational-dash-arrow { grid-column:2; grid-row:2/4; align-self:center; color:#007b78; }
+.operational-dash-link:hover { border-color:#95c8c4; box-shadow:0 8px 23px #0f3d4614; transform:translateY(-2px); }
+.operational-dash-link:focus-visible,.operational-patient-link:focus-visible,.operational-text-link:focus-visible { outline:3px solid #11a6a0; outline-offset:3px; }
+.operational-dashboard-next { justify-items:start; }
+.operational-dashboard-next h2 { margin-bottom:8px; }
+.operational-patient-list { display:grid; gap:10px; }
+.operational-patient-link { display:grid; grid-template-columns:minmax(0,1.2fr) auto minmax(0,1fr) auto; gap:15px; align-items:center; width:100%; min-width:0; border:1px solid #dce6eb; border-radius:12px; background:#fff; padding:18px; color:#142733; text-decoration:none; }
+.operational-patient-link:hover { background:#f2fbfa; border-color:#8cc7c3; }
+.operational-patient-identity { min-width:0; display:grid; gap:5px; }
+.operational-patient-identity strong { font-size:14px; line-height:1.4; overflow-wrap:anywhere; }
+.operational-patient-identity small { font-size:12px; color:#536a79; }
+.operational-patient-complaint { min-width:0; color:#526879; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.operational-open-label { display:inline-flex; align-items:center; gap:6px; color:#007b78; font-weight:750; font-size:12px; white-space:nowrap; }
+.operational-result-action { display:inline-flex; align-items:center; gap:6px; color:#007b78; font-size:12px; font-weight:750; white-space:nowrap; }
+.operational-result { text-decoration:none; color:inherit; }
+.operational-text-link { width:fit-content; display:inline-flex; align-items:center; gap:7px; color:#006d67; font-weight:700; font-size:13px; text-decoration:none; }
+.operational-text-link:hover { text-decoration:underline; }
+@media(max-width:1050px){.operational-patient-link{grid-template-columns:minmax(0,1fr) auto;gap:12px}.operational-patient-complaint{grid-column:1}.operational-open-label{grid-column:2;grid-row:2}}
+@media(max-width:680px){.operational-dashboard-actions{grid-template-columns:1fr}.operational-dash-link{padding:18px}.operational-patient-link{padding:14px}.operational-patient-link .local-severity{justify-self:end}.operational-result-action{font-size:0}.operational-result-action svg{width:18px;height:18px}}
+@media(prefers-reduced-motion:reduce){.operational-dash-link{transition:none}.operational-dash-link:hover{transform:none}}
+
+
+/* Desktop keeps the semantic data table; mobile exposes every action without horizontal scrolling. */
+.operational-mobile-cards{display:none}
+@media(max-width:680px){
+ .operational-page .local-table-wrap:has(.operational-mobile-cards){border:0;overflow:visible;background:transparent}
+ .operational-page .local-table-wrap:has(.operational-mobile-cards) > .local-table{display:none}
+ .operational-mobile-cards{display:grid;gap:10px}
+ .operational-mobile-card{min-width:0;display:grid;gap:13px;padding:15px;border:1px solid #dce6eb;background:#fff;border-radius:12px}
+ .operational-mobile-card > div:first-child{min-width:0;display:grid;gap:6px}
+ .operational-mobile-card strong{font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+ .operational-mobile-card .local-code{color:#536a79;font-size:12px}
+ .operational-mobile-card .local-secondary{margin:0;overflow-wrap:anywhere}
+ .operational-mobile-card .local-secondary-button{justify-self:stretch}
+ .operational-mobile-card-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#536a79;font-size:12px}
+}

@@ -4,7 +4,7 @@ React 19 + TypeScript + Vite. Interface operacional para o pronto-socorro da cl�
 
 ## Executar localmente
 
-Requisitos: Node.js >=22.13, npm e PostgreSQL local.
+Requisitos: Node.js >=22.13 e npm. PostgreSQL local só é necessário se você optar por rodar o backend localmente.
 
 1. No `AV-Backend`, configurar `.env` com `DATABASE_URL`, `AUTH_JWT_SECRET`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`, `FRONTEND_ORIGIN=http://localhost:5173`. Nunca copie segredos para `VITE_*`.
 2. Preparar o PostgreSQL **descartável** com migrations aprovadas no backend (`npm run prisma:generate`, `npm run prisma:validate`, `npm run prisma:migrate:deploy` somente com banco novo, após conferir a URL de conexão e histórico). Não use `db push` contra Aiven ou banco compartilhado.
@@ -68,3 +68,91 @@ npm run test:local-api    # HTTP interceptado, fluxos novos
 ```
 
 O Playwright com interceptações verifica contratos e UI, mas **não substitui** um teste manual contra PostgreSQL real, médicos/plantões e as migrations. Nenhum deploy é realizado por este código.
+
+## Revisão visual automática (Chromium)
+
+Toda PR executa testes Chromium e gera, na sequência, capturas integrais de **todas as rotas e principais estados** no desktop, no celular e na TV Full HD. O GitHub Actions publica o artifact `revisao-visual-chromium-<PR>-<execução>` com imagens PNG e galeria `index.html` para inspeção de UI/UX. A pipeline também sinaliza overflow horizontal, imagens quebradas e erros JavaScript. Todos os dados dos screenshots são fictícios; nenhuma credencial real é usada.
+
+Para testar no Linux:
+
+```bash
+npm run test:visual:demo
+npm run test:visual:api
+npm run visual:report
+```
+
+Abra `artifacts/visual-review/index.html`. O procedimento, a lista de telas e os critérios de inspeção estão em [docs/revisao-visual.md](docs/revisao-visual.md). **Testes verdes não substituem a revisão humana das capturas.**
+
+
+## Navegação operacional por perfil
+
+O modo integrado (`VITE_AV_LOCAL_API=true`) separa listagem, cadastro e atendimento em páginas independentes:
+
+| Perfil | Rota | Conteúdo |
+| --- | --- | --- |
+| ADMIN | `/admin` ou `/admin/usuarios` | Listagem, pesquisa, filtros e paginação dos funcionários |
+| ADMIN | `/admin/novo-funcionario` | Somente o formulário de novo funcionário, com voltar/cancelar |
+| RECEPCIONISTA | `/recepcao` | Triagem, fila de espera e detalhes da entrada |
+| RECEPCIONISTA | `/pacientes` | Lista de pacientes cadastrados, pesquisa por nome/CPF, paginação |
+| RECEPCIONISTA | `/novo-cadastro` | Cadastro direto de um paciente novo, sem etapa de busca |
+| RECEPCIONISTA | `/novo-cadastro?patient=<UUID>` | Entrada na fila para um paciente escolhido no diretório |
+| MEDICO | `/medico` | Dashboard com resumo da fila, status atual e próxima chamada |
+| MEDICO | `/medico/fila` | Fila individual, cada paciente clicável |
+| MEDICO | `/medico/fila/<UUID>` | Detalhes de uma entrada aguardando, somente leitura |
+| MEDICO | `/medico/atendimento` | Paciente atual, início, prescrição e finalização, sem a lista da fila |
+
+O médico **não pode escolher manualmente o paciente a chamar**: o botão Chamar próximo paciente utiliza o endpoint transacional `POST /queues/me/next`, que respeita a ordem clínica no backend. Os detalhes da fila são consultivos.
+
+Cadastros de pacientes e registros de entrada são duas operações independentes; se o cadastro já existe, comece pelo diretório `/pacientes`. Os estados de sucesso/erro operacionais usam **toasts acessíveis** em vez de banners persistentes. Na área do médico, somente o UUID da entrada ativa pode ser armazenado temporariamente; o detalhe clínico é recuperado da API.
+
+No celular, a fila da recepção e o catálogo de funcionários utilizam cards com informações e ações visíveis, sem exigir deslocamento lateral na tabela.
+
+
+## API de produção — desenvolvimento local e Vercel
+
+**Backend Render:** https://av-backend-rlc1.onrender.com
+
+### Linux (desenvolvimento local com API real)
+
+```bash
+cd ~/projetos/agoravoce/AV-FrontEnd
+npm ci
+npm run config:api -- https://av-backend-rlc1.onrender.com
+npm run dev
+```
+
+O script prepara `.env.local` sem segredos e configura o proxy do Vite:
+
+```dotenv
+API_PROXY_TARGET=https://av-backend-rlc1.onrender.com
+VITE_AV_LOCAL_API=true
+```
+
+O navegador chama **`/api/v1/*` na mesma origem**; o Vite encaminha os pedidos ao Render, incluindo login e autenticação Bearer. Não é necessário alterar o CORS do backend nem instalar PostgreSQL localmente. Reinicie o Vite após qualquer mudança de ambiente.
+
+**Atenção:** é o banco de produção real. Não faça seeds, use dados fictícios, rode automações de alteração ou crie prescrições de teste nesse ambiente.
+
+### Deploy público na Vercel
+
+O projeto inclui `.env.production` com `VITE_AV_LOCAL_API=true` e `vercel.json` com os seguintes comportamentos:
+
+- `/api/*` → **proxy HTTPS do servidor Vercel** para `https://av-backend-rlc1.onrender.com/api/*`.
+- Demais rotas → fallback `/index.html`, permitindo F5 nas rotas React.
+- `npm run build` com Node.js 22.x, saída em `dist/`.
+
+**Não defina `VITE_AV_API_ORIGIN` na Vercel.** É desnecessário porque as chamadas da API já seguem para o Render pelo proxy de mesma origem. Caso essa variável tenha sido definida anteriormente no projeto, remova-a (ou ela forçará chamadas diretas sujeitas à restrição de CORS). `DATABASE_URL` e segredos JWT nunca pertencem ao frontend.
+
+1. Autorize o aplicativo Vercel na organização GitHub **AgoraVoce**, concedendo acesso a `AV-FrontEnd`: [instalações da organização](https://github.com/organizations/AgoraVoce/settings/installations).
+2. Vincule `AgoraVoce/AV-FrontEnd` em Vercel (framework Vite, diretório raiz, Node.js 22.x).
+3. Para publicar esta versão antes do merge, selecione a branch `feat/workspaces-rotas-toasts-20261019` e faça um **preview**; só direcione o domínio principal após os testes e aprovação.
+4. Inspecione login e chamadas GET com uma conta autorizada. Antes de testar prescrição, confirme o estado das migrations de produção no backend.
+
+Ao usar o proxy, `FRONTEND_ORIGIN` do Render **não precisa ser ampliado por domínio preview apenas por causa do CORS**, pois o navegador não faz requisição cross-origin. Se passar a usar API direta em outro domínio, será necessário ajustar a política de CORS conscientemente.
+
+### Diagnóstico
+
+- `404` ao atualizar rotas como `/medico/atendimento`: confira `vercel.json` e o fallback SPA.
+- `404` nas chamadas `/api/v1/*`: confirme ordem das regras de `rewrites` e disponibilidade das rotas no backend.
+- `502` / `503`: veja o status do serviço Render, conexão com banco e migrations.
+- `401` após F5: JWT fica somente em memória, portanto o usuário faz login novamente.
+- `POST` ou `PATCH` alteram os dados reais. Use teste somente leitura e contas autorizadas para validar produção.

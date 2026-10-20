@@ -124,10 +124,14 @@ test("salva auditoria e desfaz por botão e Ctrl+Z sem capturar campos de texto"
   );
 
   await changeAnaToUrgent(page);
-  await page
-    .getByRole("searchbox", { name: "Filtrar por nome, senha ou queixa" })
-    .focus();
+  const searchInput = page.getByRole("searchbox", {
+    name: "Filtrar por nome, senha ou queixa",
+  });
+  await searchInput.fill("Ana");
+  await expect(searchInput).toBeFocused();
   await page.keyboard.press("Control+z");
+  // Ctrl+Z inside a text field belongs to the browser's native edit history,
+  // not to the page-level clinical priority undo shortcut.
   await expect(page.locator(".mini-stat.urgent")).toContainText("4 Urgentes");
   await page.evaluate(() =>
     (document.activeElement as HTMLElement | null)?.blur(),
@@ -241,6 +245,31 @@ test("LED serpente usa a nova gravidade, pisca na quantidade certa e remove o ov
       color: expectedColor,
       dash: "6px, 94px",
     });
+    // The calm blink can last only 300 ms. Observe DOM mutations before it
+    // starts; polling after a fixed wait can skip that transient state in CI.
+    const blinkObserved = page.evaluate((selector) =>
+      new Promise<{ duration: string; count: string }>((resolve, reject) => {
+        const node = document.querySelector(selector);
+        if (!node) { reject(new Error("LED overlay not found")); return; }
+        const observer = new MutationObserver(check);
+        const timeout = window.setTimeout(() => {
+          observer.disconnect();
+          reject(new Error("LED never reached the blink phase"));
+        }, 5000);
+        function check() {
+          const blink = node?.querySelector(".queue-led-blink");
+          if (!blink) return;
+          const style = getComputedStyle(blink);
+          window.clearTimeout(timeout);
+          observer.disconnect();
+          resolve({
+            duration: style.animationDuration,
+            count: style.animationIterationCount,
+          });
+        }
+        observer.observe(node, { childList: true, subtree: true });
+        check();
+      }), `.queue-led-overlay.${expectedClass}`);
     await page.waitForTimeout(400);
     const midTravelOffset = Number.parseFloat(
       await overlay
@@ -250,17 +279,9 @@ test("LED serpente usa a nova gravidade, pisca na quantidade certa e remove o ov
     expect(midTravelOffset).toBeLessThan(-10);
     expect(midTravelOffset).toBeGreaterThan(-90);
 
-    await expect(overlay).toHaveAttribute("data-led-phase", "blink", {
-      timeout: 2500,
-    });
-    const blinkStyle = await overlay
-      .locator(".queue-led-blink")
-      .evaluate((element) => ({
-        duration: getComputedStyle(element).animationDuration,
-        count: getComputedStyle(element).animationIterationCount,
-      }));
+    const blinkStyle = await blinkObserved;
     expect(blinkStyle).toEqual({ duration: "0.3s", count: blinkCount });
-    await expect(overlay).toHaveCount(0, { timeout: 1500 });
+    await expect(overlay).toHaveCount(0, { timeout: 2500 });
     await context.close();
   }
 });

@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# Evita que Chromium/Playwright de commits antigos da mesma PR disputem recursos.
+concurrency:
+  group: frontend-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -35,3 +40,29 @@ jobs:
         run: npx playwright test --workers=1
       - name: Integração local (API interceptada)
         run: npm run test:local-api -- --workers=1
+      - name: Capturas Chromium — modo demonstração
+        if: success() || failure()
+        run: npm run test:visual:demo -- --workers=1
+      - name: Capturas Chromium — modo API simulada
+        if: success() || failure()
+        run: npm run test:visual:api -- --workers=1
+      - name: Gerar galeria visual
+        if: always()
+        run: npm run visual:report
+      - name: Publicar prints das telas
+        id: visual-artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: revisao-visual-chromium-${{ github.event.pull_request.number }}-${{ github.run_number }}
+          path: artifacts/visual-review/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Link da galeria no resumo da execução
+        if: always()
+        env:
+          ARTIFACT_URL: ${{ steps.visual-artifact.outputs.artifact-url }}
+        run: |
+          if [ -n "$ARTIFACT_URL" ]; then
+            echo "[Abrir prints da revisão visual]($ARTIFACT_URL)" >> "$GITHUB_STEP_SUMMARY"
+          fi

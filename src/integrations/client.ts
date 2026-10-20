@@ -1,4 +1,5 @@
 import { clearLocalSession, getAccessToken } from "../auth/api";
+import { apiEndpoint } from "./api-endpoint";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -49,7 +50,7 @@ export async function request(path: string, method: "GET" | "POST" | "PATCH", bo
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let response: Response;
   try {
-    response = await fetch("/api/v1" + path, {
+    response = await fetch(apiEndpoint("/api/v1" + path), {
       method,
       headers: {
         Accept: "application/json",
@@ -63,7 +64,7 @@ export async function request(path: string, method: "GET" | "POST" | "PATCH", bo
     });
   } catch {
     if (signal?.aborted) throw new DOMException("Cancelada", "AbortError");
-    throw new ApiError(0, "NETWORK_ERROR", "Não foi possível conectar à API local. Confira se o backend está rodando na porta 3000.");
+    throw new ApiError(0, "NETWORK_ERROR", "Não foi possível conectar à API. Confira a conexão e a disponibilidade do serviço.");
   }
   if (response.status === 401) {
     clearLocalSession();
