@@ -21,7 +21,8 @@
     "design:lint": "designmd lint DESIGN.md",
     "test:visual:demo": "VISUAL_API_MODE=false playwright test --config playwright.visual.config.ts",
     "test:visual:api": "VISUAL_API_MODE=true playwright test --config playwright.visual.config.ts",
-    "visual:report": "node scripts/generate-visual-gallery.mjs"
+    "visual:report": "node scripts/generate-visual-gallery.mjs",
+    "config:api": "node scripts/configure-prod-api.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",
