@@ -4,7 +4,7 @@ React 19 + TypeScript + Vite. Interface operacional para o pronto-socorro da cl�
 
 ## Executar localmente
 
-Requisitos: Node.js >=22.13, npm e PostgreSQL local.
+Requisitos: Node.js >=22.13 e npm. PostgreSQL local só é necessário se você optar por rodar o backend localmente.
 
 1. No `AV-Backend`, configurar `.env` com `DATABASE_URL`, `AUTH_JWT_SECRET`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`, `FRONTEND_ORIGIN=http://localhost:5173`. Nunca copie segredos para `VITE_*`.
 2. Preparar o PostgreSQL **descartável** com migrations aprovadas no backend (`npm run prisma:generate`, `npm run prisma:validate`, `npm run prisma:migrate:deploy` somente com banco novo, após conferir a URL de conexão e histórico). Não use `db push` contra Aiven ou banco compartilhado.
@@ -108,55 +108,51 @@ Cadastros de pacientes e registros de entrada são duas operações independente
 No celular, a fila da recepção e o catálogo de funcionários utilizam cards com informações e ações visíveis, sem exigir deslocamento lateral na tabela.
 
 
-## Usar a API de produção no frontend
+## API de produção — desenvolvimento local e Vercel
 
-O app suporta dois modos sem reescrever a autenticação JWT ou expor segredos:
+**Backend Render:** https://av-backend-rlc1.onrender.com
 
-### Desenvolvimento local usando o backend já publicado
-
-Na pasta `AV-FrontEnd`:
+### Linux (desenvolvimento local com API real)
 
 ```bash
+cd ~/projetos/agoravoce/AV-FrontEnd
 npm ci
-npm run config:api -- https://SUA-API-PUBLICADA
+npm run config:api -- https://av-backend-rlc1.onrender.com
 npm run dev
 ```
 
-O comando valida a URL HTTPS e escreve **`.env.local`**, que está ignorado no Git:
+O script prepara `.env.local` sem segredos e configura o proxy do Vite:
 
 ```dotenv
-API_PROXY_TARGET=https://SUA-API-PUBLICADA
+API_PROXY_TARGET=https://av-backend-rlc1.onrender.com
 VITE_AV_LOCAL_API=true
 ```
 
-**Não configure `VITE_AV_API_ORIGIN` localmente**: o navegador chama `http://127.0.0.1:5173/api/v1/*` e o Vite encaminha no servidor para a API HTTPS. Isso não depende de CORS liberado para `localhost`. Reinicie o Vite ao mudar variáveis. A aplicação opera **diretamente sobre os dados de produção**: cadastros, alterações de fila e prescrições são reais e não devem ser usados como testes descartáveis.
+O navegador chama **`/api/v1/*` na mesma origem**; o Vite encaminha os pedidos ao Render, incluindo login e autenticação Bearer. Não é necessário alterar o CORS do backend nem instalar PostgreSQL localmente. Reinicie o Vite após qualquer mudança de ambiente.
 
-O Vite faz proxy de todo o caminho `/api/v1/*`, inclusive login, `auth/me` e logout; não armazena tokens, senhas ou URL do banco.
+**Atenção:** é o banco de produção real. Não faça seeds, use dados fictícios, rode automações de alteração ou crie prescrições de teste nesse ambiente.
 
-### Deploy do frontend na Vercel
+### Deploy público na Vercel
 
-O projeto possui `vercel.json` com framework Vite, comando de build, diretório `dist` e fallback de SPA para `/medico/atendimento`, `/pacientes` e demais páginas internas.
+O projeto inclui `.env.production` com `VITE_AV_LOCAL_API=true` e `vercel.json` com os seguintes comportamentos:
 
-1. Autorize a integração **Vercel GitHub** a acessar `AgoraVoce/AV-FrontEnd`. Na organização GitHub, permita a instalação da Vercel no repositório.
-2. Vincule o repositório na Vercel (Root Directory: `./`, Framework: `Vite`, Build: `npm run build`, Output: `dist`, Node.js: `22.x`).
-3. Defina as variáveis do projeto nos ambientes **Production** e **Preview**, caso o backend aceite o domínio de preview:
+- `/api/*` → **proxy HTTPS do servidor Vercel** para `https://av-backend-rlc1.onrender.com/api/*`.
+- Demais rotas → fallback `/index.html`, permitindo F5 nas rotas React.
+- `npm run build` com Node.js 22.x, saída em `dist/`.
 
-   ```dotenv
-   VITE_AV_LOCAL_API=true
-   VITE_AV_API_ORIGIN=https://SUA-API-PUBLICADA
-   ```
+**Não defina `VITE_AV_API_ORIGIN` na Vercel.** É desnecessário porque as chamadas da API já seguem para o Render pelo proxy de mesma origem. Caso essa variável tenha sido definida anteriormente no projeto, remova-a (ou ela forçará chamadas diretas sujeitas à restrição de CORS). `DATABASE_URL` e segredos JWT nunca pertencem ao frontend.
 
-   A URL é uma **origem HTTPS sem caminho** e sem barra final; não acrescente `/api/v1`. Ela é pública e embutida no build do navegador; nunca configure `DATABASE_URL`, `AUTH_JWT_SECRET` ou outras credenciais no frontend.
-4. No serviço que hospeda o **AV-Backend**, configure `FRONTEND_ORIGIN=https://DOMINIO-PUBLICO-DO-FRONTEND` (exato e sem barra final) e reinicie o serviço. O backend atual aceita uma origem CORS por ambiente; os previews com domínios diferentes não terão chamadas autorizadas até a política ser expandida conscientemente. Não use `*` com dados clínicos.
-5. Faça o deploy da branch desejada, acesse `/login` e confirme manualmente autenticação e uma consulta de leitura com uma conta autorizada, sem cadastrar pessoas fictícias em produção.
+1. Autorize o aplicativo Vercel na organização GitHub **AgoraVoce**, concedendo acesso a `AV-FrontEnd`: [instalações da organização](https://github.com/organizations/AgoraVoce/settings/installations).
+2. Vincule `AgoraVoce/AV-FrontEnd` em Vercel (framework Vite, diretório raiz, Node.js 22.x).
+3. Para publicar esta versão antes do merge, selecione a branch `feat/workspaces-rotas-toasts-20261019` e faça um **preview**; só direcione o domínio principal após os testes e aprovação.
+4. Inspecione login e chamadas GET com uma conta autorizada. Antes de testar prescrição, confirme o estado das migrations de produção no backend.
 
-O Vite recusa build na Vercel se `VITE_AV_API_ORIGIN` não estiver definido e rejeita URL sem HTTPS na compilação de produção. **A publicação não verifica automaticamente a migração clínica do backend.** Antes de registrar prescrições em produção, confirme aplicação de `20261018191000_add_prescriptions`, permissões e rotação de segredos antigos.
+Ao usar o proxy, `FRONTEND_ORIGIN` do Render **não precisa ser ampliado por domínio preview apenas por causa do CORS**, pois o navegador não faz requisição cross-origin. Se passar a usar API direta em outro domínio, será necessário ajustar a política de CORS conscientemente.
 
-### Diagnóstico de conexão
+### Diagnóstico
 
-- `404` em páginas internas após F5: confira `vercel.json` e o fallback para `index.html`.
-- Erro de CORS: confira `FRONTEND_ORIGIN` no Express com o **domínio real** usado no navegador.
-- `502` ou `503`: veja o backend/DB e se todas as migrations necessárias foram aplicadas.
-- `401` após recarregar: a sessão é mantida somente em memória; faça login novamente.
-- API indisponível localmente: confira `.env.local`, proxy HTTPS e reinicie `npm run dev`.
-
+- `404` ao atualizar rotas como `/medico/atendimento`: confira `vercel.json` e o fallback SPA.
+- `404` nas chamadas `/api/v1/*`: confirme ordem das regras de `rewrites` e disponibilidade das rotas no backend.
+- `502` / `503`: veja o status do serviço Render, conexão com banco e migrations.
+- `401` após F5: JWT fica somente em memória, portanto o usuário faz login novamente.
+- `POST` ou `PATCH` alteram os dados reais. Use teste somente leitura e contas autorizadas para validar produção.
