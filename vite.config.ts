@@ -12,9 +12,6 @@ export default defineConfig(({ mode }) => {
       throw new Error("Produção exige VITE_AV_API_ORIGIN com HTTPS.");
     }
   }
-  if (process.env.VERCEL && !publicOrigin) {
-    throw new Error("Configure VITE_AV_API_ORIGIN em Vercel antes de publicar o frontend integrado.");
-  }
   return {
     plugins: [react()],
     server: {
