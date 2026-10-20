@@ -40,11 +40,11 @@ test("login usa Bearer real e a recepção exibe a fila do backend",async({page}
   await mockQueue(page,[{entryId,fullName:"Paciente da API",queueCode:null}]);
   await login(page,"RECEPCIONISTA");
   await expect(page).toHaveURL("/recepcao");
-  await expect(page.getByText("Paciente da API")).toBeVisible();
-  await expect(page.getByText("Sem senha")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Paciente da API" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Sem senha" })).toBeVisible();
   await expect(page.getByText("Carlos Eduardo da Silva")).toHaveCount(0);
   await page.getByRole("button",{name:"Atualizar fila"}).click();
-  await expect(page.getByText("Paciente da API")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Paciente da API" })).toBeVisible();
 });
 test("recepção busca paciente existente por nome e registra entrada com médico",async({page})=>{
   await mockQueue(page);
