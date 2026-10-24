@@ -8,6 +8,8 @@ import { ReclassificationModal } from "../components/ReclassificationModal";
 import { priorityInfo } from "./priority-store";
 import { loadReceptionClinicalData } from "./reception-clinical-data";
 import { matchesAge, matchesWait, patientAge, waitingMinutes, type AgeFilter, type WaitFilter } from "./reception-filters";
+import { PatientRegistrationFields } from "../components/PatientRegistrationFields";
+import { patientRegistrationError, validatePatientRegistration, type PatientRegistrationErrors } from "./patient-registration";
 import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
 import { useToast } from "../components/useToast";
@@ -306,6 +308,9 @@ export function PatientWorkspace() {
   const [params] = useSearchParams();
   const patientId = params.get("patient");
   const [patient, setPatient] = useState<NewPatient>({ ...EMPTY });
+  const [patientErrors, setPatientErrors] = useState<PatientRegistrationErrors>({});
+  const [patientFormError, setPatientFormError] = useState("");
+  const [entryError, setEntryError] = useState("");
   const [chosen, setChosen] = useState<{ id: string; name: string } | null>(null);
   const [loadingExisting, setLoadingExisting] = useState(Boolean(patientId));
   const [severity, setSeverity] = useState<Severity>("VERDE");
@@ -339,6 +344,16 @@ export function PatientWorkspace() {
   async function savePatient(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (lock.current) return;
+    const errors = validatePatientRegistration(patient);
+    const birthInput = event.currentTarget.elements.namedItem("birthDate");
+    if (birthInput instanceof HTMLInputElement && birthInput.validity.badInput) errors.birthDate = "Complete a data de nascimento ou deixe o campo vazio.";
+    setPatientErrors(errors);
+    setPatientFormError("");
+    if (Object.keys(errors).length) {
+      setPatientFormError("Confira os campos destacados antes de continuar.");
+      window.requestAnimationFrame(()=>document.getElementById(`patient-${Object.keys(errors)[0]}`)?.focus());
+      return;
+    }
     lock.current = true; setBusy(true);
     try {
       const saved = await createPatient({
@@ -349,12 +364,19 @@ export function PatientWorkspace() {
       });
       setChosen({ id: saved.id, name: saved.fullName });
       toast.success("Paciente cadastrado", "Agora registre a entrada na fila de espera.");
-    } catch (cause) { toast.error("Não foi possível cadastrar o paciente", errorText(cause)); }
+    } catch (cause) {
+      const failure = patientRegistrationError(cause);
+      setPatientErrors(failure.fields); setPatientFormError(Object.keys(failure.fields).length ? failure.message : "");
+      const firstField = Object.keys(failure.fields)[0];
+      if(firstField)window.requestAnimationFrame(()=>document.getElementById(`patient-${firstField}`)?.focus());
+      toast.error("Não foi possível cadastrar o paciente", failure.message);
+    }
     finally { lock.current = false; setBusy(false); }
   }
   async function saveEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!chosen || !symptoms.trim() || lock.current) return;
+    setEntryError("");
     lock.current = true; setBusy(true);
     try {
       await operations.createEntry({
@@ -364,7 +386,7 @@ export function PatientWorkspace() {
       });
       toast.success("Entrada registrada com sucesso", chosen.name + " foi incluído na fila do pronto-socorro.");
       navigate("/recepcao", { replace: true });
-    } catch (cause) { toast.error("Não foi possível registrar a entrada", errorText(cause)); }
+    } catch (cause) { setEntryError(errorText(cause)); toast.error("Não foi possível registrar a entrada", errorText(cause)); }
     finally { lock.current = false; setBusy(false); }
   }
   return <AppShell><div className="local-page operational-page">
@@ -374,22 +396,18 @@ export function PatientWorkspace() {
       <Link className="local-secondary-button" to={chosen ? "/pacientes" : "/recepcao"}><ChevronLeft size={16} aria-hidden="true" /> {chosen ? "Voltar aos pacientes" : "Voltar à fila"}</Link>
     </header>
     {loadingExisting && <p className="local-note" role="status">Carregando dados do paciente…</p>}
-    {!chosen && !loadingExisting && <form className="local-form operational-single-form" onSubmit={e => void savePatient(e)}>
+    {!chosen && !loadingExisting && <form className="local-form operational-single-form" noValidate onSubmit={e => void savePatient(e)}>
       <div className="operational-row"><div><h2>Dados do paciente</h2><p className="local-note">Preencha as informações para iniciar um novo cadastro.</p></div>
         <Link className="local-secondary-button operational-small-button" to="/pacientes">Buscar paciente existente</Link></div>
-      <div className="local-fields">
-        <label>Nome completo *<input required autoFocus autoComplete="name" maxLength={150} value={patient.fullName} onChange={e => setPatient(v => ({ ...v, fullName: e.target.value }))} /></label>
-        <label>CPF *<input required inputMode="numeric" maxLength={14} placeholder="000.000.000-00" value={patient.cpf} onChange={e => setPatient(v => ({ ...v, cpf: e.target.value }))} /></label>
-        <label>Data de nascimento<input type="date" value={patient.birthDate} onChange={e => setPatient(v => ({ ...v, birthDate: e.target.value }))} /></label>
-        <label>Telefone<input type="tel" maxLength={20} value={patient.phone} onChange={e => setPatient(v => ({ ...v, phone: e.target.value }))} /></label>
-        <label className="local-wide">E-mail<input type="email" maxLength={255} value={patient.email} onChange={e => setPatient(v => ({ ...v, email: e.target.value }))} /></label>
-      </div>
-      <div className="local-actions"><button type="submit" disabled={busy || !patient.fullName.trim() || patient.cpf.replace(/\D/g, "").length !== 11} className="local-primary">
+      {patientFormError && <p className="local-message is-error" role="alert">{patientFormError}</p>}
+      <PatientRegistrationFields patient={patient} errors={patientErrors} busy={busy} onChange={(field,value)=>{setPatient(current=>({...current,[field]:value}));setPatientErrors(current=>({...current,[field]:undefined}));setPatientFormError("");}}/>
+      <div className="local-actions"><button type="submit" disabled={busy} className="local-primary">
         {busy ? "Salvando…" : "Cadastrar e continuar"} <ArrowRight size={16} aria-hidden="true" /></button>
         <Link className="local-secondary-button" to="/pacientes">Consultar pacientes</Link>
       </div>
     </form>}
     {chosen && !loadingExisting && <form className="local-form operational-single-form" onSubmit={e => void saveEntry(e)}>
+      {entryError && <p className="local-message is-error" role="alert">{entryError}</p>}
       <div className="operational-row"><div><h2>Informações da entrada</h2><p className="local-note">Paciente: <strong>{chosen.name}</strong></p></div>
         <Link className="local-secondary-button operational-small-button" to="/pacientes">Trocar paciente</Link></div>
       <div className="local-fields">

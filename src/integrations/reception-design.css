@@ -109,3 +109,6 @@
 .reception-history li p {margin:8px 0;}
 .reception-history-pagination {display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;}
 .reception-history-error {color:var(--color-danger);font-size:13px;}
+.patient-registration-error {color:var(--color-danger);font-size:12px;font-weight:400;line-height:1.5;}
+.patient-registration-help {color:var(--color-muted);font-size:12px;font-weight:400;line-height:1.5;}
+.patient-registration-fields input[aria-invalid="true"] {border-color:var(--color-danger);}
