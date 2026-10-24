@@ -1,5 +1,7 @@
 # Filtros clínicos da recepção
 
+**Atualização:** a persistência local foi substituída pela API. Consulte [Integração de reavaliação](reception-api-integration.md) para o estado atual; os trechos de fallback abaixo registram a implementação anterior.
+
 Implementados na rota /recepcao, sem mudanças em autenticação, perfis, outras telas ou backend.
 
 - Idade: todas, 0–17, 18–59, 60+ e não informada.

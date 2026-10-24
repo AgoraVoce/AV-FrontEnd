@@ -1,3 +1,4 @@
+import type { Reassessment } from "../src/integrations/reception-reassessment";
 import { expect, test, type Page } from "@playwright/test";
 
 const user = {
@@ -10,14 +11,34 @@ const entries = [
   { entryId: "entry-first", fullName: "Primeira Pessoa", queueCode: "F-001" },
   { entryId: "entry-second", fullName: "Segunda Pessoa", queueCode: "F-002" },
 ];
-async function setup(page: Page, initialSeverity = "VERDE") {
+async function setup(
+  page: Page,
+  initialSeverity = "VERDE",
+  registeredSymptoms: string[] = [],
+) {
   let items = [...entries];
   let failDetail = false;
+  let postError = 0;
   let detailCalls = 0;
+  const audits: Reassessment[] = [];
+  const payloads: Record<string, unknown>[] = [];
+  const states = new Map(
+    entries.map((entry) => [
+      entry.entryId,
+      {
+        severity: initialSeverity,
+        symptomIds: [...registeredSymptoms],
+        otherSymptoms: "Queixa inicial informada",
+        shortNote: null as string | null,
+        updatedAt: "2026-10-24T10:00:00Z",
+      },
+    ]),
+  );
   await page.clock.install();
-  // All API calls are intercepted: no data is written to the real backend.
+  // All API calls are intercepted. Audits/clinical state live in the fake server, never localStorage.
   await page.route("**/api/v1/**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
+    const url = new URL(route.request().url());
+    const path = url.pathname;
     if (path.endsWith("/auth/login"))
       return route.fulfill({
         json: {
@@ -29,6 +50,73 @@ async function setup(page: Page, initialSeverity = "VERDE") {
       });
     if (path.endsWith("/queues/waiting"))
       return route.fulfill({ json: { items } });
+    if (path.endsWith("/doctors"))
+      return route.fulfill({
+        json: { items: [], page: 1, pageSize: 100, total: 0 },
+      });
+    if (path.endsWith("/reassessments")) {
+      const entryId = path.split("/").at(-2)!;
+      if (route.request().method() === "GET") {
+        const matching = [...audits]
+          .reverse()
+          .filter((audit) => audit.entryId === entryId);
+        const number = Number(url.searchParams.get("page") ?? 1);
+        return route.fulfill({
+          json: {
+            items: matching.slice((number - 1) * 5, number * 5),
+            total: matching.length,
+            page: number,
+            pageSize: 5,
+          },
+        });
+      }
+      expect(route.request().headers().authorization).toBe(
+        "Bearer test-review",
+      );
+      const body = route.request().postDataJSON();
+      expect(Object.keys(body).sort()).toEqual(
+        ["severity", "symptomIds", "otherSymptoms", "shortNote"].sort(),
+      );
+      payloads.push(body);
+      if (postError)
+        return route.fulfill({
+          status: postError,
+          json: {
+            error: {
+              code: postError === 409 ? "ENTRY_STATE_CONFLICT" : "UNAVAILABLE",
+              message: "Failed",
+            },
+          },
+        });
+      const current = states.get(entryId)!;
+      const stamp = new Date().toISOString();
+      const audit: Reassessment = {
+        id: `audit-${audits.length + 1}`,
+        entryId,
+        previousSeverity: current.severity as Reassessment["previousSeverity"],
+        newSeverity: body.severity,
+        occurredAt: stamp,
+        createdAt: stamp,
+        createdByUserId: user.id,
+        observationSnapshot: body.shortNote,
+        symptomsSnapshot: {
+          symptoms: body.symptomIds.map((id: string) => ({
+            id,
+            name: "Sintoma cadastrado",
+          })),
+          otherSymptoms: body.otherSymptoms,
+        },
+      };
+      audits.push(audit);
+      states.set(entryId, {
+        severity: body.severity,
+        symptomIds: body.symptomIds,
+        otherSymptoms: body.otherSymptoms,
+        shortNote: body.shortNote,
+        updatedAt: stamp,
+      });
+      return route.fulfill({ status: 201, json: audit });
+    }
     if (path.includes("/entries/")) {
       detailCalls++;
       if (failDetail)
@@ -36,24 +124,28 @@ async function setup(page: Page, initialSeverity = "VERDE") {
           status: 503,
           json: { error: { code: "UNAVAILABLE", message: "Indisponível" } },
         });
-      const entry = entries.find((item) => path.endsWith(item.entryId))!;
+      const entry = entries.find((entry) => path.endsWith(entry.entryId))!;
       return route.fulfill({
         json: {
           id: entry.entryId,
           patientId: `patient-${entry.entryId}`,
           status: "waiting",
-          severity: initialSeverity,
           enteredAt: "2026-10-24T10:00:00Z",
           queueCode: entry.queueCode,
+          ...states.get(entry.entryId),
           patient: {
             id: `patient-${entry.entryId}`,
             fullName: entry.fullName,
             birthDate: null,
           },
+          doctor: null,
         },
       });
     }
-    return route.fulfill({ json: {} });
+    return route.fulfill({
+      status: 503,
+      json: { error: { code: "UNMOCKED_ENDPOINT" } },
+    });
   });
   await page.goto("/login");
   await page.getByLabel("E-mail", { exact: true }).fill(user.email);
@@ -89,6 +181,36 @@ async function setup(page: Page, initialSeverity = "VERDE") {
       failDetail = false;
     },
     detailCalls: () => detailCalls,
+    audits: () => audits,
+    payloads: () => payloads,
+    failPost: (status = 503) => {
+      postError = status;
+    },
+    recoverPost: () => {
+      postError = 0;
+    },
+    seedHistory: (count: number) => {
+      for (let n = 0; n < count; n++)
+        audits.push({
+          id: `historic-${n}`,
+          entryId: "entry-second",
+          previousSeverity: "VERDE",
+          newSeverity: "VERDE",
+          occurredAt: new Date(
+            Date.parse("2026-10-24T11:00:00Z") + n * 60_000,
+          ).toISOString(),
+          createdAt: "2026-10-24T11:00:00Z",
+          createdByUserId: user.id,
+          observationSnapshot: `Justificativa histórica ${n}`,
+          symptomsSnapshot: {
+            symptoms: [],
+            otherSymptoms: "Queixa de uma reavaliação anterior",
+          },
+        });
+    },
+    revise: () => {
+      states.get("entry-second")!.severity = "AMARELO";
+    },
   };
 }
 
@@ -165,11 +287,11 @@ test("barra preserva ordem e modal fecha por X, cancelar, ESC e overlay com foco
 test("valida justificativa, mantém rascunho no polling e salva auditoria, cores, ordem e contadores", async ({
   page,
 }) => {
-  const { open } = await setup(page);
+  const { open, audits, payloads } = await setup(page);
   await open();
   const modal = page.getByRole("dialog");
   await modal.getByRole("radio", { name: /Urgente/ }).check();
-  const reason = modal.getByRole("textbox");
+  const reason = modal.getByRole("textbox", { name: /Motivo da alteração/ });
   const saveBox = await modal
     .getByRole("button", { name: "Salvar Alteração" })
     .boundingBox();
@@ -206,20 +328,26 @@ test("valida justificativa, mantém rascunho no polling e salva auditoria, cores
     "style",
     /50%/,
   );
-  const stored = await page.evaluate(() =>
-    JSON.parse(
-      localStorage.getItem("av:reception-reassessments:v1:review-user")!,
-    ),
-  );
-  expect(stored.records).toHaveLength(1);
-  expect(stored.records[0]).toMatchObject({
+  expect(audits()).toHaveLength(1);
+  expect(audits()[0]).toMatchObject({
     entryId: "entry-second",
-    patientId: "patient-entry-second",
-    previousLevel: "VERDE",
-    newLevel: "VERMELHO",
-    responsible: { id: user.id, name: user.name },
+    previousSeverity: "VERDE",
+    newSeverity: "VERMELHO",
+    createdByUserId: user.id,
+    observationSnapshot: "Reavaliação clínica justificada pelo responsável.",
   });
-  expect(Number.isNaN(Date.parse(stored.records[0].occurredAt))).toBe(false);
+  expect(payloads()[0]).toMatchObject({
+    severity: "VERMELHO",
+    symptomIds: [],
+    otherSymptoms: "Queixa inicial informada",
+    shortNote: "Reavaliação clínica justificada pelo responsável.",
+  });
+  expect(Number.isNaN(Date.parse(audits()[0].occurredAt))).toBe(false);
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem("av:reception-reassessments:v1:review-user"),
+    ),
+  ).toBeNull();
   await page.getByRole("button", { name: "Atualizar fila" }).click();
   await expect(page.locator("tbody tr").first()).toHaveClass(/urgent/);
   await page.reload();
@@ -237,15 +365,15 @@ test("erro de API preserva formulário e permite tentar novamente; paciente que 
   const modal = page.getByRole("dialog");
   await modal.getByRole("radio", { name: /Alerta/ }).check();
   await modal
-    .getByRole("textbox")
+    .getByRole("textbox", { name: /Motivo da alteração/ })
     .fill("Motivo clínico informado para a reavaliação.");
   controls.fail();
   await modal.getByRole("button", { name: "Salvar Alteração" }).click();
   await expect(modal.getByRole("alert")).toBeVisible();
   await expect(page.locator(".reception-priority-led")).toHaveCount(0);
-  await expect(modal.getByRole("textbox")).toHaveValue(
-    "Motivo clínico informado para a reavaliação.",
-  );
+  await expect(
+    modal.getByRole("textbox", { name: /Motivo da alteração/ }),
+  ).toHaveValue("Motivo clínico informado para a reavaliação.");
   await expect(modal.getByRole("radio", { name: /Alerta/ })).toBeChecked();
   controls.recover();
   controls.leave();
@@ -279,7 +407,13 @@ test("modal responsivo e navegação por teclado com focus trap", async ({
   await expect(modal.getByRole("radio", { name: /Alerta/ })).toBeChecked();
   await expect(modal.getByRole("radio", { name: /Alerta/ })).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(modal.getByRole("textbox")).toBeFocused();
+  await expect(
+    modal.getByRole("textbox", { name: /Sintomas \/ queixa/ }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    modal.getByRole("textbox", { name: /Motivo da alteração/ }),
+  ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
     modal.getByRole("button", { name: "Cancelar", exact: true }),
@@ -294,26 +428,28 @@ test("modal responsivo e navegação por teclado com focus trap", async ({
   ).toBeFocused();
 });
 
-test("falha ao persistir é visível sem perder justificativa", async ({
+test("erro no POST preserva rascunho, não dispara LED e permite tentar novamente", async ({
   page,
 }) => {
-  const { open } = await setup(page);
-  await open();
+  const controls = await setup(page);
+  await controls.open();
   const modal = page.getByRole("dialog");
   await modal.getByRole("radio", { name: /Urgente/ }).check();
   await modal
-    .getByRole("textbox")
+    .getByRole("textbox", { name: /Motivo da alteração/ })
     .fill("Justificativa clínica com tamanho suficiente.");
-  await page.evaluate(() => {
-    Storage.prototype.setItem = () => {
-      throw new Error("storage unavailable");
-    };
-  });
+  controls.failPost();
   await modal.getByRole("button", { name: "Salvar Alteração" }).click();
-  await expect(modal.getByRole("alert")).toContainText("persistir");
-  await expect(modal.getByRole("textbox")).toHaveValue(
-    "Justificativa clínica com tamanho suficiente.",
-  );
+  await expect(modal.getByRole("alert")).toBeVisible();
+  await expect(
+    modal.getByRole("textbox", { name: /Motivo da alteração/ }),
+  ).toHaveValue("Justificativa clínica com tamanho suficiente.");
+  await expect(page.locator(".reception-priority-led")).toHaveCount(0);
+  expect(controls.audits()).toHaveLength(0);
+  controls.recoverPost();
+  await modal.getByRole("button", { name: "Salvar Alteração" }).click();
+  await expect(modal).toHaveCount(0);
+  expect(controls.audits()).toHaveLength(1);
 });
 
 for (const choice of [
@@ -337,7 +473,7 @@ for (const choice of [
     const modal = page.getByRole("dialog");
     await modal.getByRole("radio", { name: new RegExp(choice.name) }).check();
     await modal
-      .getByRole("textbox")
+      .getByRole("textbox", { name: /Motivo da alteração/ })
       .fill("Justificativa clínica para confirmar a alteração.");
     await modal.getByRole("button", { name: "Salvar Alteração" }).click();
     const led = page.locator(".reception-priority-led");
@@ -412,7 +548,7 @@ test("LED respeita movimento reduzido e reaparece só após um novo salvamento",
   let modal = page.getByRole("dialog");
   await modal.getByRole("radio", { name: /Urgente/ }).check();
   await modal
-    .getByRole("textbox")
+    .getByRole("textbox", { name: /Motivo da alteração/ })
     .fill("Justificativa clínica para a nova prioridade.");
   await modal.getByRole("button", { name: "Salvar Alteração" }).click();
   const led = page.locator(".reception-priority-led");
@@ -432,8 +568,159 @@ test("LED respeita movimento reduzido e reaparece só após um novo salvamento",
   await expect(modal.getByRole("radio", { name: /Urgente/ })).toBeChecked();
   await modal.getByRole("radio", { name: /Alerta/ }).check();
   await modal
-    .getByRole("textbox")
+    .getByRole("textbox", { name: /Motivo da alteração/ })
     .fill("Segunda reavaliação clínica com nova justificativa.");
   await modal.getByRole("button", { name: "Salvar Alteração" }).click();
   await expect(led).toHaveAttribute("data-priority", "AMARELO");
+});
+
+test("sintomas podem mudar sem trocar gravidade e histórico vem do servidor", async ({
+  page,
+}) => {
+  const controls = await setup(page, "VERDE", [
+    "00000000-0000-4000-8000-000000000001",
+  ]);
+  await controls.open();
+  const modal = page.getByRole("dialog");
+  await modal
+    .getByRole("textbox", { name: /Motivo da alteração/ })
+    .fill("Paciente relata mudança na queixa principal.");
+  await expect(
+    modal.getByRole("button", { name: "Salvar Alteração" }),
+  ).toBeDisabled();
+  await modal
+    .getByRole("textbox", { name: /Sintomas \/ queixa/ })
+    .fill("Queixa atualizada após reavaliação.");
+  await modal.getByRole("checkbox", { name: /Manter os/ }).uncheck();
+  await modal.getByRole("button", { name: "Salvar Alteração" }).click();
+  await expect(modal).toHaveCount(0);
+  expect(controls.payloads()[0]).toMatchObject({
+    severity: "VERDE",
+    symptomIds: [],
+    otherSymptoms: "Queixa atualizada após reavaliação.",
+  });
+  const row = page.locator('tr[data-priority-entry="entry-second"]');
+  await expect(row).toContainText("Queixa atualizada após reavaliação.");
+  await expect(row).toContainText("Aguardando");
+  await row.getByRole("button", { name: "Ver detalhes" }).click();
+  const history = page.getByRole("region", {
+    name: "Histórico de reavaliações",
+  });
+  await expect(
+    history.getByText("Paciente relata mudança na queixa principal."),
+  ).toBeVisible();
+  await expect(history.getByText(/Joana da Sessão/)).toBeVisible();
+});
+
+test("mudança concorrente é detectada e overrides locais antigos são ignorados", async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "av:reception-reassessments:v1:review-user",
+      JSON.stringify({
+        records: [{ id: "old", entryId: "entry-second", newLevel: "VERMELHO" }],
+      }),
+    ),
+  );
+  const controls = await setup(page);
+  await expect(
+    page.locator('tr[data-priority-entry="entry-second"]'),
+  ).toHaveClass(/calm/);
+  await controls.open();
+  const modal = page.getByRole("dialog");
+  await modal.getByRole("radio", { name: /Urgente/ }).check();
+  await modal
+    .getByRole("textbox", { name: /Motivo da alteração/ })
+    .fill("Justificativa clínica para prioridade urgente.");
+  controls.revise();
+  await modal.getByRole("button", { name: "Salvar Alteração" }).click();
+  await expect(modal.getByRole("alert")).toContainText(
+    "mudou durante a edição",
+  );
+  expect(controls.payloads()).toHaveLength(0);
+  await expect(
+    modal.getByRole("textbox", { name: /Motivo da alteração/ }),
+  ).toHaveValue("Justificativa clínica para prioridade urgente.");
+});
+
+test("conflito 409 mantém modal e formulário sem sucesso falso", async ({
+  page,
+}) => {
+  const controls = await setup(page);
+  await controls.open();
+  const modal = page.getByRole("dialog");
+  await modal.getByRole("radio", { name: /Urgente/ }).check();
+  await modal
+    .getByRole("textbox", { name: /Motivo da alteração/ })
+    .fill("Justificativa clínica para confirmar gravidade.");
+  controls.failPost(409);
+  await modal.getByRole("button", { name: "Salvar Alteração" }).click();
+  await expect(modal.getByRole("alert")).toContainText(
+    "estado deste atendimento mudou",
+  );
+  await expect(modal.getByRole("radio", { name: /Urgente/ })).toBeChecked();
+  expect(controls.audits()).toHaveLength(0);
+  await expect(page.locator(".reception-priority-led")).toHaveCount(0);
+});
+
+test("durante POST pendente bloqueia duplicação e aguarda confirmação antes de fechar", async ({
+  page,
+}) => {
+  const controls = await setup(page);
+  await controls.open();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/entries/entry-second/reassessments", async (route) => {
+    if (route.request().method() === "POST") await gate;
+    await route.fallback();
+  });
+  const modal = page.getByRole("dialog");
+  await modal.getByRole("radio", { name: /Urgente/ }).check();
+  await modal
+    .getByRole("textbox", { name: /Motivo da alteração/ })
+    .fill("Reavaliação clínica aguardando confirmação.");
+  await modal.getByRole("button", { name: "Salvar Alteração" }).click();
+  await expect(
+    modal.getByRole("button", { name: "Salvando..." }),
+  ).toBeDisabled();
+  await expect(
+    modal.getByRole("button", { name: "Cancelar", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    modal.getByRole("button", { name: "Fechar reavaliação" }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(modal).toBeVisible();
+  await expect(page.locator(".reception-priority-led")).toHaveCount(0);
+  release();
+  await expect(modal).toHaveCount(0);
+  expect(controls.payloads()).toHaveLength(1);
+  expect(controls.audits()).toHaveLength(1);
+});
+
+test("histórico de reavaliações pagina registros do servidor", async ({
+  page,
+}) => {
+  const controls = await setup(page);
+  controls.seedHistory(6);
+  await page
+    .locator('tr[data-priority-entry="entry-second"]')
+    .getByRole("button", { name: "Ver detalhes" })
+    .click();
+  const history = page.getByRole("region", {
+    name: "Histórico de reavaliações",
+  });
+  await expect(
+    history.getByText("Página 1 de 2 · 6 registro(s)"),
+  ).toBeVisible();
+  await expect(history.locator("li")).toHaveCount(5);
+  await history.getByRole("button", { name: "Próxima", exact: true }).click();
+  await expect(
+    history.getByText("Página 2 de 2 · 6 registro(s)"),
+  ).toBeVisible();
+  await expect(history.locator("li")).toHaveCount(1);
+  await expect(history.getByText("Justificativa histórica 0")).toBeVisible();
 });

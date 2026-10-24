@@ -1,5 +1,7 @@
 # Recepção: reavaliação clínica
 
+**Atualização:** a persistência local foi substituída pela API. Consulte [Integração de reavaliação](reception-api-integration.md) para o estado atual; os trechos de fallback abaixo registram a implementação anterior.
+
 ## Escopo e checklist visual
 
 - [x] Barra: Atualizar fila → Filtrar → Buscar pacientes → Cadastrar Paciente. Busca usa Search e o mesmo estilo computado de Filtrar, sem sublinhado, mantendo /pacientes. Só o input cresce; ações quebram para baixo no mobile.
