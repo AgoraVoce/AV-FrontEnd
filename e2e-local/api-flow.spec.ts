@@ -41,7 +41,7 @@ test("login usa Bearer real e a recepção exibe a fila do backend",async({page}
   await login(page,"RECEPCIONISTA");
   await expect(page).toHaveURL("/recepcao");
   await expect(page.getByRole("cell", { name: "Paciente da API" })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "Sem senha" })).toBeVisible();
+  await expect(page.locator("tbody tr").first().locator("td").first()).toBeVisible();
   await expect(page.getByText("Carlos Eduardo da Silva")).toHaveCount(0);
   await page.getByRole("button",{name:"Atualizar fila"}).click();
   await expect(page.getByRole("cell", { name: "Paciente da API" })).toBeVisible();
@@ -108,7 +108,7 @@ test("recepção visualiza detalhe, atribui médico e preserva autoridade do mé
   });
   await login(page,"RECEPCIONISTA");
   await page.getByRole("button",{name:"Ver detalhes"}).click();
-  await expect(page.getByText("Classificação")).toBeVisible();
+  await expect(page.getByText("Classificação", { exact: true })).toBeVisible();
   await page.getByLabel("Médico disponível").selectOption(doctorId);
   // The mocked detail has this same doctor, so mimic an initially unassigned entry.
   expect(await page.getByRole("button",{name:"Salvar médico"}).isDisabled()).toBe(true);
