@@ -19,6 +19,7 @@ export type Reassessment = {
     otherSymptoms: string | null;
   };
   observationSnapshot: string | null;
+  justification?: string | null;
   createdByUserId: string;
 };
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -38,6 +39,11 @@ function parseReassessment(value: unknown): Reassessment {
     !(
       value.observationSnapshot === null ||
       typeof value.observationSnapshot === "string"
+    ) ||
+    !(
+      value.justification === undefined ||
+      value.justification === null ||
+      typeof value.justification === "string"
     ) ||
     !object(value.symptomsSnapshot) ||
     !(
@@ -66,6 +72,7 @@ export async function updatePatientPriority(
   patientId: string,
   input: {
     entryId: string;
+    contract: "expanded" | "legacy";
     level: Severity;
     reason: string;
     previous: EntryDetail;
@@ -73,7 +80,7 @@ export async function updatePatientPriority(
     otherSymptoms: string;
     signal?: AbortSignal;
   },
-): Promise<{ audit: Reassessment; detail: EntryDetail }> {
+): Promise<{ audit: Reassessment; detail: EntryDetail; complaint: string }> {
   const reason = input.reason.trim();
   const complaint = input.otherSymptoms.trim();
   if (!priorityInfo(input.level) || reason.length < 10 || reason.length > 300)
@@ -113,7 +120,8 @@ export async function updatePatientPriority(
     (current.otherSymptoms ?? "").trim() === complaint
   )
     throw new Error("Altere a gravidade ou os sintomas antes de salvar.");
-  // Actual backend contract: reason is persisted as observationSnapshot through shortNote.
+  // Expanded API has a dedicated justification. Preserve the existing short note there.
+  // Legacy deployments still persist the reason through shortNote; never retry a POST with another body.
   // Author and timestamps come exclusively from the authenticated server session.
   const audit = parseReassessment(
     await request(
@@ -123,12 +131,17 @@ export async function updatePatientPriority(
         severity: input.level,
         symptomIds: input.symptomIds,
         otherSymptoms: complaint || null,
-        shortNote: reason,
+        shortNote: input.contract === "expanded" ? current.shortNote : reason,
+        ...(input.contract === "expanded" ? { justification: reason } : {}),
       },
       input.signal,
     ),
   );
-  if (audit.entryId !== input.entryId || audit.newSeverity !== input.level)
+  if (
+    audit.entryId !== input.entryId ||
+    audit.newSeverity !== input.level ||
+    (input.contract === "expanded" && audit.justification !== reason)
+  )
     throw new ApiError(
       502,
       "BAD_RESPONSE",
@@ -136,6 +149,12 @@ export async function updatePatientPriority(
     );
   return {
     audit,
+    complaint: [
+      ...audit.symptomsSnapshot.symptoms.map((symptom) => symptom.name),
+      audit.symptomsSnapshot.otherSymptoms,
+    ]
+      .filter(Boolean)
+      .join(", "),
     detail: {
       ...current,
       severity: audit.newSeverity,

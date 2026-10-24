@@ -22,15 +22,17 @@ import "./reclassification-modal.css";
 type Props = {
   patient: { entryId: string; fullName: string; queueCode: string | null };
   responsible: User | null;
+  contract: "expanded" | "legacy";
   available: boolean;
   onDetail: (entry: EntryDetail) => void;
   onClose: () => void;
-  onSaved: (entry: EntryDetail) => void;
+  onSaved: (entry: EntryDetail, complaint: string) => void;
   returnFocus: HTMLElement | null;
 };
 export function ReclassificationModal({
   patient,
   responsible,
+  contract,
   available,
   onClose,
   onSaved,
@@ -171,6 +173,7 @@ export function ReclassificationModal({
     try {
       const saved = await updatePatientPriority(detail.patientId, {
         entryId: patient.entryId,
+        contract,
         level,
         reason,
         previous: detail,
@@ -178,7 +181,7 @@ export function ReclassificationModal({
         otherSymptoms: symptoms,
         signal: controller.signal,
       });
-      onSaved(saved.detail);
+      onSaved(saved.detail, saved.complaint);
     } catch (cause) {
       if (!controller.signal.aborted)
         setError(

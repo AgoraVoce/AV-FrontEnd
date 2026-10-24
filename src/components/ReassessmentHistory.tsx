@@ -91,7 +91,8 @@ export function ReassessmentHistory({
                     </time>
                   </div>
                   <p>
-                    {record.observationSnapshot ||
+                    {record.justification ||
+                      record.observationSnapshot ||
                       "Justificativa não informada"}
                   </p>
                   <p className="local-note">
