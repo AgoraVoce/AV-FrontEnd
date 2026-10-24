@@ -305,3 +305,35 @@ test("entrada já ativa mostra erro persistente e não repete cadastro pessoal",
     }),
   ).toHaveValue("Queixa relatada para teste");
 });
+
+test("nome do paciente não aceita e-mail da conta e campos não reutilizam autofill de login", async ({
+  page,
+}) => {
+  const controls = await setup(page);
+  await controls.fill();
+  const name = page.getByRole("textbox", {
+    name: "Nome completo *",
+    exact: true,
+  });
+  await name.fill("registration@test.test");
+  await expect(name).toHaveAttribute("autocomplete", "off");
+  await expect(name).toHaveAttribute("name", "patient-fullName");
+  await expect(
+    page.getByRole("textbox", { name: "E-mail", exact: true }),
+  ).toHaveAttribute("autocomplete", "off");
+  await page.getByRole("button", { name: "Cadastrar e continuar" }).click();
+  await expect(page.locator("#patient-fullName-error")).toContainText(
+    "este campo não aceita e-mail",
+  );
+  await expect(name).toBeFocused();
+  expect(controls.payloads).toHaveLength(0);
+  await name.fill("Nome Correto do Paciente");
+  await page.getByRole("button", { name: "Cadastrar e continuar" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Registrar entrada", exact: true }),
+  ).toBeVisible();
+  expect(controls.payloads[0].fullName).toBe("Nome Correto do Paciente");
+  await expect(
+    page.getByText("Paciente: Nome Correto do Paciente"),
+  ).toBeVisible();
+});
