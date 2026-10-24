@@ -77,3 +77,16 @@
 .reception-shell .reception-center-brand .brand-mark {width:18px;height:18px;min-width:18px;border-radius:50%;}
 .reception-ticket {white-space:nowrap;font-size:12px;}
 .reception-table-scroll td {padding-block:16px;}
+.reception-proportion {display:flex;overflow:hidden;}
+.reception-proportion > span {height:100%;}
+.reception-proportion .urgent {background:#b63743;}.reception-proportion .alert {background:#d6a01e;}.reception-proportion .calm {background:#21845f;}
+.reception-table-scroll tr.urgent {--risk-color:#b63743;--risk-surface:#fcebed;}
+.reception-table-scroll tr.alert {--risk-color:#a57508;--risk-surface:#fff5de;}
+.reception-table-scroll tr.calm {--risk-color:#21845f;--risk-surface:#ebfaf2;}
+.reception-table-scroll tr:is(.urgent,.alert,.calm) .reception-ticket {color:var(--risk-color);}
+.reception-table-scroll tr:is(.urgent,.alert,.calm) .reception-initials {color:var(--risk-color);background:var(--risk-surface);}
+.reception-priority-pill {display:inline-flex;align-items:center;gap:5px;color:var(--risk-color);background:var(--risk-surface);border:1px solid currentColor;border-radius:99px;padding:5px 8px;font-size:11px;white-space:nowrap;}
+.reception-table-scroll tr.is-reclassifying td {background:#eaf8f6;border-block:1px solid #81c8c3;}
+.reception-table-scroll tr.is-reclassifying td:first-child {border-left:1px solid #81c8c3;}.reception-table-scroll tr.is-reclassifying td:last-child {border-right:1px solid #81c8c3;}
+.reception-live .reception-review-button:disabled {background:var(--color-primary);color:white;opacity:1;border-color:var(--color-primary);}
+.reception-toolbar .local-secondary-button {font-weight:400;text-decoration:none;}
