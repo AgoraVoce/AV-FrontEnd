@@ -15,29 +15,23 @@ import {
   type EntryDetail,
   type Severity,
 } from "../integrations/operational-api";
-import {
-  latestPriority,
-  PRIORITY_LEVELS,
-  updatePatientPriority,
-  type PriorityAudit,
-} from "../integrations/priority-store";
+import { PRIORITY_LEVELS } from "../integrations/priority-store";
+import { updatePatientPriority } from "../integrations/reception-reassessment";
 import "./reclassification-modal.css";
 
 type Props = {
   patient: { entryId: string; fullName: string; queueCode: string | null };
   responsible: User | null;
   available: boolean;
-  records: PriorityAudit[];
   onDetail: (entry: EntryDetail) => void;
   onClose: () => void;
-  onSaved: (level: Severity) => void;
+  onSaved: (entry: EntryDetail) => void;
   returnFocus: HTMLElement | null;
 };
 export function ReclassificationModal({
   patient,
   responsible,
   available,
-  records,
   onClose,
   onSaved,
   returnFocus,
@@ -46,6 +40,8 @@ export function ReclassificationModal({
   const [detail, setDetail] = useState<EntryDetail | null>(null);
   const [level, setLevel] = useState<Severity | null>(null);
   const [reason, setReason] = useState("");
+  const [symptoms, setSymptoms] = useState("");
+  const [keepRegistered, setKeepRegistered] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [detailError, setDetailError] = useState("");
@@ -54,8 +50,13 @@ export function ReclassificationModal({
   const dialog = useRef<HTMLDivElement>(null);
   const pending = useRef(false);
   const saveRequest = useRef<AbortController | null>(null);
-  const currentLevel =
-    latestPriority(records, patient.entryId) ?? detail?.severity ?? null;
+  const currentLevel = detail?.severity ?? null;
+  const hasSymptomContract = Array.isArray(detail?.symptomIds);
+  const symptomIds = keepRegistered ? (detail?.symptomIds ?? []) : [];
+  const symptomsValid = symptomIds.length > 0 || symptoms.trim().length > 0;
+  const symptomsChanged =
+    symptoms.trim() !== (detail?.otherSymptoms ?? "").trim() ||
+    (!keepRegistered && Boolean(detail?.symptomIds?.length));
   const waiting = available && (!detail || detail.status === "waiting");
   const reasonValid = reason.trim().length >= 10;
   const canSave = Boolean(
@@ -63,7 +64,9 @@ export function ReclassificationModal({
     responsible &&
     waiting &&
     level &&
-    level !== currentLevel &&
+    (level !== currentLevel || symptomsChanged) &&
+    hasSymptomContract &&
+    symptomsValid &&
     reasonValid &&
     !busy,
   );
@@ -76,9 +79,9 @@ export function ReclassificationModal({
         if (!controller.signal.aborted) {
           onDetail(entry);
           setDetail(entry);
-          setLevel(
-            latestPriority(records, patient.entryId) ?? entry.severity ?? null,
-          );
+          setLevel(entry.severity ?? null);
+          setSymptoms(entry.otherSymptoms ?? "");
+          setKeepRegistered(true);
           setDetailError("");
         }
       })
@@ -105,14 +108,19 @@ export function ReclassificationModal({
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        if (!pending.current) onClose();
       }
       if (event.key === "Tab") {
         const controls = Array.from(
           dialog.current?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), textarea, input[type="radio"]:checked, input[type="radio"][tabindex="0"], a[href]',
+            'button:not(:disabled), textarea:not(:disabled), input[type="checkbox"]:not(:disabled), input[type="radio"]:not(:disabled):checked, input[type="radio"]:not(:disabled)[tabindex="0"], a[href]',
           ) ?? [],
         );
+        if (!controls.length) {
+          event.preventDefault();
+          dialog.current?.focus();
+          return;
+        }
         const first = controls[0],
           last = controls[controls.length - 1];
         if (event.shiftKey && document.activeElement === first) {
@@ -161,15 +169,16 @@ export function ReclassificationModal({
     const controller = new AbortController();
     saveRequest.current = controller;
     try {
-      await updatePatientPriority(detail.patientId, {
+      const saved = await updatePatientPriority(detail.patientId, {
         entryId: patient.entryId,
         level,
         reason,
-        previousLevel: currentLevel,
-        responsible,
+        previous: detail,
+        symptomIds,
+        otherSymptoms: symptoms,
         signal: controller.signal,
       });
-      onSaved(level);
+      onSaved(saved.detail);
     } catch (cause) {
       if (!controller.signal.aborted)
         setError(
@@ -186,19 +195,21 @@ export function ReclassificationModal({
     <div
       className="reclassification-overlay"
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget && !pending.current) onClose();
       }}
     >
       <div
         ref={dialog}
         className="reclassification-modal"
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby="reclassification-title"
       >
         <button
           className="reclassification-close"
           aria-label="Fechar reavaliação"
+          disabled={busy}
           type="button"
           onClick={onClose}
         >
@@ -212,7 +223,7 @@ export function ReclassificationModal({
           Paciente: <strong>{patient.fullName}</strong>{" "}
           <code>{patient.queueCode || "—"}</code>
         </p>
-        <form onSubmit={(event) => void save(event)}>
+        <form aria-busy={busy} onSubmit={(event) => void save(event)}>
           <fieldset>
             <legend>Selecione o Novo Nível de Gravidade</legend>
             <div
@@ -229,6 +240,7 @@ export function ReclassificationModal({
                     <input
                       type="radio"
                       name="reclassification-level"
+                      disabled={busy}
                       value={value}
                       checked={level === value}
                       tabIndex={
@@ -285,6 +297,53 @@ export function ReclassificationModal({
               </p>
             )
           )}
+          <div className="reclassification-symptoms">
+            <label htmlFor="reclassification-symptoms">
+              Sintomas / queixa atualizada <span>*</span>
+            </label>
+            <textarea
+              id="reclassification-symptoms"
+              rows={3}
+              maxLength={2000}
+              value={symptoms}
+              onChange={(event) => setSymptoms(event.target.value)}
+              disabled={!detail || busy}
+              placeholder="Descreva os sintomas atuais do paciente..."
+              aria-describedby="reclassification-symptoms-help"
+            />
+            {Boolean(detail?.symptomIds?.length) && (
+              <label className="reclassification-keep-symptoms">
+                <input
+                  type="checkbox"
+                  checked={keepRegistered}
+                  disabled={busy}
+                  onChange={(event) => setKeepRegistered(event.target.checked)}
+                />{" "}
+                Manter os {detail?.symptomIds?.length} sintomas estruturados já
+                registrados
+              </label>
+            )}
+            <p
+              id="reclassification-symptoms-help"
+              className="reclassification-note"
+            >
+              Atualize a descrição dos sintomas.{" "}
+              {detail?.symptomIds?.length
+                ? "Desmarque a opção acima para substituir os sintomas estruturados pela nova descrição."
+                : "Informe ao menos uma queixa para salvar."}
+            </p>
+            {detail && !hasSymptomContract && (
+              <p className="reclassification-error">
+                Os sintomas registrados não puderam ser verificados. Reabra a
+                reavaliação antes de salvar.
+              </p>
+            )}
+            {detail && !symptomsValid && (
+              <p className="reclassification-error">
+                Informe os sintomas ou mantenha os sintomas já registrados.
+              </p>
+            )}
+          </div>
           <div className="reclassification-vitals">
             <Activity size={17} />
             <span>PA: — mmHg</span>
@@ -300,6 +359,7 @@ export function ReclassificationModal({
           </div>
           <textarea
             id="reclassification-reason"
+            disabled={busy}
             maxLength={300}
             rows={3}
             value={reason}
@@ -333,10 +393,6 @@ export function ReclassificationModal({
               </strong>
             </span>
           </div>
-          <p className="reclassification-note">
-            Reavaliação local neste navegador. Ainda não sincronizada com o
-            servidor.
-          </p>
           {!waiting && (
             <p role="alert" className="reclassification-error">
               Este paciente saiu da fila de espera. Não é possível salvar a
@@ -353,6 +409,7 @@ export function ReclassificationModal({
               type="button"
               className="reclassification-cancel"
               onClick={onClose}
+              disabled={busy}
             >
               Cancelar
             </button>

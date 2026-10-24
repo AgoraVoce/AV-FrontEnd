@@ -3,8 +3,9 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Pencil, ArrowUpDown, AlertTriangle, CheckCheck, Clock3, Filter, Search, ShieldCheck, Siren, Activity, ArrowRight, ChevronLeft, ClipboardList, RefreshCw, UserPlus, UsersRound, XCircle } from "lucide-react";
 import { useAuth } from "../auth/context";
 import { QueuePriorityLed, type PrioritySavedFeedback } from "../components/QueuePriorityLed";
+import { ReassessmentHistory } from "../components/ReassessmentHistory";
 import { ReclassificationModal } from "../components/ReclassificationModal";
-import { latestPriority, priorityInfo, usePatientPriorities } from "./priority-store";
+import { priorityInfo } from "./priority-store";
 import { loadReceptionClinicalData } from "./reception-clinical-data";
 import { matchesAge, matchesWait, patientAge, waitingMinutes, type AgeFilter, type WaitFilter } from "./reception-filters";
 import { AppShell } from "../components/AppShell";
@@ -23,7 +24,6 @@ export function ReceptionWorkspace() {
   const toast = useToast();
   const { state: session } = useAuth();
   const user = session.status === "authenticated" ? session.user : null;
-  const { records } = usePatientPriorities(user?.id ?? "");
   const [reviewPatient, setReviewPatient] = useState<WaitingItem | null>(null);
   const [reviewTrigger, setReviewTrigger] = useState<HTMLElement | null>(null);
   const [priorityFeedback, setPriorityFeedback] = useState<PrioritySavedFeedback | null>(null);
@@ -32,7 +32,7 @@ export function ReceptionWorkspace() {
   const closeReview = useCallback(() => setReviewPatient(null), []);
   const [clinicalDetails, setClinicalDetails] = useState<Record<string, EntryDetail>>({});
   const [clinicalLoading, setClinicalLoading] = useState(false);
-  const itemLevel = useCallback((id: string) => latestPriority(records, id) ?? clinicalDetails[id]?.severity, [records, clinicalDetails]);
+  const itemLevel = useCallback((id: string) => clinicalDetails[id]?.severity, [clinicalDetails]);
 
   const [items, setItems] = useState<WaitingItem[]>([]);
   const [filter, setFilter] = useState("");
@@ -189,9 +189,9 @@ export function ReceptionWorkspace() {
     {!clinicalLoading && !loading && !error && items.some(item=>!clinicalDetails[item.entryId]) && <p className="reception-clinical-warning" role="status">Não foi possível consultar os dados clínicos de {items.filter(item=>!clinicalDetails[item.entryId]).length} paciente(s). Eles permanecem na fila; dados indisponíveis ficam como “—”. Use Atualizar fila para tentar novamente.</p>}
     {error && <button type="button" className="local-secondary-button" onClick={()=>void load()}>Tentar carregar a fila novamente</button>}
     {loading ? <p role="status">Carregando pacientes…</p> : !error && <section className="reception-table-panel">
-      <div className="reception-table-scroll" ref={tableScroll}><table><thead><tr>{["SENHA","NOME DO PACIENTE","IDADE","QUEIXA PRINCIPAL","CLASSIFICAÇÃO / PRIORIDADE","TEMPO DE ESPERA","AÇÃO"].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>
-        {pageItems.map(item=><tr key={item.entryId} data-priority-entry={item.entryId} className={`${priorityInfo(itemLevel(item.entryId))?.tone ?? "unclassified"}${reviewPatient?.entryId === item.entryId ? " is-reclassifying" : ""}`}><td><span className="reception-ticket">{item.queueCode ? <>{item.queueCode.slice(0, item.queueCode.lastIndexOf("-")+1)}<br/>{item.queueCode.slice(item.queueCode.lastIndexOf("-")+1)}</> : "—"}</span></td><td><div className="reception-name"><span className="reception-initials" aria-hidden="true">{item.fullName.split(" ").filter(Boolean).map(n=>n[0]).slice(0,2).join("")}</span><strong>{item.fullName}</strong></div></td><td>{patientAge(clinicalDetails[item.entryId]?.patient.birthDate, now) !== null ? `${patientAge(clinicalDetails[item.entryId]?.patient.birthDate, now)} anos` : "—"}</td><td>{clinicalDetails[item.entryId]?.otherSymptoms || "—"}</td><td>{itemLevel(item.entryId) ? <span className="reception-priority-pill"><span>●</span> {priorityInfo(itemLevel(item.entryId))?.label}</span> : "—"}</td><td><span className="reception-wait"><Clock3 size={14}/> {waitingMinutes(clinicalDetails[item.entryId]?.enteredAt, now) !== null ? `${waitingMinutes(clinicalDetails[item.entryId]?.enteredAt, now)} min` : "—"}</span></td><td><div className="reception-row-actions"><button className="local-secondary-button reception-review-button" data-review-entry={item.entryId} disabled={reviewPatient?.entryId === item.entryId} onClick={event=>{setPriorityFeedback(null);setReviewTrigger(event.currentTarget);setReviewPatient({...item});}}>{reviewPatient?.entryId === item.entryId ? <><Pencil size={14}/> Alterando...</> : <><ArrowUpDown size={14}/> Alterar prioridade</>}</button><button className="local-secondary-button" onClick={()=>void openDetails(item.entryId)}>Ver detalhes</button></div></td></tr>)}
-        {!visible.length && <tr><td colSpan={7}>{clinicalLoading ? "Consultando dados para os filtros…" : filter || activeFilterCount ? "Nenhum paciente encontrado com os filtros selecionados" : "Nenhum paciente aguardando"}</td></tr>}
+      <div className="reception-table-scroll" ref={tableScroll}><table><thead><tr>{["SENHA","NOME DO PACIENTE","IDADE","QUEIXA PRINCIPAL","CLASSIFICAÇÃO / PRIORIDADE","TEMPO DE ESPERA","STATUS","AÇÃO"].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>
+        {pageItems.map(item=><tr key={item.entryId} data-priority-entry={item.entryId} className={`${priorityInfo(itemLevel(item.entryId))?.tone ?? "unclassified"}${reviewPatient?.entryId === item.entryId ? " is-reclassifying" : ""}`}><td><span className="reception-ticket">{item.queueCode ? <>{item.queueCode.slice(0, item.queueCode.lastIndexOf("-")+1)}<br/>{item.queueCode.slice(item.queueCode.lastIndexOf("-")+1)}</> : "—"}</span></td><td><div className="reception-name"><span className="reception-initials" aria-hidden="true">{item.fullName.split(" ").filter(Boolean).map(n=>n[0]).slice(0,2).join("")}</span><strong>{item.fullName}</strong></div></td><td>{patientAge(clinicalDetails[item.entryId]?.patient.birthDate, now) !== null ? `${patientAge(clinicalDetails[item.entryId]?.patient.birthDate, now)} anos` : "—"}</td><td>{clinicalDetails[item.entryId]?.otherSymptoms || "—"}</td><td>{itemLevel(item.entryId) ? <span className="reception-priority-pill"><span>●</span> {priorityInfo(itemLevel(item.entryId))?.label}</span> : "—"}</td><td><span className="reception-wait"><Clock3 size={14}/> {waitingMinutes(clinicalDetails[item.entryId]?.enteredAt, now) !== null ? `${waitingMinutes(clinicalDetails[item.entryId]?.enteredAt, now)} min` : "—"}</span></td><td>{clinicalDetails[item.entryId]?.status ? <StatePill status={clinicalDetails[item.entryId].status}/> : "—"}</td><td><div className="reception-row-actions"><button className="local-secondary-button reception-review-button" data-review-entry={item.entryId} disabled={reviewPatient?.entryId === item.entryId} onClick={event=>{setPriorityFeedback(null);setReviewTrigger(event.currentTarget);setReviewPatient({...item});}}>{reviewPatient?.entryId === item.entryId ? <><Pencil size={14}/> Alterando...</> : <><ArrowUpDown size={14}/> Alterar prioridade</>}</button><button className="local-secondary-button" onClick={()=>void openDetails(item.entryId)}>Ver detalhes</button></div></td></tr>)}
+        {!visible.length && <tr><td colSpan={8}>{clinicalLoading ? "Consultando dados para os filtros…" : filter || activeFilterCount ? "Nenhum paciente encontrado com os filtros selecionados" : "Nenhum paciente aguardando"}</td></tr>}
       </tbody></table>
       {priorityFeedback && !reviewPatient && pageItems.some(item=>item.entryId === priorityFeedback.entryId) && <QueuePriorityLed key={priorityFeedback.id} feedback={priorityFeedback} containerRef={tableScroll} layoutKey={pageItems.map(item=>item.entryId).join(",")} onComplete={finishPriorityFeedback}/>}
       </div>
@@ -228,12 +228,13 @@ export function ReceptionWorkspace() {
           <p>Confirma a desistência? O paciente sairá da fila de espera e o registro ficará preservado.</p>
           <div className="local-actions"><button type="button" className="local-secondary-button operational-danger" disabled={actionBusy} onClick={()=>void act("cancel")}>Confirmar desistência</button>
           <button type="button" className="local-secondary-button" onClick={()=>setConfirmCancel(false)}>Manter na fila</button></div></div>}
+      <ReassessmentHistory key={selected.id} entryId={selected.id} user={user} revision={selected.updatedAt}/>
       </>}
     </section>}
     <div className="local-bottom"><Link to="/pacientes" className="local-secondary-button">Pacientes cadastrados</Link><Link to="/novo-cadastro" className="local-secondary-button"><UserPlus size={16}/> Novo atendimento</Link>
       <p className="local-note">O painel mostra somente os pacientes aguardando. Estados clínicos completos aparecem no detalhe individual.</p></div>
     <div className="reception-info-grid">{[{Icon:ShieldCheck,title:"Protocolo Institucional",text:"Alterações manuais de prioridade ficam registradas com carimbo de CRM/COREN e justificativa clínica obrigatória."},{Icon:Activity,title:"Sincronização com Painel TV",text:"A mudança de categoria reordena imediatamente a exibição no monitor de chamadas do saguão."},{Icon:Siren,title:"Alerta ao Corpo Clínico",text:"Pacientes reclassificados para Vermelho emitem aviso sonoro no posto médico de plantão."}].map(({Icon,title,text})=><article className="reception-panel" key={title}><Icon className="reception-info-icon" size={32}/><div><h3>{title}</h3><p>{text}</p></div></article>)}</div>
-    {reviewPatient && <ReclassificationModal key={reviewPatient.entryId} patient={reviewPatient} responsible={user} available={items.some(item=>item.entryId === reviewPatient.entryId)} records={records} returnFocus={reviewTrigger} onClose={closeReview} onSaved={level=>{showReviewRow(reviewPatient.entryId, level);setPriorityFeedback({id:crypto.randomUUID(),entryId:reviewPatient.entryId,level});closeReview();void load();}} onDetail={entry=>{setClinicalDetails(details=>({...details,[entry.id]:entry}));showReviewRow(entry.id, latestPriority(records, entry.id) ?? entry.severity);}}/>}
+    {reviewPatient && <ReclassificationModal key={reviewPatient.entryId} patient={reviewPatient} responsible={user} available={items.some(item=>item.entryId === reviewPatient.entryId)} returnFocus={reviewTrigger} onClose={closeReview} onSaved={entry=>{setClinicalDetails(details=>({...details,[entry.id]:entry}));if(selected?.id === entry.id)setSelected(entry);showReviewRow(entry.id, entry.severity);setPriorityFeedback({id:crypto.randomUUID(),entryId:entry.id,level:entry.severity});closeReview();void load();}} onDetail={entry=>{setClinicalDetails(details=>({...details,[entry.id]:entry}));showReviewRow(entry.id, entry.severity);}}/>}
   </div></AppShell>;
 }
 

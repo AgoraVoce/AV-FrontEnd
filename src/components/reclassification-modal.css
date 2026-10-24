@@ -266,3 +266,10 @@
 .reclassification-save:disabled {
   pointer-events: none;
 }
+.reclassification-symptoms {margin:0 0 18px;}
+.reclassification-symptoms > label:first-child {display:block;font-size:12px;font-weight:700;margin-bottom:8px;}
+.reclassification-symptoms > label > span {color:var(--color-danger);}
+.reclassification-keep-symptoms {display:flex;align-items:flex-start;gap:8px;font-size:12px;margin-top:8px;}
+.reclassification-keep-symptoms input {margin:3px 0;accent-color:var(--color-primary);}
+.reclassification-modal button:disabled {cursor:not-allowed;opacity:.5;}
+.reclassification-symptoms .reclassification-note {margin:8px 0 0;}
