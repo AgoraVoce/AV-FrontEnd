@@ -345,7 +345,7 @@ export function PatientWorkspace() {
     event.preventDefault();
     if (lock.current) return;
     const errors = validatePatientRegistration(patient);
-    const birthInput = event.currentTarget.elements.namedItem("birthDate");
+    const birthInput = event.currentTarget.elements.namedItem("patient-birthDate");
     if (birthInput instanceof HTMLInputElement && birthInput.validity.badInput) errors.birthDate = "Complete a data de nascimento ou deixe o campo vazio.";
     setPatientErrors(errors);
     setPatientFormError("");
@@ -396,7 +396,7 @@ export function PatientWorkspace() {
       <Link className="local-secondary-button" to={chosen ? "/pacientes" : "/recepcao"}><ChevronLeft size={16} aria-hidden="true" /> {chosen ? "Voltar aos pacientes" : "Voltar à fila"}</Link>
     </header>
     {loadingExisting && <p className="local-note" role="status">Carregando dados do paciente…</p>}
-    {!chosen && !loadingExisting && <form className="local-form operational-single-form" noValidate onSubmit={e => void savePatient(e)}>
+    {!chosen && !loadingExisting && <form className="local-form operational-single-form" autoComplete="off" noValidate onSubmit={e => void savePatient(e)}>
       <div className="operational-row"><div><h2>Dados do paciente</h2><p className="local-note">Preencha as informações para iniciar um novo cadastro.</p></div>
         <Link className="local-secondary-button operational-small-button" to="/pacientes">Buscar paciente existente</Link></div>
       {patientFormError && <p className="local-message is-error" role="alert">{patientFormError}</p>}

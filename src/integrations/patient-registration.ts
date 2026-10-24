@@ -48,6 +48,9 @@ export function validatePatientRegistration(
   const errors: PatientRegistrationErrors = {};
   if (!patient.fullName.trim() || patient.fullName.trim().length > 150)
     errors.fullName = MESSAGES.fullName;
+  if (patient.fullName.includes("@"))
+    errors.fullName =
+      "Informe o nome do paciente; este campo não aceita e-mail.";
   if (!validPatientCpf(patient.cpf)) errors.cpf = MESSAGES.cpf;
   if (patient.birthDate) {
     const date = new Date(`${patient.birthDate}T00:00:00Z`);

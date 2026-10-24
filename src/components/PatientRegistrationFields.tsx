@@ -10,34 +10,29 @@ const FIELDS = [
     label: "Nome completo *",
     type: "text",
     maxLength: 150,
-    autoComplete: "name",
   },
   {
     key: "cpf",
     label: "CPF *",
     type: "text",
     maxLength: 14,
-    autoComplete: "off",
   },
   {
     key: "birthDate",
     label: "Data de nascimento",
     type: "date",
-    autoComplete: "bday",
   },
   {
     key: "phone",
     label: "Telefone",
     type: "tel",
     maxLength: 20,
-    autoComplete: "tel",
   },
   {
     key: "email",
     label: "E-mail",
     type: "email",
     maxLength: 255,
-    autoComplete: "email",
   },
 ] as const;
 export function PatientRegistrationFields({
@@ -63,16 +58,22 @@ export function PatientRegistrationFields({
             <span id={`patient-${field.key}-label`}>{field.label}</span>
             <input
               id={`patient-${field.key}`}
-              name={field.key}
+              name={`patient-${field.key}`}
               type={field.type}
               value={patient[field.key]}
               disabled={busy}
               autoFocus={field.key === "fullName"}
-              autoComplete={field.autoComplete}
+              autoComplete="off"
               maxLength={"maxLength" in field ? field.maxLength : undefined}
               required={field.key === "fullName" || field.key === "cpf"}
               inputMode={field.key === "cpf" ? "numeric" : undefined}
-              placeholder={field.key === "cpf" ? "000.000.000-00" : undefined}
+              placeholder={
+                field.key === "cpf"
+                  ? "000.000.000-00"
+                  : field.key === "fullName"
+                    ? "Nome completo do paciente"
+                    : undefined
+              }
               min={field.key === "birthDate" ? "0001-01-01" : undefined}
               max={field.key === "birthDate" ? clinicDate() : undefined}
               aria-labelledby={`patient-${field.key}-label`}
@@ -80,9 +81,11 @@ export function PatientRegistrationFields({
               aria-describedby={
                 error
                   ? `patient-${field.key}-error`
-                  : field.key === "cpf"
-                    ? "patient-cpf-help"
-                    : undefined
+                  : field.key === "fullName"
+                    ? "patient-fullName-help"
+                    : field.key === "cpf"
+                      ? "patient-cpf-help"
+                      : undefined
               }
               onChange={(event) => onChange(field.key, event.target.value)}
             />
@@ -93,6 +96,13 @@ export function PatientRegistrationFields({
                 role="alert"
               >
                 {error}
+              </small>
+            ) : field.key === "fullName" ? (
+              <small
+                id="patient-fullName-help"
+                className="patient-registration-help"
+              >
+                Digite o nome do paciente, não o e-mail de acesso.
               </small>
             ) : (
               field.key === "cpf" && (
