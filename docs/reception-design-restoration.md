@@ -1,5 +1,7 @@
 # Restauração visual da recepção
 
+Registro da restauração inicial. O fluxo de reavaliação e as classificações locais foram implementados depois; consulte [Reavaliação clínica](reception-reclassification.md) para o estado atual.
+
 Referência adotada: branch `reception` (o pedido continha um placeholder de branch).
 Arquivos consultados somente com `git ls-tree` e `git show`: `src/auth/reception/QueuePage.tsx`, `src/components/AppShell.tsx`, `src/styles/app.css`, `src/styles/tokens.generated.css`.
 
