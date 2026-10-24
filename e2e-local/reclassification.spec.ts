@@ -10,7 +10,7 @@ const entries = [
   { entryId: "entry-first", fullName: "Primeira Pessoa", queueCode: "F-001" },
   { entryId: "entry-second", fullName: "Segunda Pessoa", queueCode: "F-002" },
 ];
-async function setup(page: Page) {
+async function setup(page: Page, initialSeverity = "VERDE") {
   let items = [...entries];
   let failDetail = false;
   let detailCalls = 0;
@@ -42,7 +42,7 @@ async function setup(page: Page) {
           id: entry.entryId,
           patientId: `patient-${entry.entryId}`,
           status: "waiting",
-          severity: "VERDE",
+          severity: initialSeverity,
           enteredAt: "2026-10-24T10:00:00Z",
           queueCode: entry.queueCode,
           patient: {
@@ -71,7 +71,9 @@ async function setup(page: Page) {
   async function open() {
     await trigger.click();
     await expect(
-      page.getByRole("dialog").getByRole("radio", { name: /Tranquilo/ }),
+      page.getByRole("dialog").getByRole("radio", {
+        name: initialSeverity === "VERDE" ? /Tranquilo/ : /Alerta/,
+      }),
     ).toBeChecked();
   }
   return {
@@ -240,6 +242,7 @@ test("erro de API preserva formulário e permite tentar novamente; paciente que 
   controls.fail();
   await modal.getByRole("button", { name: "Salvar Alteração" }).click();
   await expect(modal.getByRole("alert")).toBeVisible();
+  await expect(page.locator(".reception-priority-led")).toHaveCount(0);
   await expect(modal.getByRole("textbox")).toHaveValue(
     "Motivo clínico informado para a reavaliação.",
   );
@@ -311,4 +314,126 @@ test("falha ao persistir é visível sem perder justificativa", async ({
   await expect(modal.getByRole("textbox")).toHaveValue(
     "Justificativa clínica com tamanho suficiente.",
   );
+});
+
+for (const choice of [
+  { level: "VERMELHO", name: "Urgente" },
+  { level: "AMARELO", name: "Alerta" },
+  { level: "VERDE", name: "Tranquilo" },
+]) {
+  test(`LED ${choice.level} acompanha a linha, pulsa e termina sem repetir no polling`, async ({
+    page,
+  }) => {
+    const { open } = await setup(
+      page,
+      choice.level === "VERDE" ? "AMARELO" : "VERDE",
+    );
+    await page.addStyleTag({
+      content:
+        ".reception-priority-led * {animation-play-state:paused!important}",
+    });
+    await expect(page.locator(".reception-priority-led")).toHaveCount(0);
+    await open();
+    const modal = page.getByRole("dialog");
+    await modal.getByRole("radio", { name: new RegExp(choice.name) }).check();
+    await modal
+      .getByRole("textbox")
+      .fill("Justificativa clínica para confirmar a alteração.");
+    await modal.getByRole("button", { name: "Salvar Alteração" }).click();
+    const led = page.locator(".reception-priority-led");
+    await expect(led).toHaveAttribute("data-entry-id", "entry-second");
+    await expect(led).toHaveAttribute("data-priority", choice.level);
+    await expect(led).toHaveAttribute("data-led-phase", "snake");
+    const row = page.locator('tr[data-priority-entry="entry-second"]');
+    const rowBox = (await row.boundingBox())!;
+    const ledBox = (await led.boundingBox())!;
+    expect(Math.abs(rowBox.y - ledBox.y)).toBeLessThan(2);
+    expect(Math.abs(rowBox.width - ledBox.width)).toBeLessThan(2);
+    const stroke = await led
+      .locator("rect")
+      .first()
+      .evaluate((element) => getComputedStyle(element).stroke);
+    const token = await page.locator(".reception-live").evaluate(
+      (element, level) =>
+        getComputedStyle(element)
+          .getPropertyValue(
+            level === "VERMELHO"
+              ? "--nivel-urgente-cor"
+              : level === "AMARELO"
+                ? "--nivel-alerta-cor"
+                : "--nivel-tranquilo-cor",
+          )
+          .trim(),
+      choice.level,
+    );
+    expect(token).not.toBe("");
+    const expectedColor = await page.evaluate((color) => {
+      const marker = document.createElement("span");
+      marker.style.color = color;
+      document.body.append(marker);
+      const computed = getComputedStyle(marker).color;
+      marker.remove();
+      return computed;
+    }, token);
+    expect(stroke).toBe(expectedColor);
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.clock.runFor(50);
+    await page.locator(".reception-table-scroll").evaluate((element) => {
+      element.scrollLeft = 200;
+    });
+    const mobileRow = (await row.boundingBox())!;
+    const mobileLed = (await led.boundingBox())!;
+    expect(Math.abs(mobileRow.x - mobileLed.x)).toBeLessThan(2);
+    expect(Math.abs(mobileRow.width - mobileLed.width)).toBeLessThan(2);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.clock.runFor(1500);
+    await expect(led).toHaveAttribute("data-led-phase", "blink");
+    await expect(led.locator(".queue-led-blink")).toHaveCSS(
+      "animation-iteration-count",
+      choice.level === "VERDE" ? "1" : "2",
+    );
+    await page.clock.runFor(850);
+    await expect(led).toHaveCount(0);
+    await page.clock.fastForward(30_000);
+    await expect(led).toHaveCount(0);
+  });
+}
+
+test("LED respeita movimento reduzido e reaparece só após um novo salvamento", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const { open } = await setup(page);
+  await open();
+  let modal = page.getByRole("dialog");
+  await modal.getByRole("radio", { name: /Urgente/ }).check();
+  await modal
+    .getByRole("textbox")
+    .fill("Justificativa clínica para a nova prioridade.");
+  await modal.getByRole("button", { name: "Salvar Alteração" }).click();
+  const led = page.locator(".reception-priority-led");
+  await expect(led).toHaveAttribute("data-led-phase", "static");
+  await expect(led.locator("rect")).toHaveCSS("animation-name", "none");
+  await page.screenshot({
+    path: "/tmp/reception-led-static.png",
+    fullPage: true,
+  });
+  await page.clock.runFor(1600);
+  await expect(led).toHaveCount(0);
+  await page
+    .locator('tr[data-priority-entry="entry-second"]')
+    .getByRole("button", { name: "Alterar prioridade" })
+    .click();
+  modal = page.getByRole("dialog");
+  await expect(modal.getByRole("radio", { name: /Urgente/ })).toBeChecked();
+  await modal.getByRole("radio", { name: /Alerta/ }).check();
+  await modal
+    .getByRole("textbox")
+    .fill("Segunda reavaliação clínica com nova justificativa.");
+  await modal.getByRole("button", { name: "Salvar Alteração" }).click();
+  await expect(led).toHaveAttribute("data-priority", "AMARELO");
 });

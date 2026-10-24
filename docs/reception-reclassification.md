@@ -44,3 +44,11 @@ Essa alteração não muda a fila central, a TV ou outros dispositivos/usuários
 Lint, TypeScript e build. Testes Playwright com toda a API simulada: regressões de recepção/médico/admin/autenticação; ordem e estilo computado dos botões; fechamento e retorno de foco; rádio por setas e trap de teclado; justificativa; sucesso/auditoria/reordenação/resumo; erro na API de detalhes e no localStorage; polling durante rascunho; paciente fora da fila; persistência após reload; capturas em 1920, 1366, 768 e 390px (`/tmp/reclassification-{largura}.png`) com inspeção visual em desktop/mobile.
 
 Não houve escrita no backend real nem comparação visual automatizada com um frame Figma indisponível.
+
+## LED após confirmação da reavaliação
+
+`QueuePriorityLed` é um componente visual independente do store/API. O callback `ReclassificationModal.onSaved(level)` emite um `PrioritySavedFeedback` com `{ id, entryId, level }` apenas depois de a persistência concluir com sucesso. Ao integrar a API, manter essa ordem: aguardar resposta confirmada → emitir feedback → atualizar a fila. Não disparar LED ao carregar dados, em polling, ao abrir/fechar modal ou após erro. Não persistir o evento visual.
+
+O componente reutiliza as animações/tokens do LED antigo: rastro em quatro segmentos por 1,2s, seguido de uma pulsação verde ou duas amarelas/vermelhas. Timers garantem encerramento se o browser não enviar animationend. Respeita movimento reduzido com borda estática por 1,5s e anuncia a prioridade para leitores de tela. Um novo salvamento reinicia o evento; navegar/filtrar/abrir outra reavaliação ou remover a entrada limpa o destaque.
+
+O ID da entrada associa o efeito à linha após ordenação/paginação. A borda acompanha o conteúdo da tabela e seu scroll horizontal, recalculando dimensões em resize, sem interceptar cliques ou cobrir header/sidebar/modal. Testes adicionais verificam as três cores reais dos tokens, alinhamento desktop/mobile, sequência e encerramento, ausência de repetição no polling, novo salvamento e preferência de movimento reduzido.
