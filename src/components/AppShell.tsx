@@ -119,7 +119,7 @@ export function AppShell({
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${location.pathname === "/recepcao" ? " reception-shell" : ""}`}>
       <header className="site-header">
         <div className="header-left">
           <div className="header-brand-wrap">
@@ -128,6 +128,7 @@ export function AppShell({
           <div className="header-context">{unitContext}</div>
         </div>
 
+        {location.pathname === "/recepcao" && <div className="reception-center-brand"><Brand compact /></div>}
         <div className="header-right">
           {headerTools && <div className="header-tools">{headerTools}</div>}
           <button
