@@ -1,5 +1,7 @@
 # Recepção: persistência de reavaliação na API
 
+**Atualização:** a fila ampliada e o campo dedicado `justification` foram integrados e validados com o banco real. Consulte [Validação real da recepção](reception-real-validation.md) para versão, evidências, restauração do registro sintético e configuração local. Os contratos antigos descritos abaixo continuam suportados para compatibilidade.
+
 Este documento substitui as descrições históricas de fallback local em reception-reclassification.md e reception-clinical-filters.md.
 
 ## Fluxo implementado

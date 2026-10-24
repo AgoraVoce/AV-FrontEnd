@@ -15,6 +15,7 @@ async function setup(
   page: Page,
   initialSeverity = "VERDE",
   registeredSymptoms: string[] = [],
+  expanded = false,
 ) {
   let items = [...entries];
   let failDetail = false;
@@ -29,7 +30,8 @@ async function setup(
         severity: initialSeverity,
         symptomIds: [...registeredSymptoms],
         otherSymptoms: "Queixa inicial informada",
-        shortNote: null as string | null,
+        shortNote: (expanded ? "Observação operacional original" : null) as
+          string | null,
         updatedAt: "2026-10-24T10:00:00Z",
       },
     ]),
@@ -49,7 +51,30 @@ async function setup(
         },
       });
     if (path.endsWith("/queues/waiting"))
-      return route.fulfill({ json: { items } });
+      return route.fulfill({
+        json: {
+          items: expanded
+            ? items.map((item) => {
+                const state = states.get(item.entryId)!;
+                return {
+                  ...item,
+                  id: item.entryId,
+                  nome: item.fullName,
+                  senha: item.queueCode,
+                  gravidade: state.severity,
+                  status: "aguardando",
+                  horarioEntrada: "2026-10-24T10:00:00Z",
+                  queixa: [
+                    ...state.symptomIds.map(() => "Sintoma cadastrado"),
+                    state.otherSymptoms,
+                  ]
+                    .filter(Boolean)
+                    .join(", "),
+                };
+              })
+            : items,
+        },
+      });
     if (path.endsWith("/doctors"))
       return route.fulfill({
         json: { items: [], page: 1, pageSize: 100, total: 0 },
@@ -75,7 +100,13 @@ async function setup(
       );
       const body = route.request().postDataJSON();
       expect(Object.keys(body).sort()).toEqual(
-        ["severity", "symptomIds", "otherSymptoms", "shortNote"].sort(),
+        [
+          "severity",
+          "symptomIds",
+          "otherSymptoms",
+          "shortNote",
+          ...(expanded ? ["justification"] : []),
+        ].sort(),
       );
       payloads.push(body);
       if (postError)
@@ -99,6 +130,7 @@ async function setup(
         createdAt: stamp,
         createdByUserId: user.id,
         observationSnapshot: body.shortNote,
+        ...(expanded ? { justification: body.justification } : {}),
         symptomsSnapshot: {
           symptoms: body.symptomIds.map((id: string) => ({
             id,
@@ -723,4 +755,65 @@ test("histórico de reavaliações pagina registros do servidor", async ({
   ).toBeVisible();
   await expect(history.locator("li")).toHaveCount(1);
   await expect(history.getByText("Justificativa histórica 0")).toBeVisible();
+});
+
+test("contrato ampliado usa justification e preserva observação operacional", async ({
+  page,
+}) => {
+  const controls = await setup(page, "VERDE", [], true);
+  await controls.open();
+  const modal = page.getByRole("dialog");
+  const reason = "Justificativa da reavaliação no contrato ampliado.";
+  await modal.getByRole("radio", { name: /Urgente/ }).check();
+  await modal
+    .getByRole("textbox", { name: /Motivo da alteração/ })
+    .fill(reason);
+  await modal
+    .getByRole("textbox", { name: /Sintomas \/ queixa/ })
+    .fill("Descrição clínica confirmada pelo servidor.");
+  await modal.getByRole("button", { name: "Salvar Alteração" }).click();
+  await expect(modal).toHaveCount(0);
+  expect(controls.payloads()[0]).toMatchObject({
+    justification: reason,
+    shortNote: "Observação operacional original",
+  });
+  expect(controls.audits()[0]).toMatchObject({
+    justification: reason,
+    observationSnapshot: "Observação operacional original",
+  });
+  const row = page.locator('tr[data-priority-entry="entry-second"]');
+  await expect(row).toHaveClass(/urgent/);
+  await expect(row).toContainText(
+    "Descrição clínica confirmada pelo servidor.",
+  );
+  await row.getByRole("button", { name: "Ver detalhes" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Histórico de reavaliações" })
+      .getByText(reason, { exact: true }),
+  ).toBeVisible();
+});
+
+test("fila ampliada mantém gravidade, queixa e espera quando um detalhe falha", async ({
+  page,
+}) => {
+  const controls = await setup(page, "AMARELO", [], true);
+  controls.fail();
+  await page.getByRole("button", { name: "Atualizar fila" }).click();
+  await expect(
+    page.getByText(/Não foi possível consultar os dados clínicos de 2/),
+  ).toBeVisible();
+  const row = page.locator('tr[data-priority-entry="entry-second"]');
+  await expect(row).toHaveClass(/alert/);
+  await expect(row).toContainText("Queixa inicial informada");
+  await expect(row).toContainText("Aguardando");
+  await expect(row.locator(".reception-wait")).toContainText("min");
+  await expect(page.locator(".reception-risks .alert strong")).toContainText(
+    "2 Alertas",
+  );
+  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "Gravidade / cor", exact: true })
+    .selectOption("AMARELO");
+  await expect(page.locator("tbody tr")).toHaveCount(2);
 });
