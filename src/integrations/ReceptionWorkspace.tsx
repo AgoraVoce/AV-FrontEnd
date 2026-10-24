@@ -5,6 +5,8 @@ import { useAuth } from "../auth/context";
 import { QueuePriorityLed, type PrioritySavedFeedback } from "../components/QueuePriorityLed";
 import { ReclassificationModal } from "../components/ReclassificationModal";
 import { latestPriority, priorityInfo, usePatientPriorities } from "./priority-store";
+import { loadReceptionClinicalData } from "./reception-clinical-data";
+import { matchesAge, matchesWait, patientAge, waitingMinutes, type AgeFilter, type WaitFilter } from "./reception-filters";
 import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
 import { useToast } from "../components/useToast";
@@ -28,13 +30,20 @@ export function ReceptionWorkspace() {
   const tableScroll = useRef<HTMLDivElement>(null);
   const finishPriorityFeedback = useCallback(() => setPriorityFeedback(null), []);
   const closeReview = useCallback(() => setReviewPatient(null), []);
-  const [knownLevels, setKnownLevels] = useState<Record<string, Severity>>({});
-  const itemLevel = useCallback((id: string) => latestPriority(records, id) ?? knownLevels[id], [records, knownLevels]);
+  const [clinicalDetails, setClinicalDetails] = useState<Record<string, EntryDetail>>({});
+  const [clinicalLoading, setClinicalLoading] = useState(false);
+  const itemLevel = useCallback((id: string) => latestPriority(records, id) ?? clinicalDetails[id]?.severity, [records, clinicalDetails]);
 
   const [items, setItems] = useState<WaitingItem[]>([]);
   const [filter, setFilter] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [ticketFilter, setTicketFilter] = useState("all");
+  const [ageFilter, setAgeFilter] = useState<AgeFilter>("all");
+  const [waitFilter, setWaitFilter] = useState<WaitFilter>("all");
+  const [severityFilter, setSeverityFilter] = useState<Severity | "all" | "unknown">("all");
+  const activeFilterCount = [ticketFilter, ageFilter, waitFilter, severityFilter].filter(value=>value !== "all").length;
+  function resetFilterPage() { setPage(1); setPriorityFeedback(null); }
+  function clearClinicalFilters() { setTicketFilter("all"); setAgeFilter("all"); setWaitFilter("all"); setSeverityFilter("all"); resetFilterPage(); }
   const [page, setPage] = useState(1);
   const [now, setNow] = useState(() => Date.now());
   const searchInput = useRef<HTMLInputElement>(null);
@@ -62,10 +71,16 @@ export function ReceptionWorkspace() {
       const result = await getWaitingQueue(controller.signal);
       if (!controller.signal.aborted) {
         setItems(result);
+        // Keep the previous snapshot while refreshing; replace it with fresh successes below.
+        setClinicalDetails(current => Object.fromEntries(result.filter(item=>current[item.entryId]).map(item=>[item.entryId,current[item.entryId]])));
+        setClinicalLoading(true);
+        setLoading(false);
         setPriorityFeedback(current => current && result.some(item=>item.entryId === current.entryId) ? current : null);
         setError("");
         queueErrorNotified.current = false;
         setUpdatedAt(new Date());
+        const details = await loadReceptionClinicalData(result, controller.signal);
+        if (!controller.signal.aborted) setClinicalDetails(details);
       }
     } catch (cause) {
       if (!controller.signal.aborted) {
@@ -73,7 +88,7 @@ export function ReceptionWorkspace() {
         if (!queueErrorNotified.current) { queueErrorNotified.current = true; toast.error("Não foi possível atualizar a fila", errorText(cause)); }
       }
     } finally {
-      if (!controller.signal.aborted) { setLoading(false); setRefreshing(false); }
+      if (!controller.signal.aborted) { setLoading(false); setRefreshing(false); setClinicalLoading(false); }
     }
   }, [toast]);
   useEffect(() => {
@@ -81,15 +96,24 @@ export function ReceptionWorkspace() {
     const interval = window.setInterval(() => void load(), 30000);
     return () => { window.clearTimeout(initial); window.clearInterval(interval); ongoing.current?.abort(); };
   }, [load]);
-  const visible = useMemo(() => items.filter(i => (ticketFilter === "all" || (ticketFilter === "with" ? Boolean(i.queueCode) : !i.queueCode)) && [i.fullName, i.queueCode ?? ""].some(s =>
-    s.toLocaleLowerCase("pt-BR").includes(filter.trim().toLocaleLowerCase("pt-BR")))).sort((a,b) => (priorityInfo(itemLevel(a.entryId))?.rank ?? 3) - (priorityInfo(itemLevel(b.entryId))?.rank ?? 3)), [items, filter, ticketFilter, itemLevel]);
+  const visible = useMemo(() => items.filter(item => {
+    const detail = clinicalDetails[item.entryId];
+    const level = itemLevel(item.entryId);
+    const matchesTicket = ticketFilter === "all" || (ticketFilter === "with" ? Boolean(item.queueCode) : !item.queueCode);
+    const matchesSeverity = severityFilter === "all" || (severityFilter === "unknown" ? !level : level === severityFilter);
+    const term = filter.trim().toLocaleLowerCase("pt-BR");
+    return matchesTicket && matchesSeverity && matchesAge(patientAge(detail?.patient.birthDate, now), ageFilter) &&
+      matchesWait(waitingMinutes(detail?.enteredAt, now), waitFilter) &&
+      [item.fullName, item.queueCode ?? "", detail?.otherSymptoms ?? ""].some(value=>value.toLocaleLowerCase("pt-BR").includes(term));
+  }).sort((a,b) => (priorityInfo(itemLevel(a.entryId))?.rank ?? 3) - (priorityInfo(itemLevel(b.entryId))?.rank ?? 3)),
+  [items, ticketFilter, severityFilter, ageFilter, waitFilter, filter, clinicalDetails, now, itemLevel]);
 
   async function openDetails(id: string) {
     setLastDetailId(id);
     setDetailsBusy(true); setSelected(null); setDetailError(""); setConfirmCancel(false);
     try {
       const [entry, physicians] = await Promise.all([operations.entry(id), operations.doctors({ pageSize: 100 })]);
-      setKnownLevels(levels => ({...levels, [entry.id]: entry.severity}));
+      setClinicalDetails(details => ({...details, [entry.id]: entry}));
       setSelected(entry); setDoctors(physicians.items); setDoctorId(entry.doctor?.id ?? "");
     } catch (cause) { setDetailError(errorText(cause)); toast.error("Não foi possível consultar a entrada", errorText(cause)); }
     finally { setDetailsBusy(false); }
@@ -141,23 +165,33 @@ export function ReceptionWorkspace() {
     </header>
     <div className="reception-summary">
       <section className="reception-panel reception-total"><UsersRound className="reception-info-icon" size={34}/><h2>TOTAL EM ESPERA</h2><div><strong>{loading && !updatedAt ? "—" : items.length}</strong> <span>pacientes no fluxo ativo</span></div><div className="reception-proportion" aria-label="Proporção dos pacientes com classificação conhecida">{(["urgent", "alert", "calm"] as const).map(tone => <span key={tone} className={tone} style={{width: `${classifiedTotal ? counts[tone] / classifiedTotal * 100 : 0}%`}}/>)}</div><small>{classifiedTotal ? `${classifiedTotal} de ${items.length} pacientes com classificação conhecida` : "Classificação da fila: —"}</small></section>
-      <section className="reception-panel"><div className="reception-risk-head"><h2>CLASSIFICAÇÃO DE RISCO (MANCHESTER MODIFICADO)</h2><button className="local-secondary-button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(v=>!v)}><Filter size={14}/> Filtro de visualização</button></div>
+      <section className="reception-panel"><div className="reception-risk-head"><h2>CLASSIFICAÇÃO DE RISCO (MANCHESTER MODIFICADO)</h2><button className="local-secondary-button" aria-controls="reception-clinical-filters" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(v=>!v)}><Filter size={14}/> Filtro de visualização</button></div>
         <div className="reception-risks">{[{name:"Urgentes",tone:"urgent" as const,goal:15,Icon:AlertTriangle},{name:"Alertas",tone:"alert" as const,goal:30,Icon:AlertTriangle},{name:"Tranquilos",tone:"calm" as const,goal:60,Icon:CheckCheck}].map(({name,tone,goal,Icon}) => <div className={tone} key={name}><strong><span>●</span> {classifiedTotal ? counts[tone] : "—"} {name}</strong><Icon size={16}/><small>Meta: &lt; {goal} min</small></div>)}</div>
       </section>
     </div>
     <div className="reception-toolbar reception-panel">
       <label className="reception-search"><Search size={17}/><input ref={searchInput} aria-label="Buscar por nome ou senha" value={filter} onChange={e=>{setFilter(e.target.value);setPriorityFeedback(null);setPage(1);}} type="search" placeholder="Filtrar por nome, senha ou queixa..." /></label>
       <button className="local-secondary-button" type="button" disabled={refreshing || loading} onClick={()=>void load()}><RefreshCw size={16}/> {refreshing ? "Atualizando…" : "Atualizar fila"}</button>
-      <button className="local-secondary-button" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(v=>!v)}><Filter size={16}/> Filtrar</button>
+      <button className="local-secondary-button" aria-controls="reception-clinical-filters" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(v=>!v)}><Filter size={16}/> Filtrar{activeFilterCount > 0 && <span className="reception-filter-count">{activeFilterCount}</span>}</button>
       <Link className="local-secondary-button" to="/pacientes"><Search size={16}/> Buscar pacientes</Link>
       <Link className="local-primary" to="/novo-cadastro"><UserPlus size={16}/> Cadastrar Paciente</Link>
     </div>
-    {filtersOpen && <div className="reception-panel"><label>Exibir pacientes <select value={ticketFilter} onChange={e=>{setTicketFilter(e.target.value);setPriorityFeedback(null);setPage(1);}}><option value="all">Todos</option><option value="with">Com senha</option><option value="without">Sem senha</option></select></label><p className="local-note">Filtros clínicos indisponíveis: a fila não informa classificação, idade ou tempo de espera.</p></div>}
+    {filtersOpen && <section id="reception-clinical-filters" className="reception-panel reception-filter-panel" aria-label="Filtros da fila">
+      <div className="reception-filter-head"><strong>Filtros da fila</strong><button type="button" className="local-secondary-button" disabled={!activeFilterCount} onClick={clearClinicalFilters}>Limpar filtros</button></div>
+      <div className="reception-filter-fields">
+        <label>Senha<select value={ticketFilter} onChange={e=>{setTicketFilter(e.target.value);resetFilterPage();}}><option value="all">Todos</option><option value="with">Com senha</option><option value="without">Sem senha</option></select></label>
+        <label>Idade<select value={ageFilter} onChange={e=>{setAgeFilter(e.target.value as AgeFilter);resetFilterPage();}}><option value="all">Todas as idades</option><option value="minor">0 a 17 anos</option><option value="adult">18 a 59 anos</option><option value="older">60 anos ou mais</option><option value="unknown">Não informada</option></select></label>
+        <label>Tempo de espera<select value={waitFilter} onChange={e=>{setWaitFilter(e.target.value as WaitFilter);resetFilterPage();}}><option value="all">Qualquer tempo</option><option value="up-to-15">Até 15 minutos</option><option value="16-to-30">16 a 30 minutos</option><option value="31-to-60">31 a 60 minutos</option><option value="over-60">Mais de 60 minutos</option><option value="unknown">Não informado</option></select></label>
+        <label>Gravidade / cor<select value={severityFilter} onChange={e=>{setSeverityFilter(e.target.value as Severity | "all" | "unknown");resetFilterPage();}}><option value="all">Todas as gravidades</option><option value="VERDE">Verde · Tranquilo</option><option value="AMARELO">Amarelo · Alerta</option><option value="VERMELHO">Vermelho · Urgente</option><option value="unknown">Não informada</option></select></label>
+      </div><p className="local-note">Filtros combinados e aplicados automaticamente. Dados ausentes aparecem como “—” e podem ser encontrados em “Não informado”.</p>
+    </section>}
+    {clinicalLoading && <p className="local-note" role="status">Atualizando dados clínicos dos pacientes…</p>}
+    {!clinicalLoading && !loading && !error && items.some(item=>!clinicalDetails[item.entryId]) && <p className="reception-clinical-warning" role="status">Não foi possível consultar os dados clínicos de {items.filter(item=>!clinicalDetails[item.entryId]).length} paciente(s). Eles permanecem na fila; dados indisponíveis ficam como “—”. Use Atualizar fila para tentar novamente.</p>}
     {error && <button type="button" className="local-secondary-button" onClick={()=>void load()}>Tentar carregar a fila novamente</button>}
     {loading ? <p role="status">Carregando pacientes…</p> : !error && <section className="reception-table-panel">
       <div className="reception-table-scroll" ref={tableScroll}><table><thead><tr>{["SENHA","NOME DO PACIENTE","IDADE","QUEIXA PRINCIPAL","CLASSIFICAÇÃO / PRIORIDADE","TEMPO DE ESPERA","AÇÃO"].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>
-        {pageItems.map(item=><tr key={item.entryId} data-priority-entry={item.entryId} className={`${priorityInfo(itemLevel(item.entryId))?.tone ?? "unclassified"}${reviewPatient?.entryId === item.entryId ? " is-reclassifying" : ""}`}><td><span className="reception-ticket">{item.queueCode ? <>{item.queueCode.slice(0, item.queueCode.lastIndexOf("-")+1)}<br/>{item.queueCode.slice(item.queueCode.lastIndexOf("-")+1)}</> : "—"}</span></td><td><div className="reception-name"><span className="reception-initials" aria-hidden="true">{item.fullName.split(" ").filter(Boolean).map(n=>n[0]).slice(0,2).join("")}</span><strong>{item.fullName}</strong></div></td><td>—</td><td>—</td><td>{itemLevel(item.entryId) ? <span className="reception-priority-pill"><span>●</span> {priorityInfo(itemLevel(item.entryId))?.label}</span> : "—"}</td><td><span className="reception-wait"><Clock3 size={14}/> —</span></td><td><div className="reception-row-actions"><button className="local-secondary-button reception-review-button" data-review-entry={item.entryId} disabled={reviewPatient?.entryId === item.entryId} onClick={event=>{setPriorityFeedback(null);setReviewTrigger(event.currentTarget);setReviewPatient({...item});}}>{reviewPatient?.entryId === item.entryId ? <><Pencil size={14}/> Alterando...</> : <><ArrowUpDown size={14}/> Alterar prioridade</>}</button><button className="local-secondary-button" onClick={()=>void openDetails(item.entryId)}>Ver detalhes</button></div></td></tr>)}
-        {!visible.length && <tr><td colSpan={7}>{filter ? "Nenhum paciente encontrado" : "Nenhum paciente aguardando"}</td></tr>}
+        {pageItems.map(item=><tr key={item.entryId} data-priority-entry={item.entryId} className={`${priorityInfo(itemLevel(item.entryId))?.tone ?? "unclassified"}${reviewPatient?.entryId === item.entryId ? " is-reclassifying" : ""}`}><td><span className="reception-ticket">{item.queueCode ? <>{item.queueCode.slice(0, item.queueCode.lastIndexOf("-")+1)}<br/>{item.queueCode.slice(item.queueCode.lastIndexOf("-")+1)}</> : "—"}</span></td><td><div className="reception-name"><span className="reception-initials" aria-hidden="true">{item.fullName.split(" ").filter(Boolean).map(n=>n[0]).slice(0,2).join("")}</span><strong>{item.fullName}</strong></div></td><td>{patientAge(clinicalDetails[item.entryId]?.patient.birthDate, now) !== null ? `${patientAge(clinicalDetails[item.entryId]?.patient.birthDate, now)} anos` : "—"}</td><td>{clinicalDetails[item.entryId]?.otherSymptoms || "—"}</td><td>{itemLevel(item.entryId) ? <span className="reception-priority-pill"><span>●</span> {priorityInfo(itemLevel(item.entryId))?.label}</span> : "—"}</td><td><span className="reception-wait"><Clock3 size={14}/> {waitingMinutes(clinicalDetails[item.entryId]?.enteredAt, now) !== null ? `${waitingMinutes(clinicalDetails[item.entryId]?.enteredAt, now)} min` : "—"}</span></td><td><div className="reception-row-actions"><button className="local-secondary-button reception-review-button" data-review-entry={item.entryId} disabled={reviewPatient?.entryId === item.entryId} onClick={event=>{setPriorityFeedback(null);setReviewTrigger(event.currentTarget);setReviewPatient({...item});}}>{reviewPatient?.entryId === item.entryId ? <><Pencil size={14}/> Alterando...</> : <><ArrowUpDown size={14}/> Alterar prioridade</>}</button><button className="local-secondary-button" onClick={()=>void openDetails(item.entryId)}>Ver detalhes</button></div></td></tr>)}
+        {!visible.length && <tr><td colSpan={7}>{clinicalLoading ? "Consultando dados para os filtros…" : filter || activeFilterCount ? "Nenhum paciente encontrado com os filtros selecionados" : "Nenhum paciente aguardando"}</td></tr>}
       </tbody></table>
       {priorityFeedback && !reviewPatient && pageItems.some(item=>item.entryId === priorityFeedback.entryId) && <QueuePriorityLed key={priorityFeedback.id} feedback={priorityFeedback} containerRef={tableScroll} layoutKey={pageItems.map(item=>item.entryId).join(",")} onComplete={finishPriorityFeedback}/>}
       </div>
@@ -199,7 +233,7 @@ export function ReceptionWorkspace() {
     <div className="local-bottom"><Link to="/pacientes" className="local-secondary-button">Pacientes cadastrados</Link><Link to="/novo-cadastro" className="local-secondary-button"><UserPlus size={16}/> Novo atendimento</Link>
       <p className="local-note">O painel mostra somente os pacientes aguardando. Estados clínicos completos aparecem no detalhe individual.</p></div>
     <div className="reception-info-grid">{[{Icon:ShieldCheck,title:"Protocolo Institucional",text:"Alterações manuais de prioridade ficam registradas com carimbo de CRM/COREN e justificativa clínica obrigatória."},{Icon:Activity,title:"Sincronização com Painel TV",text:"A mudança de categoria reordena imediatamente a exibição no monitor de chamadas do saguão."},{Icon:Siren,title:"Alerta ao Corpo Clínico",text:"Pacientes reclassificados para Vermelho emitem aviso sonoro no posto médico de plantão."}].map(({Icon,title,text})=><article className="reception-panel" key={title}><Icon className="reception-info-icon" size={32}/><div><h3>{title}</h3><p>{text}</p></div></article>)}</div>
-    {reviewPatient && <ReclassificationModal key={reviewPatient.entryId} patient={reviewPatient} responsible={user} available={items.some(item=>item.entryId === reviewPatient.entryId)} records={records} returnFocus={reviewTrigger} onClose={closeReview} onSaved={level=>{showReviewRow(reviewPatient.entryId, level);setPriorityFeedback({id:crypto.randomUUID(),entryId:reviewPatient.entryId,level});closeReview();void load();}} onDetail={entry=>{setKnownLevels(levels=>({...levels,[entry.id]:entry.severity}));showReviewRow(entry.id, latestPriority(records, entry.id) ?? entry.severity);}}/>}
+    {reviewPatient && <ReclassificationModal key={reviewPatient.entryId} patient={reviewPatient} responsible={user} available={items.some(item=>item.entryId === reviewPatient.entryId)} records={records} returnFocus={reviewTrigger} onClose={closeReview} onSaved={level=>{showReviewRow(reviewPatient.entryId, level);setPriorityFeedback({id:crypto.randomUUID(),entryId:reviewPatient.entryId,level});closeReview();void load();}} onDetail={entry=>{setClinicalDetails(details=>({...details,[entry.id]:entry}));showReviewRow(entry.id, latestPriority(records, entry.id) ?? entry.severity);}}/>}
   </div></AppShell>;
 }
 

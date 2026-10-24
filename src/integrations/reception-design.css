@@ -90,3 +90,14 @@
 .reception-table-scroll tr.is-reclassifying td:first-child {border-left:1px solid #81c8c3;}.reception-table-scroll tr.is-reclassifying td:last-child {border-right:1px solid #81c8c3;}
 .reception-live .reception-review-button:disabled {background:var(--color-primary);color:white;opacity:1;border-color:var(--color-primary);}
 .reception-toolbar .local-secondary-button {font-weight:400;text-decoration:none;}
+.reception-filter-head {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;font-size:14px;}
+.reception-filter-fields {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;}
+.reception-filter-fields label {display:grid;gap:8px;font-size:13px;font-weight:600;color:var(--color-muted);min-width:0;}
+.reception-filter-fields select {width:100%;min-width:0;min-height:40px;border:1px solid var(--color-border);border-radius:8px;padding:8px;background:white;color:var(--color-text);font:inherit;}
+.reception-filter-fields select:focus-visible {outline:3px solid var(--color-primary);outline-offset:2px;}
+.reception-filter-panel .local-note {margin:14px 0 0;}
+.reception-filter-count {display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:50%;background:var(--color-brand-surface);color:var(--color-primary);font-size:11px;}
+.reception-clinical-warning {font-size:13px;color:var(--color-muted);margin:0;}
+@media(max-width:1023px) {.reception-filter-fields {grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:479px) {.reception-filter-fields {grid-template-columns:1fr;}}
+.reception-table-scroll td:nth-child(3), .reception-wait {white-space:nowrap;}
