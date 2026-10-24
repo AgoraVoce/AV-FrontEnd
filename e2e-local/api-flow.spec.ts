@@ -1,4 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+// Isolate every test from the real backend; specific fixtures override this fallback.
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/v1/**", route => route.fulfill({ status: 503, json: { error: { code: "UNMOCKED_ENDPOINT", message: "Endpoint unavailable in this fixture" } } }));
+});
 const account = {id:"97d4962f-c7cc-4a59-8f25-5e3d1a296ec5",name:"Equipe Teste",email:"equipe@clinica.test"};
 const entryId = "c6854b6a-1625-40bc-ac2a-d6bc737bd56b";
 const patientId = "90e59e30-7cd7-44ec-9f09-84371c873acf";

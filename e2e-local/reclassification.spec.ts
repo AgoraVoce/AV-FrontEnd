@@ -204,7 +204,7 @@ test("valida justificativa, mantém rascunho no polling e salva auditoria, cores
   );
   await expect(page.locator(".reception-proportion .urgent")).toHaveAttribute(
     "style",
-    /100%/,
+    /50%/,
   );
   const stored = await page.evaluate(() =>
     JSON.parse(

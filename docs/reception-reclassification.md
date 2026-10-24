@@ -52,3 +52,7 @@ Não houve escrita no backend real nem comparação visual automatizada com um f
 O componente reutiliza as animações/tokens do LED antigo: rastro em quatro segmentos por 1,2s, seguido de uma pulsação verde ou duas amarelas/vermelhas. Timers garantem encerramento se o browser não enviar animationend. Respeita movimento reduzido com borda estática por 1,5s e anuncia a prioridade para leitores de tela. Um novo salvamento reinicia o evento; navegar/filtrar/abrir outra reavaliação ou remover a entrada limpa o destaque.
 
 O ID da entrada associa o efeito à linha após ordenação/paginação. A borda acompanha o conteúdo da tabela e seu scroll horizontal, recalculando dimensões em resize, sem interceptar cliques ou cobrir header/sidebar/modal. Testes adicionais verificam as três cores reais dos tokens, alinhamento desktop/mobile, sequência e encerramento, ausência de repetição no polling, novo salvamento e preferência de movimento reduzido.
+
+## Atualização: filtros clínicos
+
+O carregamento de dados e os filtros de idade/espera/gravidade antes indisponíveis agora estão implementados. Consulte [Filtros clínicos da recepção](reception-clinical-filters.md) para fontes, faixas, tratamento de dados ausentes e limite de requisições. A persistência da reavaliação continua como descrita na seção de fallback local deste documento.
