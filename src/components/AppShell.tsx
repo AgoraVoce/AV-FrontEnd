@@ -192,6 +192,52 @@ export function AppShell({
                 <NavLink to="/medico/fila" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><ListChecks size={18} aria-hidden="true" /><span>Minha fila</span></NavLink>
                 <NavLink to="/medico/atendimento" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Stethoscope size={18} aria-hidden="true" /><span>Paciente atual</span></NavLink>
               </>}
+              {API_MODE &&
+                (activeRole === "ADMIN" || activeRole === "MEDICO") &&
+                (activeRole === "ADMIN"
+                  ? [
+                      {
+                        to: "/admin/especialidades",
+                        label: "Especialidades",
+                        icon: Stethoscope,
+                      },
+                      {
+                        to: "/admin/salas",
+                        label: "Salas e consultórios",
+                        icon: Building2,
+                      },
+                      { to: "/admin/medicos", label: "Médicos", icon: Users },
+                      {
+                        to: "/admin/plantoes",
+                        label: "Plantões",
+                        icon: ListChecks,
+                      },
+                    ]
+                  : [
+                      {
+                        to: "/medico/perfil",
+                        label: "Meu perfil e consultório",
+                        icon: User,
+                      },
+                      {
+                        to: "/medico/plantoes",
+                        label: "Meus plantões",
+                        icon: ListChecks,
+                      },
+                    ]
+                ).map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      `nav-item${isActive ? " is-active" : ""}`
+                    }
+                  >
+                    <Icon size={18} aria-hidden="true" />
+                    <span>{label}</span>
+                  </NavLink>
+                ))}
               {activeRole !== "MEDICO" && (!API_MODE || activeRole === "ADMIN") && (
                 <NavLink
                   to={managementPath}

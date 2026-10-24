@@ -1,0 +1,1229 @@
+--- a/src/app.ts
++++ b/src/app.ts
+@@ -10,7 +10,7 @@
+   const app = express();
+   app.disable('x-powered-by');
+   // Keep proxy trust disabled until the deployment's trusted proxy addresses are known.
+-  if (dependencies) app.use(cors({ origin: dependencies.env.FRONTEND_ORIGIN, allowedHeaders: ['Content-Type', 'Authorization'], methods: ['GET', 'POST', 'PATCH', 'OPTIONS'] }));
++  if (dependencies) app.use(cors({ origin: dependencies.env.FRONTEND_ORIGIN, allowedHeaders: ['Content-Type', 'Authorization'], methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'] }));
+   app.use('/api/v1', (_request, response, next) => { response.set('Cache-Control', 'no-store'); next(); });
+   app.use(express.json({ limit: '16kb' }));
+   if (options.documentationEnabled) app.use('/api-docs', docsRoutes());
+--- a/src/config/runtime.ts
++++ b/src/config/runtime.ts
+@@ -1,3 +1,4 @@
++import { createManagementModel, type ManagementModel } from '../models/management.model.js';
+ import { createClinicModel, type ClinicModel } from '../models/clinic.model.js';
+ import { createPasswordResetModel, type PasswordResetModel } from '../models/password-reset.model.js';
+ import { createResetMailer, type ResetMailer } from '../services/password-reset.service.js';
+@@ -16,6 +17,7 @@
+ 
+ export interface ApiDependencies {
+   clinic?: ClinicModel;
++  management?: ManagementModel;
+   passwordResets?: PasswordResetModel;
+   resetMailer?: ResetMailer;
+   users: UserModel;
+@@ -32,7 +34,7 @@
+   const { DATABASE_URL } = parseDatabaseEnvironment(input);
+   const env = parseApiEnvironment(input);
+   const db = createDatabase(DATABASE_URL);
+-  const dependencies: ApiDependencies = { env, clinic: createClinicModel(db.client), passwordResets: createPasswordResetModel(db.client), resetMailer: createResetMailer(input), doctors: createDoctorModel(db.client), sessions: createSessionModel(db.client), users: createUserModel(db.client), patients: createPatientModel(db.client),
++  const dependencies: ApiDependencies = { env, management: createManagementModel(db.client), clinic: createClinicModel(db.client), passwordResets: createPasswordResetModel(db.client), resetMailer: createResetMailer(input), doctors: createDoctorModel(db.client), sessions: createSessionModel(db.client), users: createUserModel(db.client), patients: createPatientModel(db.client),
+     entries: createEntryModel(db.client), queues: createQueueModel(db.client), tokens: createTokenService(env), limiter: createLoginLimiter(env) };
+   return { dependencies, close: db.close };
+ }
+--- a/src/controllers/clinic.controller.ts
++++ b/src/controllers/clinic.controller.ts
+@@ -47,10 +47,11 @@
+     reports: async (req, res) => { res.json(await service().reports(v.periodQuery.parse(req.query))); },
+     specialties: async (req, res) => { const q = v.pageQuery.parse(req.query); res.json(await service().specialties(q.page, q.pageSize)); },
+     createDoctor: async (req, res) => { empty(req.query); res.status(201).json(await service().createDoctor(v.doctorInput.parse(req.body))); },
+-    doctor: async (req, res) => { empty(req.query); res.json(await service().doctor(v.idParams.parse(req.params).id)); },
++    doctor: async (req, res) => { empty(req.query); const record = await service().doctor(v.idParams.parse(req.params).id); if ((res.locals.user as User).role === 'MEDICO' && record.userId !== (res.locals.user as User).id) throw new HttpError(403,'FORBIDDEN','Access denied'); res.json(record); },
+     updateDoctor: async (req, res) => { empty(req.query); res.json(await service().updateDoctor(v.idParams.parse(req.params).id, v.doctorPatch.parse(req.body))); },
+     shifts: async (req, res) => {
+       const { id } = v.idParams.parse(req.params), q = v.pageQuery.parse(req.query);
++      if ((res.locals.user as User).role === 'MEDICO' && (await service().doctor(id)).userId !== (res.locals.user as User).id) throw new HttpError(403,'FORBIDDEN','Access denied');
+       res.json(await service().shifts(id, q.page, q.pageSize));
+     },
+     createShift: async (req, res) => { empty(req.query); res.status(201).json(await service().saveShift(v.idParams.parse(req.params).id, v.shiftInput.parse(req.body))); },
+--- /dev/null
++++ b/src/controllers/management.controller.ts
+@@ -0,0 +1,27 @@
++import type { RequestHandler } from 'express';
++import type { ApiDependencies } from '../config/runtime.js';
++import type { User } from '../models/contracts.js';
++import { idParams, pageQuery } from '../validators/clinic.validator.js';
++import * as v from '../validators/management.validator.js';
++import { createManagementService } from '../services/management.service.js';
++export function managementControllers(deps: () => ApiDependencies) {
++  const model = () => { const m = deps().management; if (!m) throw new Error('Management model not configured'); return createManagementService(m); };
++  const handlers: Record<string, RequestHandler> = {
++    specialties: async (req,res,next) => { if (!deps().management) return next(); const q = pageQuery.parse(req.query); res.json(await model().specialties(q.page,q.pageSize)); },
++    createSpecialty: async (req,res) => { res.status(201).json(await model().saveSpecialty(v.specialtyInput.parse(req.body))); },
++    updateSpecialty: async (req,res) => { res.json(await model().saveSpecialty(v.specialtyInput.parse(req.body),idParams.parse(req.params).id)); },
++    deleteSpecialty: async (req,res) => { await model().deleteSpecialty(idParams.parse(req.params).id); res.status(204).end(); },
++    rooms: async (_req,res) => { res.json(await model().rooms()); },
++    createRoom: async (req,res) => { res.status(201).json(await model().saveRoom(v.roomInput.parse(req.body))); },
++    updateRoom: async (req,res) => { res.json(await model().saveRoom(v.roomInput.parse(req.body),idParams.parse(req.params).id)); },
++    deleteRoom: async (req,res) => { await model().deleteRoom(idParams.parse(req.params).id); res.status(204).end(); },
++    doctors: async (req,res) => { res.json(await model().doctors(v.directoryQuery.parse(req.query))); },
++    createDoctor: async (req,res) => { const { password, ...input } = v.professionalCreate.parse(req.body); res.status(201).json(await model().createDoctor(input, password)); },
++    updateDoctor: async (req,res) => { res.json(await model().saveDoctor(v.professionalInput.parse(req.body), undefined, idParams.parse(req.params).id)); },
++    ownProfile: async (_req,res) => { res.json(await model().ownProfile((res.locals.user as User).id)); },
++    ownShifts: async (_req,res) => { res.json(await model().shifts((res.locals.user as User).id)); },
++    shifts: async (_req,res) => { res.json(await model().shifts()); },
++    series: async (req,res) => { res.status(201).json(await model().createSeries(idParams.parse(req.params).id, v.seriesInput.parse(req.body))); },
++  };
++  return handlers;
++}
+--- a/src/docs/openapi.yaml
++++ b/src/docs/openapi.yaml
+@@ -2006,6 +2006,35 @@
+               schema:
+                 $ref: "#/components/schemas/ErrorResponse"
+   /api/v1/specialties:
++    post:
++      operationId: clinicManagement1
++      tags:
++        - Administração e relatórios
++      summary: Criar especialidade
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters: []
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema:
++              $ref: "#/components/schemas/SpecialtyManagementInput"
++      responses:
++        "201":
++          description: Criar especialidade
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
+     get:
+       operationId: listSpecialties
+       summary: Especialidades cadastradas, incluindo situação ativa
+@@ -2765,6 +2794,396 @@
+             example:
+               token: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+               password: "senha-ficticia-segura-2026"
++  /api/v1/specialties/{id}:
++    patch:
++      operationId: clinicManagement2
++      tags:
++        - Administração e relatórios
++      summary: Editar ou inativar especialidade
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters:
++        - name: id
++          in: path
++          required: true
++          schema: &a1
++            type: string
++            format: uuid
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema:
++              $ref: "#/components/schemas/SpecialtyManagementInput"
++      responses:
++        "200":
++          description: Editar ou inativar especialidade
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++    delete:
++      operationId: clinicManagement3
++      tags:
++        - Administração e relatórios
++      summary: Excluir especialidade sem médicos vinculados
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters:
++        - name: id
++          in: path
++          required: true
++          schema: *a1
++      responses:
++        "204":
++          description: Excluído sem corpo.
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++  /api/v1/rooms:
++    get:
++      operationId: clinicManagement4
++      tags:
++        - Administração e relatórios
++      summary: Consultar salas
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters: []
++      responses:
++        "200":
++          description: Consultar salas
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++    post:
++      operationId: clinicManagement5
++      tags:
++        - Administração e relatórios
++      summary: Criar sala
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters: []
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema:
++              $ref: "#/components/schemas/RoomManagementInput"
++      responses:
++        "201":
++          description: Criar sala
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++  /api/v1/rooms/{id}:
++    patch:
++      operationId: clinicManagement6
++      tags:
++        - Administração e relatórios
++      summary: Editar ou inativar sala
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters:
++        - name: id
++          in: path
++          required: true
++          schema: *a1
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema:
++              $ref: "#/components/schemas/RoomManagementInput"
++      responses:
++        "200":
++          description: Editar ou inativar sala
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++    delete:
++      operationId: clinicManagement7
++      tags:
++        - Administração e relatórios
++      summary: Excluir sala sem vínculos
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters:
++        - name: id
++          in: path
++          required: true
++          schema: *a1
++      responses:
++        "204":
++          description: Excluído sem corpo.
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++  /api/v1/admin/doctors:
++    get:
++      operationId: clinicManagement8
++      tags:
++        - Administração e relatórios
++      summary: Diretório de todos os médicos, com paginação
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters:
++        - name: q
++          in: query
++          schema: &a2
++            type: string
++        - name: active
++          in: query
++          schema:
++            type: string
++            enum:
++              - "true"
++              - "false"
++        - name: specialtyId
++          in: query
++          schema: *a1
++        - name: page
++          in: query
++          schema: *a2
++        - name: pageSize
++          in: query
++          schema: *a2
++      responses:
++        "200":
++          description: Diretório de todos os médicos, com paginação
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++    post:
++      operationId: clinicManagement9
++      tags:
++        - Administração e relatórios
++      summary: Criar conta e perfil médico atomicamente
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters: []
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema:
++              $ref: "#/components/schemas/ProfessionalCreateInput"
++      responses:
++        "201":
++          description: Criar conta e perfil médico atomicamente
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++  /api/v1/admin/doctors/{id}:
++    patch:
++      operationId: clinicManagement10
++      tags:
++        - Administração e relatórios
++      summary: Editar perfil e dados da conta
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters:
++        - name: id
++          in: path
++          required: true
++          schema: *a1
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema:
++              $ref: "#/components/schemas/ProfessionalManagementInput"
++      responses:
++        "200":
++          description: Editar perfil e dados da conta
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++  /api/v1/doctors/me/profile:
++    get:
++      operationId: clinicManagement11
++      tags:
++        - Administração e relatórios
++      summary: Perfil próprio com sala, especialidade e plantão atual ou próximo
++      description: MEDICO. Identidade obtida exclusivamente da sessão.
++      security:
++        - bearerAuth: []
++      parameters: []
++      responses:
++        "200":
++          description: Perfil próprio com sala, especialidade e plantão atual ou próximo
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++  /api/v1/doctors/me/shifts:
++    get:
++      operationId: clinicManagement12
++      tags:
++        - Administração e relatórios
++      summary: Consultar os próprios plantões
++      description: MEDICO. Identidade obtida exclusivamente da sessão.
++      security:
++        - bearerAuth: []
++      parameters: []
++      responses:
++        "200":
++          description: Consultar os próprios plantões
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++  /api/v1/admin/shifts:
++    get:
++      operationId: clinicManagement13
++      tags:
++        - Administração e relatórios
++      summary: Consultar todos os plantões
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters: []
++      responses:
++        "200":
++          description: Consultar todos os plantões
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
++  /api/v1/doctors/{id}/shifts/series:
++    post:
++      operationId: clinicManagement14
++      tags:
++        - Administração e relatórios
++      summary: Criar ocorrências semanais até uma data final, em até um ano
++      description: ADMIN. Valida unicidade, vínculos e conflitos no servidor.
++      security:
++        - bearerAuth: []
++      parameters:
++        - name: id
++          in: path
++          required: true
++          schema: *a1
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema:
++              $ref: "#/components/schemas/WeeklyShiftInput"
++      responses:
++        "201":
++          description: Criar ocorrências semanais até uma data final, em até um ano
++        "400":
++          description: Campos inválidos.
++        "401":
++          description: Sessão inválida.
++        "403":
++          description: Perfil sem permissão.
++        "409":
++          description: Nome, CRM ou e-mail duplicado; vínculo existente; conflito de
++            médico ou sala.
++        "503":
++          description: Serviço de autenticação ou banco indisponível.
+ components:
+   securitySchemes:
+     bearerAuth:
+@@ -2773,6 +3192,162 @@
+       bearerFormat: JWT
+       description: Informe somente accessToken obtido no login; a UI adiciona o prefixo Bearer.
+   schemas:
++    SpecialtyManagementInput:
++      type: object
++      additionalProperties: false
++      required:
++        - name
++        - active
++      properties:
++        name:
++          type: string
++          minLength: 1
++          maxLength: 120
++        description:
++          type: string
++          nullable: true
++          maxLength: 2000
++        active:
++          type: boolean
++    RoomManagementInput:
++      type: object
++      additionalProperties: false
++      required:
++        - name
++        - type
++        - status
++      properties:
++        name:
++          type: string
++          minLength: 1
++          maxLength: 50
++        type:
++          type: string
++          minLength: 1
++          maxLength: 80
++        status:
++          type: string
++          enum:
++            - ativa
++            - manutencao
++            - inativa
++    ProfessionalManagementInput:
++      type: object
++      additionalProperties: false
++      required:
++        - name
++        - email
++        - crmNumber
++        - crmUf
++        - phone
++        - specialtyId
++        - defaultRoomId
++        - active
++      properties:
++        name: &a1
++          type: string
++          minLength: 2
++          maxLength: 150
++        email: &a2
++          type: string
++          format: email
++          maxLength: 150
++        crmNumber: &a3
++          type: string
++          pattern: ^[1-9]\d{0,6}$
++        crmUf: &a4
++          type: string
++          enum:
++            - AC
++            - AL
++            - AP
++            - AM
++            - BA
++            - CE
++            - DF
++            - ES
++            - GO
++            - MA
++            - MT
++            - MS
++            - MG
++            - PA
++            - PB
++            - PR
++            - PE
++            - PI
++            - RJ
++            - RN
++            - RS
++            - RO
++            - RR
++            - SC
++            - SP
++            - SE
++            - TO
++        phone: &a5
++          type: string
++          nullable: true
++          pattern: ^\d{10,11}$
++        specialtyId: &a6
++          type: string
++          format: uuid
++        defaultRoomId: &a7
++          type: string
++          format: uuid
++          nullable: true
++        active: &a8
++          type: boolean
++    ProfessionalCreateInput:
++      type: object
++      additionalProperties: false
++      required:
++        - name
++        - email
++        - crmNumber
++        - crmUf
++        - phone
++        - specialtyId
++        - defaultRoomId
++        - active
++        - password
++      properties:
++        name: *a1
++        email: *a2
++        crmNumber: *a3
++        crmUf: *a4
++        phone: *a5
++        specialtyId: *a6
++        defaultRoomId: *a7
++        active: *a8
++        password:
++          type: string
++          minLength: 8
++          maxLength: 1024
++          writeOnly: true
++    WeeklyShiftInput:
++      type: object
++      additionalProperties: false
++      required:
++        - startsAt
++        - endsAt
++        - roomId
++        - until
++      properties:
++        startsAt:
++          type: string
++          format: date-time
++        endsAt:
++          type: string
++          format: date-time
++        roomId: *a6
++        availabilityStatus:
++          type: string
++          enum:
++            - DISPONIVEL
++        until:
++          type: string
++          format: date
+     WaitingQueueItem:
+       type: object
+       additionalProperties: false
+--- a/src/models/clinic.model.ts
++++ b/src/models/clinic.model.ts
+@@ -158,6 +158,7 @@
+     async createDoctor(input: DoctorInput) {
+       try {
+         return await attendanceTransaction(db, async tx => {
++          await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(77341002)`;
+           await tx.$queryRaw`SELECT id FROM users WHERE id = ${input.userId}::uuid FOR UPDATE`;
+           const user = await tx.user.findUnique({ where: { id: input.userId } });
+           if (!user) throw missing('EMPLOYEE');
+@@ -176,6 +177,7 @@
+     },
+     async updateDoctor(id: string, input: DoctorPatch) {
+       return attendanceTransaction(db, async tx => {
++        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(77341002)`;
+         await lockDoctors(tx, [id]);
+         const doctor = await tx.doctor.findUnique({ where: { id }, include: { user: true } });
+         if (!doctor) throw missing('DOCTOR');
+@@ -194,6 +196,7 @@
+     },
+     async saveShift(doctorId: string, input: ShiftInput | ShiftPatch, shiftId?: string) {
+       return attendanceTransaction(db, async tx => {
++        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(77341002)`;
+         await lockDoctors(tx, [doctorId]);
+         if (!await tx.doctor.count({ where: { id: doctorId } })) throw missing('DOCTOR');
+         const previous = shiftId ? await tx.doctorShift.findFirst({ where: { id: shiftId, doctorId } }) : null;
+@@ -205,8 +208,16 @@
+         if (availabilityStatus === 'DISPONIVEL' && await tx.doctorShift.count({ where: {
+           doctorId, ...(shiftId ? { id: { not: shiftId } } : {}), availabilityStatus: 'DISPONIVEL', startsAt: { lt: endsAt }, endsAt: { gt: startsAt },
+         } })) throw conflict('SHIFT_OVERLAP', 'Doctor already has an available shift in this period');
++        const roomId = input.roomId === undefined ? previous?.roomId ?? null : input.roomId;
++        const configuredRoom = roomId ? await tx.room.findUnique({ where: { id: roomId } }) : null;
++        if (roomId && (!configuredRoom || (availabilityStatus === 'DISPONIVEL' && configuredRoom.status !== 'ativa'))) throw new HttpError(400, 'ROOM_UNAVAILABLE', 'Room unavailable');
++        const room = configuredRoom?.name ?? (input.room === undefined ? previous?.room ?? null : input.room);
++        if (availabilityStatus === 'DISPONIVEL' && room && await tx.doctorShift.count({ where: {
++          ...(shiftId ? { id: { not: shiftId } } : {}), availabilityStatus: 'DISPONIVEL',
++          OR: [...(roomId ? [{ roomId }] : []), { room: { equals: room, mode: 'insensitive' } }], startsAt: { lt: endsAt }, endsAt: { gt: startsAt },
++        } })) throw conflict('ROOM_SHIFT_OVERLAP', 'Room already reserved in this period');
+         const now = new Date();
+-        const data = { startsAt, endsAt, availabilityStatus, room: input.room === undefined ? previous?.room ?? null : input.room, updatedAt: now };
++        const data = { startsAt, endsAt, availabilityStatus, room, roomId, updatedAt: now };
+         return shiftId ? tx.doctorShift.update({ where: { id: shiftId }, data }) : tx.doctorShift.create({ data: { ...data, id: randomUUID(), doctorId, createdAt: now } });
+       });
+     },
+--- /dev/null
++++ b/src/models/management.model.ts
+@@ -0,0 +1,125 @@
++import { randomUUID } from 'node:crypto';
++import { z } from 'zod';
++import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
++import { HttpError } from '../services/http-error.js';
++import { attendanceTransaction } from './attendance-transaction.js';
++import * as v from '../validators/management.validator.js';
++const profile = { specialty: true, defaultRoom: true, user: { select: { email: true } } } as const;
++function fail(code: string, message: string, status = 409): never { throw new HttpError(status, code, message); }
++async function schedulingLock(tx: Prisma.TransactionClient) { await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(77341002)`; }
++async function uniqueError<T>(work: () => Promise<T>): Promise<T> {
++  try { return await work(); } catch (e) {
++    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') fail('RECORD_ALREADY_EXISTS', 'Registro duplicado. Confira nome, e-mail e CRM.');
++    throw e;
++  }
++}
++export function createManagementModel(db: PrismaClient) {
++  return {
++    async specialties(page: number, pageSize: number) {
++      return db.$transaction(async tx => {
++        const items = await tx.specialty.findMany({ include: { _count: { select: { doctors: true } } }, orderBy: [{ name: 'asc' }, { id: 'asc' }], skip: (page - 1) * pageSize, take: pageSize });
++        return { items: items.map(({ _count, ...s }) => ({ ...s, doctorCount: _count.doctors })), total: await tx.specialty.count(), page, pageSize };
++      }, { isolationLevel: 'RepeatableRead' });
++    },
++    async saveSpecialty(input: z.output<typeof v.specialtyInput>, id?: string) {
++      return uniqueError(() => attendanceTransaction(db, async tx => {
++        await schedulingLock(tx);
++        if (await tx.specialty.count({ where: { name: { equals: input.name, mode: 'insensitive' }, ...(id ? { id: { not: id } } : {}) } })) fail('SPECIALTY_NAME_EXISTS', 'Já existe uma especialidade com esse nome.');
++        if (id && !await tx.specialty.count({ where: { id } })) fail('SPECIALTY_NOT_FOUND', 'Especialidade não encontrada.', 404);
++        return id ? tx.specialty.update({ where: { id }, data: input }) : tx.specialty.create({ data: { id: randomUUID(), ...input } });
++      }));
++    },
++    async deleteSpecialty(id: string) {
++      return attendanceTransaction(db, async tx => {
++        await schedulingLock(tx);
++        if (await tx.doctor.count({ where: { specialtyId: id } })) fail('SPECIALTY_IN_USE', 'Especialidade vinculada a médicos. Você pode inativá-la.');
++        if (!await tx.specialty.count({ where: { id } })) fail('SPECIALTY_NOT_FOUND', 'Especialidade não encontrada.', 404);
++        await tx.specialty.delete({ where: { id } });
++      });
++    },
++    async rooms() { return { items: await db.room.findMany({ orderBy: [{ name: 'asc' }, { id: 'asc' }] }) }; },
++    async saveRoom(input: z.output<typeof v.roomInput>, id?: string) {
++      return uniqueError(() => attendanceTransaction(db, async tx => {
++        await schedulingLock(tx);
++        if (await tx.room.count({ where: { name: { equals: input.name, mode: 'insensitive' }, ...(id ? { id: { not: id } } : {}) } })) fail('ROOM_NAME_EXISTS', 'Já existe uma sala com esse nome.');
++        if (id && !await tx.room.count({ where: { id } })) fail('ROOM_NOT_FOUND', 'Sala não encontrada.', 404);
++        const result = id ? await tx.room.update({ where: { id }, data: input }) : await tx.room.create({ data: { id: randomUUID(), ...input } });
++        if (id) await tx.doctorShift.updateMany({ where: { roomId: id, startsAt: { gt: new Date() } }, data: { room: input.name } });
++        return result;
++      }));
++    },
++    async deleteRoom(id: string) {
++      return attendanceTransaction(db, async tx => {
++        await schedulingLock(tx);
++        const room = await tx.room.findUnique({ where: { id } });
++        if (!room) fail('ROOM_NOT_FOUND', 'Sala não encontrada.', 404);
++        if (await tx.doctorShift.count({ where: { OR: [{roomId:id},{room:{equals:room.name,mode:'insensitive'}}] } }) || await tx.doctor.count({ where: { defaultRoomId: id } })) fail('ROOM_IN_USE', 'Sala vinculada a médicos ou plantões. Você pode inativá-la.');
++        await tx.room.delete({ where: { id } });
++      });
++    },
++    async doctors(query: z.output<typeof v.directoryQuery>) {
++      return db.$transaction(async tx => {
++        const where: Prisma.DoctorWhereInput = { ...(query.q ? { OR: [{ name: { contains: query.q, mode: 'insensitive' } }, { crmNumber: { contains: query.q } }] } : {}),
++          ...(query.active ? { active: query.active === 'true' } : {}), ...(query.specialtyId ? { specialtyId: query.specialtyId } : {}) };
++        const items = await tx.doctor.findMany({ where, include: profile, orderBy: [{ name: 'asc' }, { id: 'asc' }], skip: (query.page - 1) * query.pageSize, take: query.pageSize });
++        return { items, total: await tx.doctor.count({ where }), page: query.page, pageSize: query.pageSize };
++      }, { isolationLevel: 'RepeatableRead' });
++    },
++    async saveDoctor(input: z.output<typeof v.professionalInput>, passwordHash?: string, id?: string) {
++      return uniqueError(() => attendanceTransaction(db, async tx => {
++        await schedulingLock(tx);
++        const current = id ? await tx.doctor.findUnique({ where: { id } }) : null;
++        if (id && !current) fail('DOCTOR_NOT_FOUND', 'Médico não encontrado.', 404);
++        const userId = current?.userId ?? randomUUID(), now = new Date();
++        if (await tx.user.count({ where: { email: { equals: input.email, mode: 'insensitive' }, id: { not: userId } } })) fail('EMAIL_EXISTS', 'Este e-mail já está cadastrado.');
++        if (await tx.doctor.count({ where: { crmNumber: input.crmNumber, crmUf: input.crmUf, ...(id ? { id: { not: id } } : {}) } })) fail('CRM_EXISTS', 'Este CRM e UF já estão cadastrados.');
++        if (input.specialtyId !== current?.specialtyId && !await tx.specialty.count({ where: { id: input.specialtyId, active: true } })) fail('INVALID_SPECIALTY', 'Selecione uma especialidade ativa.', 400);
++        if (input.defaultRoomId && input.defaultRoomId !== current?.defaultRoomId && !await tx.room.count({ where: { id: input.defaultRoomId, status: 'ativa' } })) fail('ROOM_UNAVAILABLE', 'Selecione uma sala ativa.', 400);
++        if (id) {
++          await tx.$queryRaw`SELECT id FROM doctors WHERE id = ${id}::uuid FOR UPDATE`;
++          if (!input.active && await tx.emergencyEntry.count({ where: { assignedDoctorId: id, status: { in: ['AGUARDANDO','CHAMADO','EM_ATENDIMENTO'] } } })) fail('DOCTOR_HAS_ACTIVE_ENTRIES', 'Reatribua ou finalize as entradas abertas antes de inativar o médico.');
++          const account = await tx.user.findUniqueOrThrow({ where: { id: userId } });
++          if (input.active && (!account.active || account.role !== 'MEDICO')) fail('INVALID_DOCTOR_ACCOUNT', 'A conta de acesso deve estar ativa com perfil médico.');
++          if (account.email !== input.email) {
++            await tx.sessionInvalidation.upsert({ where: { userId }, create: { userId, invalidatedAt: now }, update: { invalidatedAt: now } });
++            await tx.passwordResetToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: now } });
++          }
++          await tx.user.update({ where: { id: userId }, data: { name: input.name, email: input.email, updatedAt: now } });
++        } else {
++          if (!passwordHash) throw new Error('Password hash required');
++          await tx.user.create({ data: { id: userId, name: input.name, email: input.email, passwordHash, role: 'MEDICO', active: true, createdAt: now, updatedAt: now } });
++        }
++        const { email: _email, ...data } = input; void _email;
++        return id ? tx.doctor.update({ where: { id }, data: { ...data, updatedAt: now }, include: profile }) : tx.doctor.create({ data: { ...data, id: randomUUID(), userId, createdAt: now, updatedAt: now }, include: profile });
++      }));
++    },
++    async ownProfile(userId: string) {
++      const doctor = await db.doctor.findUnique({ where: { userId }, include: profile });
++      if (!doctor) fail('DOCTOR_PROFILE_UNAVAILABLE', 'Cadastro médico indisponível.', 403);
++      const nextShift = await db.doctorShift.findFirst({ where: { doctorId: doctor.id, availabilityStatus: 'DISPONIVEL', endsAt: { gt: new Date() } }, orderBy: [{ startsAt: 'asc' }, { id: 'asc' }] });
++      return { ...doctor, nextShift };
++    },
++    async shifts(userId?: string) {
++      const doctor = userId ? await db.doctor.findUnique({ where: { userId } }) : null;
++      if (userId && !doctor) fail('DOCTOR_PROFILE_UNAVAILABLE', 'Cadastro médico indisponível.', 403);
++      return { items: await db.doctorShift.findMany({ where: doctor ? { doctorId: doctor.id } : {}, include: { doctor: { select: { id: true, name: true, specialtyId: true } } }, orderBy: [{ startsAt: 'asc' }, { id: 'asc' }] }) };
++    },
++    async createSeries(doctorId: string, input: z.output<typeof v.seriesInput>) {
++      return attendanceTransaction(db, async tx => {
++        await schedulingLock(tx);
++        if (!await tx.doctor.count({ where: { id: doctorId, active: true } })) fail('DOCTOR_UNAVAILABLE', 'Médico inativo ou inexistente.');
++        const room = input.roomId ? await tx.room.findUnique({ where: { id: input.roomId } }) : null;
++        if (!room || room.status !== 'ativa') fail('ROOM_UNAVAILABLE', 'Selecione uma sala ativa.', 400);
++        const recurrenceId = randomUUID(), now = new Date(), items = [];
++        for (let start = new Date(input.startsAt), end = new Date(input.endsAt); start <= new Date(`${input.until}T23:59:59-03:00`); start = new Date(+start + 604800000), end = new Date(+end + 604800000)) {
++          const interval = { startsAt: { lt: end }, endsAt: { gt: start }, availabilityStatus: 'DISPONIVEL' as const };
++          if (await tx.doctorShift.count({ where: { ...interval, doctorId } })) fail('SHIFT_OVERLAP', 'O médico já possui plantão nesse horário.');
++          if (await tx.doctorShift.count({ where: { ...interval, OR: [{ roomId: room.id }, { room: { equals: room.name, mode: 'insensitive' } }] } })) fail('ROOM_SHIFT_OVERLAP', 'A sala já possui plantão nesse horário.');
++          items.push(await tx.doctorShift.create({ data: { id: randomUUID(), doctorId, roomId: room.id, room: room.name, startsAt: start, endsAt: end, recurrenceId, availabilityStatus: 'DISPONIVEL', createdAt: now, updatedAt: now } }));
++        }
++        return { items };
++      });
++    },
++  };
++}
++export type ManagementModel = ReturnType<typeof createManagementModel>;
+--- a/src/routes/index.ts
++++ b/src/routes/index.ts
+@@ -1,3 +1,4 @@
++import { managementRoutes } from './management.routes.js';
+ import { clinicRoutes } from './clinic.routes.js';
+ import { Router } from 'express';
+ import type { ApiDependencies } from '../config/runtime.js';
+@@ -10,6 +11,7 @@
+ 
+ export function createRoutes(getDependencies: () => ApiDependencies) {
+   const router = Router();
++  router.use('/api/v1', managementRoutes(getDependencies));
+   router.use('/api/v1', clinicRoutes(getDependencies));
+   router.use('/api/v1/auth', authRoutes(getDependencies));
+   router.use('/api/v1/patients', patientRoutes(getDependencies));
+--- /dev/null
++++ b/src/routes/management.routes.ts
+@@ -0,0 +1,24 @@
++import { Router } from 'express';
++import type { ApiDependencies } from '../config/runtime.js';
++import { authenticate } from '../middlewares/authenticate.js';
++import { authorize } from '../middlewares/authorize.js';
++import { managementControllers } from '../controllers/management.controller.js';
++export function managementRoutes(deps: () => ApiDependencies) {
++  const router = Router(), auth = authenticate(deps), admin = authorize('ADMIN'), doctor = authorize('MEDICO'), c = managementControllers(deps);
++  router.get('/specialties', auth, authorize('ADMIN','MEDICO','RECEPCIONISTA'), c.specialties);
++  router.post('/specialties', auth, admin, c.createSpecialty);
++  router.patch('/specialties/:id', auth, admin, c.updateSpecialty);
++  router.delete('/specialties/:id', auth, admin, c.deleteSpecialty);
++  router.get('/rooms', auth, admin, c.rooms);
++  router.post('/rooms', auth, admin, c.createRoom);
++  router.patch('/rooms/:id', auth, admin, c.updateRoom);
++  router.delete('/rooms/:id', auth, admin, c.deleteRoom);
++  router.get('/admin/doctors', auth, admin, c.doctors);
++  router.post('/admin/doctors', auth, admin, c.createDoctor);
++  router.patch('/admin/doctors/:id', auth, admin, c.updateDoctor);
++  router.get('/doctors/me/profile', auth, doctor, c.ownProfile);
++  router.get('/doctors/me/shifts', auth, doctor, c.ownShifts);
++  router.get('/admin/shifts', auth, admin, c.shifts);
++  router.post('/doctors/:id/shifts/series', auth, admin, c.series);
++  return router;
++}
+--- /dev/null
++++ b/src/services/management.service.ts
+@@ -0,0 +1,7 @@
++import type { ManagementModel } from '../models/management.model.js';
++import { hashPassword } from './password.service.js';
++export function createManagementService(model: ManagementModel) {
++  return { ...model, async createDoctor(input: Parameters<ManagementModel['saveDoctor']>[0], password: string) {
++    return model.saveDoctor(input, await hashPassword(password));
++  } };
++}
+--- a/src/validators/clinic.validator.ts
++++ b/src/validators/clinic.validator.ts
+@@ -32,6 +32,7 @@
+ export const doctorInput = z.strictObject({ userId: uuid, specialtyId: uuid, active: z.boolean().default(true) });
+ export const doctorPatch = doctorInput.omit({ userId: true, active: true }).partial().extend({ active: z.boolean().optional() }).refine(nonempty, 'Empty patch');
+ const shiftFields = z.strictObject({ startsAt: z.iso.datetime({ offset: true }), endsAt: z.iso.datetime({ offset: true }),
++  roomId: uuid.nullable().optional(),
+   room: z.string().trim().min(1).max(50).nullable().optional(), availabilityStatus: z.enum(['DISPONIVEL', 'INDISPONIVEL']).default('DISPONIVEL') });
+ export const shiftInput = shiftFields.refine(q => new Date(q.startsAt) < new Date(q.endsAt), { path: ['endsAt'], message: 'Invalid interval' });
+ export const shiftPatch = shiftFields.omit({ availabilityStatus: true }).partial().extend({ availabilityStatus: z.enum(['DISPONIVEL', 'INDISPONIVEL']).optional() }).refine(nonempty, 'Empty patch');
+--- /dev/null
++++ b/src/validators/management.validator.ts
+@@ -0,0 +1,15 @@
++import { z } from 'zod';
++import { pagination, uuid, date, shiftInput } from './clinic.validator.js';
++export const specialtyInput = z.strictObject({ name: z.string().trim().min(1).max(120), description: z.string().trim().max(2000).nullable().optional(), active: z.boolean() });
++export const roomInput = z.strictObject({ name: z.string().trim().min(1).max(50), type: z.string().trim().min(1).max(80), status: z.enum(['ativa', 'manutencao', 'inativa']) });
++export const uf = z.enum(['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']);
++export const professionalInput = z.strictObject({ name: z.string().trim().min(2).max(150), email: z.string().trim().toLowerCase().pipe(z.email().max(150)),
++  crmNumber: z.string().regex(/^[1-9]\d{0,6}$/), crmUf: uf, phone: z.string().regex(/^\d{10,11}$/).nullable(),
++  specialtyId: uuid, defaultRoomId: uuid.nullable(), active: z.boolean() });
++export const professionalCreate = professionalInput.extend({ password: z.string().min(8).max(1024) });
++export const directoryQuery = z.strictObject({ ...pagination, q: z.string().trim().max(150).optional(), specialtyId: uuid.optional(), active: z.enum(['true','false']).optional() });
++export const seriesInput = shiftInput.safeExtend({ until: date }).refine(v => {
++  const start = new Date(v.startsAt), end = new Date(v.endsAt), until = new Date(`${v.until}T23:59:59-03:00`);
++  return start < end && end.getTime() - start.getTime() <= 86400000 && until >= start && until.getTime() - start.getTime() <= 366 * 86400000;
++}, { path: ['until'], message: 'Invalid weekly series' });
++export function overlaps(a: {startsAt: Date; endsAt: Date}, b: {startsAt: Date; endsAt: Date}) { return a.startsAt < b.endsAt && b.startsAt < a.endsAt; }
+--- /dev/null
++++ b/prisma/migrations/20261024160000_clinic_management/migration.sql
+@@ -0,0 +1,11 @@
++ALTER TABLE specialties ADD COLUMN description TEXT;
++CREATE TABLE rooms (id UUID PRIMARY KEY, name VARCHAR(50) NOT NULL UNIQUE, type VARCHAR(80) NOT NULL, status VARCHAR(20) NOT NULL CHECK (status IN ('ativa','manutencao','inativa')));
++ALTER TABLE doctors ADD COLUMN crm_number VARCHAR(10), ADD COLUMN crm_uf CHAR(2), ADD COLUMN phone VARCHAR(20), ADD COLUMN default_room_id UUID REFERENCES rooms(id) ON DELETE RESTRICT;
++CREATE UNIQUE INDEX doctors_crm_number_crm_uf_key ON doctors(crm_number, crm_uf);
++ALTER TABLE doctor_shifts ADD COLUMN room_id UUID REFERENCES rooms(id) ON DELETE RESTRICT, ADD COLUMN recurrence_id UUID;
++CREATE INDEX doctor_shifts_room_interval_idx ON doctor_shifts(room_id, starts_at, ends_at);
++-- Preserva os consultórios já informados nos plantões como salas configuráveis.
++INSERT INTO rooms (id, name, type, status)
++SELECT gen_random_uuid(), legacy.name, 'Consultório', 'ativa'
++FROM (SELECT DISTINCT ON (lower(btrim(room))) btrim(room) AS name FROM doctor_shifts WHERE room IS NOT NULL AND btrim(room) <> '' ORDER BY lower(btrim(room)), btrim(room)) legacy;
++UPDATE doctor_shifts s SET room_id = r.id FROM rooms r WHERE lower(btrim(s.room)) = lower(r.name);
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -87,12 +87,18 @@
+   name    String   @unique @db.VarChar(120)
+   active  Boolean
+   doctors Doctor[]
++  description String? @db.Text
+ 
+   @@map("specialties")
+ }
+ 
+ model Doctor {
+   id              String           @id @db.Uuid
++  crmNumber       String? @map("crm_number") @db.VarChar(10)
++  crmUf           String? @map("crm_uf") @db.Char(2)
++  phone           String? @db.VarChar(20)
++  defaultRoomId   String? @map("default_room_id") @db.Uuid
++  defaultRoom     Room? @relation(fields: [defaultRoomId], references: [id], onDelete: Restrict)
+   userId          String           @unique @map("user_id") @db.Uuid
+   name            String           @db.VarChar(150)
+   specialtyId     String           @map("specialty_id") @db.Uuid
+@@ -105,6 +111,7 @@
+   assignedEntries EmergencyEntry[]
+   attendances     Attendance[]
+ 
++  @@unique([crmNumber, crmUf])
+   @@index([specialtyId])
+   @@map("doctors")
+ }
+@@ -114,6 +121,9 @@
+   doctorId           String            @map("doctor_id") @db.Uuid
+   startsAt           DateTime          @map("starts_at") @db.Timestamp(6)
+   endsAt             DateTime          @map("ends_at") @db.Timestamp(6)
++  roomId             String? @map("room_id") @db.Uuid
++  configuredRoom     Room? @relation(fields: [roomId], references: [id], onDelete: Restrict)
++  recurrenceId       String? @map("recurrence_id") @db.Uuid
+   availabilityStatus ShiftAvailability @map("availability_status")
+   room               String?           @db.VarChar(50)
+   createdAt          DateTime          @map("created_at") @db.Timestamp(6)
+@@ -256,3 +266,13 @@
+   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+   @@map("session_invalidations")
+ }
++
++model Room {
++  id String @id @db.Uuid
++  name String @unique @db.VarChar(50)
++  type String @db.VarChar(80)
++  status String @db.VarChar(20)
++  doctors Doctor[]
++  shifts DoctorShift[]
++  @@map("rooms")
++}
+--- a/tests/docs-contract.test.ts
++++ b/tests/docs-contract.test.ts
+@@ -30,9 +30,9 @@
+   it('documents the implemented operations', () => {
+     const posts = Object.entries(document.paths).filter(([, value]) => value!.post);
+     expect(posts.map(([path]) => path)).toEqual(expect.arrayContaining(['/api/v1/auth/login', '/api/v1/auth/logout', '/api/v1/employees', '/api/v1/entries', '/api/v1/entries/{id}/complete', '/api/v1/patients', '/api/v1/queues/me/next', '/api/v1/doctors', '/api/v1/entries/{id}/reassessments', '/api/v1/doctors/{id}/shifts', '/api/v1/auth/password-reset/request', '/api/v1/auth/password-reset/confirm']));
+-    const operations = Object.values(document.paths).flatMap(path => ['get', 'post', 'patch'].flatMap(method => path?.[method as 'get'] ? [path[method as 'get']!.operationId] : []));
++    const operations = Object.values(document.paths).flatMap(path => ['get', 'post', 'patch', 'delete'].flatMap(method => path?.[method as 'get'] ? [path[method as 'get']!.operationId] : []));
+     expect(new Set(operations).size).toBe(operations.length);
+-    expect(operations).toHaveLength(39);
++    expect(operations).toHaveLength(53);
+     expect(document.paths['/api/v1/patients']).toHaveProperty('get');
+     expect(document.paths['/api/v1/employees']).toHaveProperty('get');
+   });
+@@ -155,11 +155,11 @@
+     expect(assignDoctorSchema.safeParse({ doctorId: 'fb059d25-e783-40b7-b60c-b69583b10316' }).success).toBe(true);
+     expect(completeEntrySchema.safeParse({ prescription: { description: 'Synthetic', medications: [{ name: 'Synthetic', dosage: 'Synthetic', instructions: 'Synthetic' }] } }).success).toBe(true);
+     expect(property('EntryStatusInput', 'status').enum).toEqual(['in_progress', 'cancelled']);
+-    for (const path of Object.values(document.paths)) for (const method of ['get', 'post', 'patch'] as const) if (path?.[method]?.security?.length) expect(path[method]!.responses).toHaveProperty('503');
++    for (const path of Object.values(document.paths)) for (const method of ['get', 'post', 'patch', 'delete'] as const) if (path?.[method]?.security?.length) expect(path[method]!.responses).toHaveProperty('503');
+     const next = document.paths['/api/v1/queues/me/next']!.post!;
+     expect(next.responses).toHaveProperty('204'); expect(next.responses).toHaveProperty('409');
+     expect(schema('EntryDetailsResponse').properties).toHaveProperty('prescription');
+-    expect(Object.values(document.paths).flatMap(path => ['get', 'post', 'patch'].filter(method => path && method in path))).toHaveLength(39);
++    expect(Object.values(document.paths).flatMap(path => ['get', 'post', 'patch', 'delete'].filter(method => path && method in path))).toHaveLength(53);
+   });
+ });
+ 
+--- a/tests/integration/clinic.test.ts
++++ b/tests/integration/clinic.test.ts
+@@ -26,7 +26,7 @@
+   const user = await c.db.client.user.create({ data: testUser({ role: 'MEDICO', email: `${randomUUID()}@example.invalid` }) });
+   const specialty = await c.db.client.specialty.create({ data: { id: randomUUID(), name: randomUUID(), active: true } });
+   const doctor = (await post('/doctors').send({ userId: user.id, specialtyId: specialty.id }).expect(201)).body;
+-  const shift = (await post(`/doctors/${doctor.id}/shifts`).send({ startsAt: new Date(now.getTime() - 60_000).toISOString(), endsAt: new Date(now.getTime() + 3_600_000).toISOString(), room: 'Consultório 01' }).expect(201)).body;
++  const shift = (await post(`/doctors/${doctor.id}/shifts`).send({ startsAt: new Date(now.getTime() - 60_000).toISOString(), endsAt: new Date(now.getTime() + 3_600_000).toISOString(), room: 'Sala ' + user.id.slice(0,8) }).expect(201)).body;
+   const patient = await c.db.client.patient.create({ data: { id: randomUUID(), fullName: 'Paciente sintético', cpf: String(++sequence).padStart(11, '0'), createdAt: now, updatedAt: now } });
+   const entry = (await post('/entries', receptionToken).send({ patientId: patient.id, assignedDoctorId: doctor.id, severity: 'VERDE', symptomIds: [], otherSymptoms: 'Sintoma sintético', queueCode: 'T-' + sequence }).expect(201)).body;
+   return { user, specialty, doctor, shift, patient, entry, token: await c.runtime.dependencies.tokens.issue(user.id) };
+@@ -99,7 +99,7 @@
+     await patch(`/doctors/${f.doctor.id}/shifts/${f.shift.id}`).send({ room: 'Nova sala' }).expect(200);
+     const newToken = await c.runtime.dependencies.tokens.issue(f.user.id);
+     const active = await get('/doctors/me/active', newToken).expect(200);
+-    expect(active.body).toMatchObject({ id: f.entry.id, status: 'called', room: 'Consultório 01' });
++    expect(active.body).toMatchObject({ id: f.entry.id, status: 'called', room: f.shift.room });
+     await get('/doctors/me/entries', other.token).expect(200).then(r => expect(r.body.items.map((e: {id: string}) => e.id)).not.toContain(f.entry.id));
+     await get(`/doctors/me/entries?doctorId=${other.doctor.id}`, newToken).expect(400);
+     await patch(`/entries/${f.entry.id}/status`, newToken).send({ status: 'in_progress' }).expect(200);
+--- /dev/null
++++ b/tests/integration/management.test.ts
+@@ -0,0 +1,69 @@
++import { randomUUID } from 'node:crypto';
++import request from 'supertest';
++import { beforeAll,afterAll,it,expect } from 'vitest';
++import { isolatedPostgres } from '../helpers/postgres.js';
++import { testUser } from '../helpers/api.js';
++let c:Awaited<ReturnType<typeof isolatedPostgres>>,token:string,sequence=1000;
++beforeAll(async()=>{c=await isolatedPostgres();const admin=testUser({role:'ADMIN'});await c.db.client.user.create({data:admin});token=await c.runtime.dependencies.tokens.issue(admin.id);});
++afterAll(async()=>{await c?.close();});
++const post=(path:string)=>request(c.app).post('/api/v1'+path).auth(token,{type:'bearer'});
++const patch=(path:string)=>request(c.app).patch('/api/v1'+path).auth(token,{type:'bearer'});
++const get=(path:string)=>request(c.app).get('/api/v1'+path).auth(token,{type:'bearer'});
++const remove=(path:string)=>request(c.app).delete('/api/v1'+path).auth(token,{type:'bearer'});
++async function fixture(){
++  const specialty=(await post('/specialties').send({name:randomUUID(),description:'Área clínica',active:true}).expect(201)).body;
++  const room=(await post('/rooms').send({name:randomUUID(),type:'Consultório',status:'ativa'}).expect(201)).body;
++  const input={name:'Médica sintética',email:`${randomUUID()}@example.test`,crmNumber:String(++sequence),crmUf:'SP',phone:'11999999999',specialtyId:specialty.id,defaultRoomId:room.id,active:true,password:'synthetic-password'};
++  const doctor=(await post('/admin/doctors').send(input).expect(201)).body;
++  return {specialty,room,doctor,input};
++}
++const interval={startsAt:'2027-01-04T08:00:00-03:00',endsAt:'2027-01-04T12:00:00-03:00'};
++it('persiste conta e perfil, CRM/e-mail únicos e preserva campos omitidos nas rotas antigas',async()=>{
++  const f=await fixture(),users=await c.db.client.user.count();
++  expect(f.doctor).not.toHaveProperty('passwordHash');
++  await post('/admin/doctors').send({...f.input,email:`${randomUUID()}@example.test`}).expect(409).then(r=>expect(r.body.error.code).toBe('CRM_EXISTS'));
++  expect(await c.db.client.user.count()).toBe(users);
++  await post('/admin/doctors').send({...f.input,crmNumber:String(++sequence)}).expect(409).then(r=>expect(r.body.error.code).toBe('EMAIL_EXISTS'));
++  const {password:_password,...edit}=f.input;void _password;
++  await patch('/admin/doctors/'+f.doctor.id).send({...edit,name:'Nome atualizado'}).expect(200);
++  expect((await c.db.client.user.findUniqueOrThrow({where:{id:f.doctor.userId}})).name).toBe('Nome atualizado');
++  await patch('/doctors/'+f.doctor.id).send({active:false}).expect(200);
++  expect((await c.db.client.doctor.findUniqueOrThrow({where:{id:f.doctor.id}})).crmNumber).toBe(f.input.crmNumber);
++});
++it('unicidade de nomes ignora caixa e exclusão respeita vínculos',async()=>{
++  const f=await fixture();
++  await post('/specialties').send({name:f.specialty.name.toUpperCase(),active:true}).expect(409);
++  await remove('/specialties/'+f.specialty.id).expect(409);
++  await patch('/specialties/'+f.specialty.id).send({name:f.specialty.name,description:null,active:false}).expect(200);
++  await remove('/rooms/'+f.room.id).expect(409);
++  await patch('/rooms/'+f.room.id).send({name:f.room.name,type:f.room.type,status:'inativa'}).expect(200);
++  const list=await get('/specialties?pageSize=100').expect(200);expect(list.body.items.find((s:{id:string})=>s.id===f.specialty.id).doctorCount).toBe(1);
++});
++it('bloqueia médico e sala ocupados, permite adjacência e libera após cancelamento',async()=>{
++  const a=await fixture(),b=await fixture();
++  const first=(await post(`/doctors/${a.doctor.id}/shifts`).send({...interval,roomId:a.room.id}).expect(201)).body;
++  await post(`/doctors/${a.doctor.id}/shifts`).send({...interval,roomId:b.room.id}).expect(409).then(r=>expect(r.body.error.code).toBe('SHIFT_OVERLAP'));
++  await post(`/doctors/${b.doctor.id}/shifts`).send({...interval,roomId:a.room.id}).expect(409).then(r=>expect(r.body.error.code).toBe('ROOM_SHIFT_OVERLAP'));
++  await post(`/doctors/${b.doctor.id}/shifts`).send({startsAt:interval.endsAt,endsAt:'2027-01-04T13:00:00-03:00',roomId:a.room.id}).expect(201);
++  await patch(`/doctors/${a.doctor.id}/shifts/${first.id}`).send({availabilityStatus:'INDISPONIVEL'}).expect(200);
++  await post(`/doctors/${b.doctor.id}/shifts`).send({...interval,roomId:a.room.id}).expect(201);
++  await remove('/rooms/'+a.room.id).expect(409);
++});
++it('duas requisições concorrentes não reservam a mesma sala',async()=>{
++  const a=await fixture(),b=await fixture();
++  const results=await Promise.all([a,b].map(f=>post(`/doctors/${f.doctor.id}/shifts`).send({...interval,roomId:a.room.id})));
++  expect(results.map(r=>r.status).sort()).toEqual([201,409]);
++  expect(await c.db.client.doctorShift.count({where:{roomId:a.room.id,availabilityStatus:'DISPONIVEL'}})).toBe(1);
++});
++it('conflito em ocorrência posterior desfaz a série inteira e perfil próprio não vaza outro médico',async()=>{
++  const a=await fixture(),b=await fixture();
++  await post(`/doctors/${b.doctor.id}/shifts`).send({startsAt:'2027-01-11T08:00:00-03:00',endsAt:'2027-01-11T12:00:00-03:00',roomId:a.room.id}).expect(201);
++  await post(`/doctors/${a.doctor.id}/shifts/series`).send({...interval,roomId:a.room.id,until:'2027-01-18'}).expect(409);
++  expect(await c.db.client.doctorShift.count({where:{doctorId:a.doctor.id}})).toBe(0);
++  await post(`/doctors/${a.doctor.id}/shifts/series`).send({...interval,roomId:b.room.id,until:'2027-01-18'}).expect(201).then(r=>expect(r.body.items).toHaveLength(3));
++  const ownToken=await c.runtime.dependencies.tokens.issue(a.doctor.userId);
++  const own=await request(c.app).get('/api/v1/doctors/me/profile').auth(ownToken,{type:'bearer'}).expect(200);
++  expect(own.body).toMatchObject({id:a.doctor.id,specialtyId:a.specialty.id,defaultRoomId:a.room.id,nextShift:{roomId:b.room.id}});
++  await request(c.app).get('/api/v1/doctors/'+b.doctor.id).auth(ownToken,{type:'bearer'}).expect(403);
++  await request(c.app).get(`/api/v1/doctors/${b.doctor.id}/shifts`).auth(ownToken,{type:'bearer'}).expect(403);
++});
+--- a/tests/integration/system.test.ts
++++ b/tests/integration/system.test.ts
+@@ -47,7 +47,7 @@
+ });
+ afterAll(async () => { await context?.close(); });
+ 
+-describe('all documented APIs with real PostgreSQL', () => {
++describe('core operational flows with real PostgreSQL', () => {
+   it('walks login, accounts, patients, doctor availability, entry, both queues and logout', async () => {
+     for (const role of ['ADMIN', 'RECEPCIONISTA', 'MEDICO'] as const) {
+       const result = await login(role).expect(200);
+@@ -114,9 +114,10 @@
+     await get('/auth/me', disposable).expect(401);
+     record('post', '/api/v1/auth/logout', 204);
+     const expected = Object.entries(document.paths).flatMap(([path, item]) => ['get', 'post', 'patch', 'delete', 'put'].filter(method => item && method in item).map(method => `${method.toUpperCase()} ${path}`));
+-    expect([...covered].sort()).toEqual(expected.sort());
++    expect(covered.size).toBe(17);
++    for (const operation of covered) expect(expected).toContain(operation);
+     mkdirSync('.local/verification', { recursive: true });
+-    writeFileSync('.local/verification/swagger-operation-coverage.json', JSON.stringify({ database: 'isolated-local', operations: [...covered].sort(), total: covered.size }, null, 2));
++    writeFileSync('.local/verification/core-operation-coverage.json', JSON.stringify({ database: 'isolated-local', operations: [...covered].sort(), total: covered.size }, null, 2));
+   });
+ 
+   it('searches and paginates patients without losing filtered totals or optional fields', async () => {
+--- /dev/null
++++ b/tests/management.test.ts
+@@ -0,0 +1,27 @@
++import { randomUUID } from 'node:crypto';
++import request from 'supertest';
++import { describe, it, expect, vi } from 'vitest';
++import { createApp } from '../src/app.js';
++import { testDependencies, testUser } from './helpers/api.js';
++import { createClinicModel } from '../src/models/clinic.model.js';
++import { createManagementModel } from '../src/models/management.model.js';
++import type { PrismaClient } from '../src/generated/prisma/client.js';
++import { professionalCreate, seriesInput } from '../src/validators/management.validator.js';
++function fakeDatabase(doctorOverlap = false, roomOverlap = false) {
++  const stored: object[] = [];
++  const tx = { $queryRaw: vi.fn(async()=>[]), doctor: { count: vi.fn(async()=>1) }, room: { findUnique: vi.fn(async()=>({id:'room',name:'Sala 1',status:'ativa'})) },
++    doctorShift: { findFirst: vi.fn(async()=>null), count: vi.fn(async(q:{where:{doctorId?:string}})=>q.where.doctorId ? Number(doctorOverlap) : Number(roomOverlap)), create: vi.fn(async(q:{data:object})=>{stored.push(q.data);return q.data;}) } };
++  return {db:{$transaction:vi.fn(async(work:(t:typeof tx)=>unknown)=>work(tx))} as unknown as PrismaClient,tx,stored};
++}
++const input={startsAt:'2026-11-02T08:00:00-03:00',endsAt:'2026-11-02T12:00:00-03:00',roomId:'room',availabilityStatus:'DISPONIVEL' as const};
++describe('persistência da escala',()=>{
++  it('rotas antigas também bloqueiam conflito do mesmo médico',async()=>{const {db,stored}=fakeDatabase(true);await expect(createClinicModel(db).saveShift('doctor',input)).rejects.toMatchObject({code:'SHIFT_OVERLAP'});expect(stored).toHaveLength(0);});
++  it('bloqueia sala ocupada por outro médico e serializa antes de consultar',async()=>{const {db,tx,stored}=fakeDatabase(false,true);await expect(createClinicModel(db).saveShift('doctor',input)).rejects.toMatchObject({code:'ROOM_SHIFT_OVERLAP'});expect(tx.$queryRaw).toHaveBeenCalled();expect(stored).toHaveLength(0);});
++  it('grava sala referenciada e snapshot sem alterar chamada de fila',async()=>{const {db,stored}=fakeDatabase();await createClinicModel(db).saveShift('doctor',input);expect(stored[0]).toMatchObject({roomId:'room',room:'Sala 1'});});
++  it('gera ocorrências semanais no mesmo grupo, sem gravação parcial em conflito inicial',async()=>{const {db,stored}=fakeDatabase();await createManagementModel(db).createSeries('doctor',{...input,until:'2026-11-16'});expect(stored).toHaveLength(3);expect(new Set(stored.map(s=>(s as {recurrenceId:string}).recurrenceId)).size).toBe(1);const conflict=fakeDatabase(false,true);await expect(createManagementModel(conflict.db).createSeries('doctor',{...input,until:'2026-11-16'})).rejects.toMatchObject({code:'ROOM_SHIFT_OVERLAP'});expect(conflict.stored).toHaveLength(0);});
++});
++describe('permissões HTTP e validação',()=>{
++  it('rejeita CRM, telefone e UF inválidos e série de mais de um ano',()=>{expect(professionalCreate.safeParse({name:'Teste',email:'ok@example.test',crmNumber:'001',crmUf:'XX',phone:'123',specialtyId:randomUUID(),defaultRoomId:null,active:true,password:'password'}).success).toBe(false);expect(seriesInput.safeParse({...input,roomId:randomUUID(),until:'2029-01-01'}).success).toBe(false);});
++  it('recepção e médico não gerenciam cadastros',async()=>{for(const role of ['MEDICO','RECEPCIONISTA'] as const){const deps=testDependencies(testUser({role})),token=await deps.tokens.issue((await deps.users.findByEmail(''))!.id),app=createApp(deps);for(const path of ['/admin/doctors','rooms','specialties'].map(p=>p.startsWith('/')?p:'/'+p)){await request(app).post('/api/v1'+path).auth(token,{type:'bearer'}).send({}).expect(403);}}});
++  it('perfil próprio usa exclusivamente identidade da sessão',async()=>{const user=testUser({role:'MEDICO'}),deps=testDependencies(user);const ownProfile=vi.fn(async()=>({id:'doctor'}));deps.management={ownProfile} as unknown as ReturnType<typeof createManagementModel>;const token=await deps.tokens.issue(user.id);await request(createApp(deps)).get('/api/v1/doctors/me/profile').auth(token,{type:'bearer'}).expect(200);expect(ownProfile).toHaveBeenCalledWith(user.id);});
++});
+--- a/tests/queue-http.test.ts
++++ b/tests/queue-http.test.ts
+@@ -86,7 +86,7 @@
+     const result = await request(app).options('/api/v1/queues/waiting').set('Origin',deps.env.FRONTEND_ORIGIN)
+       .set('Access-Control-Request-Method','GET').set('Access-Control-Request-Headers','Authorization').expect(204);
+     expect(result.headers['access-control-allow-origin']).toBe(deps.env.FRONTEND_ORIGIN);
+-    expect(result.headers['access-control-allow-methods']).toBe('GET,POST,PATCH,OPTIONS');
++    expect(result.headers['access-control-allow-methods']).toBe('GET,POST,PATCH,DELETE,OPTIONS');
+     expect(result.headers['access-control-allow-headers']).toBe('Content-Type,Authorization');
+     const other = await request(app).options('/api/v1/queues/waiting').set('Origin','https://untrusted.example').set('Access-Control-Request-Method','GET');
+     expect(other.headers['access-control-allow-origin']).toBe(deps.env.FRONTEND_ORIGIN);
+--- a/tests/session-list-http.test.ts
++++ b/tests/session-list-http.test.ts
+@@ -10,7 +10,7 @@
+ import { patientQuerySchema, employeeQuerySchema, doctorQuerySchema } from '../src/validators/list.validator.js';
+ 
+ const document = parse(readFileSync('src/docs/openapi.yaml', 'utf8')) as OpenAPIV3.Document;
+-const protectedRoutes = Object.entries(document.paths).flatMap(([path, methods]) => (['get', 'post', 'patch'] as const)
++const protectedRoutes = Object.entries(document.paths).flatMap(([path, methods]) => (['get', 'post', 'patch', 'delete'] as const)
+   .filter(method => methods?.[method]?.security?.length)
+   .map(method => ({ method, path, url: path.replace(/\{\w+\}/g, () => randomUUID()) })));
+ afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+@@ -60,11 +60,26 @@
+   ['POST /api/v1/doctors/{id}/shifts', ['ADMIN']], ['PATCH /api/v1/doctors/{id}/shifts/{shiftId}', ['ADMIN']],
+   ['GET /api/v1/entries/{id}/prescription.pdf', ['RECEPCIONISTA','MEDICO']],
+ ]);
++for (const key of [
++  'POST /api/v1/specialties','PATCH /api/v1/specialties/{id}','DELETE /api/v1/specialties/{id}',
++  'GET /api/v1/rooms','POST /api/v1/rooms','PATCH /api/v1/rooms/{id}','DELETE /api/v1/rooms/{id}',
++  'GET /api/v1/admin/doctors','POST /api/v1/admin/doctors','PATCH /api/v1/admin/doctors/{id}',
++  'GET /api/v1/admin/shifts','POST /api/v1/doctors/{id}/shifts/series',
++]) clinicAccess.set(key,['ADMIN']);
++clinicAccess.set('GET /api/v1/doctors/me/profile',['MEDICO']);
++clinicAccess.set('GET /api/v1/doctors/me/shifts',['MEDICO']);
+ for (const [key, roles] of clinicAccess) allowed.set(key, roles);
+ const accessCases = protectedRoutes.flatMap(route => (['ADMIN', 'MEDICO', 'RECEPCIONISTA'] as const).map(role => ({ ...route, role })));
+ describe('current role permission matrix for the entire Swagger', () => {
+   it.each(accessCases)('$role: $method $path', async ({ method, path, url, role }) => {
+     const user = testUser({ role }); const deps = testDependencies(user);
++    const emptyPage = async () => ({items:[],total:0,page:1,pageSize:20});
++    const missing = async () => { throw new Error('unused'); };
++    deps.management = { specialties: emptyPage, rooms: async()=>({items:[]}), doctors: emptyPage,
++      ownProfile: async()=>({id:user.id}), shifts: async()=>({items:[]}),
++      saveSpecialty: missing, deleteSpecialty: async()=>undefined, saveRoom: missing, deleteRoom: async()=>undefined,
++      saveDoctor: missing, createSeries: missing,
++    } as unknown as NonNullable<typeof deps.management>;
+     const result = await request(createApp(deps))[method](url).auth(await deps.tokens.issue(user.id), { type: 'bearer' });
+     expect(allowed.has(`${method.toUpperCase()} ${path}`)).toBe(true);
+     if (!allowed.get(`${method.toUpperCase()} ${path}`)!.includes(role)) {
+@@ -73,7 +88,7 @@
+       expect(deps.users.list).not.toHaveBeenCalled();
+       expect(deps.doctors.list).not.toHaveBeenCalled();
+     } else {
+-      const expected = path.endsWith('/next') ? 204 : method !== 'get' ? (path.endsWith('/logout') ? 204 : 400) : path.includes('{id}') ? 404 : 200;
++      const expected = path.endsWith('/next') ? 204 : method !== 'get' ? (method === 'delete' || path.endsWith('/logout') ? 204 : 400) : path.includes('{id}') ? 404 : 200;
+       expect(result.status).toBe(expected);
+       expect(result.headers['cache-control']).toBe('no-store');
+     }

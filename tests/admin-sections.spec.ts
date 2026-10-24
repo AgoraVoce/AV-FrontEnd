@@ -59,6 +59,7 @@ test("recepcionista cadastra somente médico ou recepcionista usando select aces
 });
 
 test("médico não tem cadastro; médico não pode entrar em gestão administrativa", async ({ page }) => {
+  await page.route("**/auth/me", route => route.fulfill({ status: 401, json: {} }));
   await page.goto("/medico?dev=medico");
   await expect(page.getByRole("link", { name: "Gestão de Usuários" })).toHaveCount(0);
   await page.goto("/recepcao/usuarios?dev=medico");

@@ -2,7 +2,7 @@ import { clearLocalSession, getAccessToken } from "../auth/api";
 import { apiEndpoint } from "./api-endpoint";
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, public readonly code: string, message: string) {
+  constructor(public readonly status: number, public readonly code: string, message: string, public readonly fields: Record<string, string> = {}) {
     super(message);
   }
 }
@@ -14,6 +14,21 @@ function contract(value: unknown): Record<string, unknown> {
   return value;
 }
 const ERRORS: Record<string, string> = {
+  SPECIALTY_NAME_EXISTS: "Já existe uma especialidade com esse nome.",
+  ROOM_NAME_EXISTS: "Já existe uma sala com esse nome.",
+  SPECIALTY_IN_USE: "Especialidade vinculada a médicos. Você pode inativá-la.",
+  ROOM_IN_USE: "Sala vinculada a médicos ou plantões. Você pode inativá-la.",
+  CRM_EXISTS: "Este CRM e UF já estão cadastrados.",
+  EMAIL_EXISTS: "Este e-mail já está cadastrado.",
+  ROOM_UNAVAILABLE: "Selecione uma sala ativa e disponível.",
+  INVALID_SPECIALTY: "Selecione uma especialidade ativa.",
+  INVALID_DOCTOR_ACCOUNT:
+    "A conta de acesso deve estar ativa e ter perfil médico.",
+  DOCTOR_HAS_ACTIVE_ENTRIES:
+    "Reatribua ou finalize as entradas abertas antes de inativar o médico.",
+  SHIFT_OVERLAP: "O médico já possui um plantão nesse horário.",
+  ROOM_SHIFT_OVERLAP: "A sala já possui um plantão nesse horário.",
+  INVALID_SHIFT_INTERVAL: "O horário final deve ser maior que o inicial.",
   INVALID_CREDENTIALS: "E-mail ou senha inválidos.",
   UNAUTHENTICATED: "Sua sessão expirou. Entre novamente.",
   FORBIDDEN: "Seu perfil não possui permissão para esta operação.",
@@ -40,7 +55,7 @@ function explain(status: number, code: string) {
   if (status === 429) return ERRORS.TOO_MANY_ATTEMPTS;
   return "Não foi possível concluir a operação. Tente novamente.";
 }
-export async function request(path: string, method: "GET" | "POST" | "PATCH", body?: object, signal?: AbortSignal): Promise<unknown> {
+export async function request(path: string, method: "GET" | "POST" | "PATCH" | "DELETE", body?: object, signal?: AbortSignal): Promise<unknown> {
   const token = getAccessToken();
   if (!token) {
     window.dispatchEvent(new Event("av:session-expired"));
@@ -74,7 +89,27 @@ export async function request(path: string, method: "GET" | "POST" | "PATCH", bo
     const payload = await response.json().catch(() => null) as unknown;
     const error = isRecord(payload) && isRecord(payload.error) ? payload.error : null;
     const code = typeof error?.code === "string" ? error.code : "UNKNOWN";
-    throw new ApiError(response.status, code, explain(response.status, code));
+    const fields: Record<string, string> = {};
+    if (Array.isArray(error?.details))
+      for (const detail of error.details) {
+        if (isRecord(detail) && typeof detail.field === "string")
+          fields[detail.field] = "Confira o valor informado neste campo.";
+      }
+    const field = (
+      {
+        CRM_EXISTS: "crmNumber",
+        EMAIL_EXISTS: "email",
+        SPECIALTY_NAME_EXISTS: "name",
+        ROOM_NAME_EXISTS: "name",
+      } as Record<string, string>
+    )[code];
+    if (field) fields[field] = explain(response.status, code);
+    throw new ApiError(
+      response.status,
+      code,
+      explain(response.status, code),
+      fields,
+    );
   }
   if (response.status === 204) return null;
   try {
