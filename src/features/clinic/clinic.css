@@ -79,3 +79,30 @@
   margin: 0;
   min-width: 0;
 }
+
+/* Forms stay in a bounded modal instead of extending the admin list. */
+.clinic-editor-dialog {
+  width: min(96vw, 720px);
+  max-width: 720px;
+  max-height: min(90dvh, 840px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.clinic-editor-dialog .local-form {
+  margin: 0;
+  box-shadow: none;
+}
+.clinic-editor-dialog input,
+.clinic-editor-dialog select,
+.clinic-editor-dialog textarea {
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .clinic-editor-dialog {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+  .clinic-editor-dialog .local-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

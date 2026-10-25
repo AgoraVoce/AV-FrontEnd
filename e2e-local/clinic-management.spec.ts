@@ -183,6 +183,7 @@ test("especialidades cria, edita e confirma inativação de vinculada sem DELETE
   });
   await page.getByRole("link", { name: "Especialidades", exact: true }).click();
   await page.getByRole("button", { name: "Nova especialidade" }).click();
+  await expect(page.getByRole("dialog", { name: "Nova especialidade" })).toBeVisible();
   await page.getByLabel("Nome *", { exact: true }).fill("Cardiologia");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await expect(page.getByText("Alteração salva")).toBeVisible();
@@ -273,6 +274,7 @@ test("plantão bloqueia conflito e envia avulso adjacente e recorrência para a 
   });
   await page.getByRole("link", { name: "Plantões", exact: true }).click();
   await page.getByRole("button", { name: "Novo plantão" }).click();
+  await expect(page.getByRole("dialog", { name: "Novo plantão" })).toBeVisible();
   await page
     .getByRole("combobox", { name: "Médico *", exact: true })
     .selectOption("d1");
@@ -296,6 +298,7 @@ test("plantão bloqueia conflito e envia avulso adjacente e recorrência para a 
     await route.fulfill({ status: 201, json: { items: [] } });
   });
   await page.getByRole("button", { name: "Novo plantão" }).click();
+  await expect(page.getByRole("dialog", { name: "Novo plantão" })).toBeVisible();
   await page
     .getByRole("combobox", { name: "Médico *", exact: true })
     .selectOption("d1");

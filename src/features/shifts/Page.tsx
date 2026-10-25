@@ -9,6 +9,7 @@ import type { Shift } from "../clinic/types";
 import {
   ClinicPage,
   Confirm,
+  EditorDialog,
   FormActions,
   ResourceState,
   Status,
@@ -281,6 +282,11 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
           ))}
       </section>
       {editing && !own && (
+        <EditorDialog
+          title={editing === "new" ? "Novo plantão" : "Editar ocorrência"}
+          busy={save.saving}
+          onClose={() => setEditing(null)}
+        >
         <form className="local-form" onSubmit={(e) => void submit(e)}>
           <h2>{editing === "new" ? "Novo plantão" : "Editar ocorrência"}</h2>
           <p className="local-note">
@@ -292,6 +298,7 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
               <label>
                 Médico *
                 <select
+                  autoFocus
                   required
                   disabled={editing !== "new"}
                   value={doctorId}
@@ -371,6 +378,7 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
           {validation && <p role="alert">{validation}</p>}
           <FormActions {...save} onCancel={() => setEditing(null)} />
         </form>
+        </EditorDialog>
       )}
       {confirm && (
         <Confirm
