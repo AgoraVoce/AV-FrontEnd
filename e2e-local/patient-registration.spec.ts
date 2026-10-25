@@ -269,7 +269,7 @@ test("cadastro válido normaliza CPF e permite registrar entrada com espera inic
     .getByRole("textbox", { name: "Sintomas / queixa relatada *", exact: true })
     .fill("Queixa relatada para teste");
   await page
-    .getByRole("button", { name: "Confirmar entrada no servidor" })
+    .getByRole("button", { name: "Confirmar" })
     .click();
   await expect(
     page.locator(
@@ -292,7 +292,7 @@ test("entrada já ativa mostra erro persistente e não repete cadastro pessoal",
     .getByRole("textbox", { name: "Sintomas / queixa relatada *", exact: true })
     .fill("Queixa relatada para teste");
   await page
-    .getByRole("button", { name: "Confirmar entrada no servidor" })
+    .getByRole("button", { name: "Confirmar" })
     .click();
   await expect(page.locator(".local-message.is-error")).toContainText(
     "já possui uma entrada ativa",

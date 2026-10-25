@@ -6,6 +6,7 @@ import type { Room } from "../clinic/types";
 import {
   ClinicPage,
   Confirm,
+  EditorDialog,
   FieldError,
   FormActions,
   ResourceState,
@@ -145,12 +146,14 @@ export function RoomsPage() {
           ))}
       </section>
       {editing && (
+        <EditorDialog title={editing === "new" ? "Nova sala" : "Editar sala"} busy={save.saving} onClose={() => setEditing(null)}>
         <form className="local-form" onSubmit={(e) => void submit(e)}>
           <h2>{editing === "new" ? "Nova sala" : "Editar sala"}</h2>
           <div className="local-fields">
             <label>
               Nome / número *
               <input
+                autoFocus
                 required
                 maxLength={50}
                 value={name}
@@ -183,6 +186,7 @@ export function RoomsPage() {
           </div>
           <FormActions {...save} onCancel={() => setEditing(null)} />
         </form>
+        </EditorDialog>
       )}
       {confirm && (
         <Confirm

@@ -1,3 +1,4 @@
+import { AdminDashboard } from "./integrations/AdminDashboard";
 import { SpecialtiesPage } from "./features/specialties/Page";
 import { RoomsPage } from "./features/rooms/Page";
 import { DoctorsPage, OwnProfilePage } from "./features/doctors/Page";
@@ -97,7 +98,7 @@ export default function App() {
           path="/admin"
           element={
             <ProtectedArea role="ADMIN">
-              {API_MODE ? <StaffWorkspace actor="ADMIN" /> : <AdminPage />}
+              {API_MODE ? <AdminDashboard /> : <AdminPage />}
             </ProtectedArea>
           }
         />

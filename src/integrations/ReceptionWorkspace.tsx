@@ -422,7 +422,7 @@ export function PatientWorkspace() {
       </div>
       <p className="local-note">Classificação manual. A ordem de chamada é determinada pelo backend.</p>
       <div className="local-actions"><button type="submit" className="local-primary" disabled={busy || !symptoms.trim()}>
-        {busy ? "Registrando…" : "Confirmar entrada no servidor"} <ArrowRight size={16} aria-hidden="true" /></button>
+        {busy ? "Registrando…" : "Confirmar"} <ArrowRight size={16} aria-hidden="true" /></button>
         <Link className="local-secondary-button" to="/recepcao">Cancelar</Link>
       </div>
     </form>}

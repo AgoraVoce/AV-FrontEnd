@@ -31,6 +31,7 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
   const [password, setPassword] = useState("");
   const [newRole, setNewRole] = useState<EmployeeRecord["role"]>("MEDICO");
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
   const lock = useRef(false);
   const load = useCallback(async (signal: AbortSignal) => {
     if (actor !== "ADMIN" || view !== "list") return;
@@ -59,11 +60,18 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (lock.current || actor !== "ADMIN" || view !== "create") return;
+    if (name.trim().length < 2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim()) || password.length < 8) {
+      setFormError("Preencha o nome, informe um e-mail válido e use uma senha de pelo menos 8 caracteres.");
+      return;
+    }
+    setFormError("");
     lock.current = true; setSaving(true);
     try {
       const created = await createEmployee({ name: name.trim(), email: email.trim(), password, role: newRole });
       setPassword("");
-      toast.success("Funcionário cadastrado", "Conta de " + created.name + " criada com sucesso.");
+      toast.success("Funcionário cadastrado", newRole === "MEDICO"
+        ? "A conta de " + created.name + " foi criada. Agora vincule uma especialidade ao cadastro médico."
+        : "Conta de " + created.name + " criada com sucesso.");
       navigate("/admin/usuarios", { replace: true });
     } catch (cause) {
       toast.error("Não foi possível cadastrar o funcionário", errorText(cause));
@@ -87,7 +95,7 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
           <p>Preencha os dados para conceder acesso ao pronto-socorro.</p></div>
         <Link className="local-secondary-button" to="/admin/usuarios"><ArrowLeft size={16} aria-hidden="true" /> Voltar aos funcionários</Link>
       </header>
-      <form className="local-form operational-single-form" onSubmit={e => void create(e)}>
+      <form className="local-form operational-single-form" noValidate onSubmit={e => void create(e)}>
         <div><h2>Dados de acesso</h2><p className="local-note">Todos os campos são obrigatórios. Use uma senha temporária segura.</p></div>
         <div className="local-fields">
           <label>Nome completo *<input required minLength={2} maxLength={150} autoComplete="name" autoFocus value={name} onChange={e => setName(e.target.value)} /></label>
@@ -97,9 +105,11 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
             <option value="MEDICO">Médico</option><option value="RECEPCIONISTA">Recepcionista</option><option value="ADMIN">Administrador</option>
           </select></label>
         </div>
-        <p className="local-note">A senha é enviada apenas no cadastro; não será exibida na lista de funcionários.</p>
+        <p className="local-note">Senha obrigatória: mínimo de 8 caracteres. Ela não será exibida na lista.</p>
+        {newRole === "MEDICO" && <p className="local-message" role="note">O perfil Médico cria uma conta de acesso. Para entrar na fila e atender pacientes, será necessário cadastrar o vínculo médico com uma especialidade no módulo Médicos.</p>}
+        {formError && <p className="local-message is-error" role="alert">{formError}</p>}
         <div className="local-actions">
-          <button className="local-primary" type="submit" disabled={saving || !name.trim() || !email.trim() || password.length < 8}>
+          <button className="local-primary" type="submit" disabled={saving}>
             {saving ? "Cadastrando…" : "Cadastrar funcionário"} <UserPlus size={16} aria-hidden="true" />
           </button>
           <Link className="local-secondary-button" to="/admin/usuarios">Cancelar</Link>
