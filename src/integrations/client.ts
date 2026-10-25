@@ -48,6 +48,9 @@ const ERRORS: Record<string, string> = {
 };
 function explain(status: number, code: string) {
   if (ERRORS[code]) return ERRORS[code];
+  if (status === 404 && (code === "UNKNOWN" || code === "ROUTE_NOT_FOUND")) {
+    return "Esta funcionalidade ainda não está disponível na API. A equipe de backend precisa disponibilizar essa rota.";
+  }
   if (status === 409) return "Já existe um cadastro ou registro conflitante.";
   if (status === 400) return "Revise os campos informados e tente novamente.";
   if (status === 401) return ERRORS.UNAUTHENTICATED;
