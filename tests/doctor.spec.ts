@@ -142,7 +142,11 @@ test("mostra o horário de Brasília sincronizado e atualiza os segundos", async
   await expect
     .poll(async () => officeClock.innerText(), { timeout: 2500 })
     .not.toBe(initialTime);
-  await expect(headerClock).toHaveText(await officeClock.innerText());
+  await expect.poll(() => page.evaluate(() => {
+    const header = document.querySelector(".doctor-header-clock strong")?.textContent;
+    const office = document.querySelector(".doctor-current-time strong")?.textContent;
+    return Boolean(header && header === office);
+  })).toBe(true);
 });
 
 test("finalização clínica exige informações e permite cancelar sem liberar paciente", async ({ page }) => {

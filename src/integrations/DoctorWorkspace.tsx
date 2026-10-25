@@ -1,3 +1,4 @@
+import { DashboardProfile } from "../features/doctors/DashboardProfile";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight, ClipboardCheck, ClipboardList, Clock3, Plus, RefreshCw, Stethoscope, Trash2, UserRound, Users } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -184,6 +185,7 @@ export function DoctorWorkspace({ view = "dashboard" }: { view?: "dashboard" | "
     </header>
 
     {view === "dashboard" && <>
+      <DashboardProfile />
       <div className="operational-summary">
         <div className="operational-kpi"><span>Pacientes aguardando</span><strong>{loading ? "—" : queue.length}</strong><small>Priorizados pelo sistema</small></div>
         <div className="operational-kpi"><span>Seu atendimento</span><strong className="operational-time">{restoring ? "Verificando…" : active ? (active.status === "called" ? "Paciente chamado" : "Em andamento") : "Disponível"}</strong>

@@ -128,6 +128,7 @@ test("salva auditoria e desfaz por botão e Ctrl+Z sem capturar campos de texto"
     name: "Filtrar por nome, senha ou queixa",
   });
   await searchInput.fill("Ana");
+  await searchInput.focus();
   await expect(searchInput).toBeFocused();
   await page.keyboard.press("Control+z");
   // Ctrl+Z inside a text field belongs to the browser's native edit history,

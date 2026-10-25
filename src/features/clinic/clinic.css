@@ -1,0 +1,81 @@
+.clinic-dialog {
+  width: min(94vw, 520px);
+  max-height: 90dvh;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  color: inherit;
+}
+.clinic-dialog::backdrop {
+  background: rgb(20 39 51 / 45%);
+}
+.clinic-dialog .local-form {
+  border: 0;
+}
+.clinic-field-error {
+  color: var(--color-danger, #9b1c1c);
+  font-size: 12px;
+}
+.clinic-records {
+  display: grid;
+  gap: 12px;
+}
+.clinic-record {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e5ebef;
+  padding: 16px 0;
+  min-width: 0;
+}
+.clinic-record > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.clinic-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+.clinic-day {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #dce6eb;
+  border-radius: 10px;
+}
+.clinic-day h3 {
+  font-size: 13px;
+}
+.clinic-slot {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid #dce6eb;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.clinic-slot time {
+  font-weight: 800;
+  color: #075e5a;
+}
+@media (max-width: 1000px) {
+  .clinic-week {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .clinic-week {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .clinic-record .local-actions {
+    width: 100%;
+  }
+}
+.clinic-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}

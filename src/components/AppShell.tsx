@@ -119,7 +119,7 @@ export function AppShell({
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${location.pathname === "/recepcao" ? " reception-shell" : ""}`}>
       <header className="site-header">
         <div className="header-left">
           <div className="header-brand-wrap">
@@ -128,6 +128,7 @@ export function AppShell({
           <div className="header-context">{unitContext}</div>
         </div>
 
+        {location.pathname === "/recepcao" && <div className="reception-center-brand"><Brand compact /></div>}
         <div className="header-right">
           {headerTools && <div className="header-tools">{headerTools}</div>}
           <button
@@ -191,6 +192,52 @@ export function AppShell({
                 <NavLink to="/medico/fila" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><ListChecks size={18} aria-hidden="true" /><span>Minha fila</span></NavLink>
                 <NavLink to="/medico/atendimento" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Stethoscope size={18} aria-hidden="true" /><span>Paciente atual</span></NavLink>
               </>}
+              {API_MODE &&
+                (activeRole === "ADMIN" || activeRole === "MEDICO") &&
+                (activeRole === "ADMIN"
+                  ? [
+                      {
+                        to: "/admin/especialidades",
+                        label: "Especialidades",
+                        icon: Stethoscope,
+                      },
+                      {
+                        to: "/admin/salas",
+                        label: "Salas e consultórios",
+                        icon: Building2,
+                      },
+                      { to: "/admin/medicos", label: "Médicos", icon: Users },
+                      {
+                        to: "/admin/plantoes",
+                        label: "Plantões",
+                        icon: ListChecks,
+                      },
+                    ]
+                  : [
+                      {
+                        to: "/medico/perfil",
+                        label: "Meu perfil e consultório",
+                        icon: User,
+                      },
+                      {
+                        to: "/medico/plantoes",
+                        label: "Meus plantões",
+                        icon: ListChecks,
+                      },
+                    ]
+                ).map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      `nav-item${isActive ? " is-active" : ""}`
+                    }
+                  >
+                    <Icon size={18} aria-hidden="true" />
+                    <span>{label}</span>
+                  </NavLink>
+                ))}
               {activeRole !== "MEDICO" && (!API_MODE || activeRole === "ADMIN") && (
                 <NavLink
                   to={managementPath}

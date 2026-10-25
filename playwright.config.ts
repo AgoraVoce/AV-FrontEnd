@@ -7,7 +7,7 @@ export default defineConfig({
   expect: { timeout: 5000 },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: "http://localhost:5181",
     launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
       ? {
           executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,
@@ -26,10 +26,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev",
+    command: "npm run dev -- --port 5181 --strictPort",
     env: { VITE_AV_LOCAL_API: process.env.PLAYWRIGHT_API_MODE === "1" ? "true" : "false" },
-    url: "http://localhost:5173",
-    reuseExistingServer: !process.env.CI,
+    url: "http://localhost:5181",
+    reuseExistingServer: false,
     timeout: 30_000,
   },
 });

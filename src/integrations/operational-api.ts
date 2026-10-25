@@ -20,6 +20,7 @@ export type EntryDetail = {
   id: string; patientId: string; enteredAt: string; severity: Severity;
   status: EntryStatus; assignedDoctorId: string | null; queueCode: string | null;
   otherSymptoms: string | null; shortNote: string | null;
+  symptomIds?: string[]; updatedAt?: string;
   queuePosition: number | null;
   patient: { id: string; fullName: string; birthDate: string | null };
   doctor: { id: string; name: string } | null;
