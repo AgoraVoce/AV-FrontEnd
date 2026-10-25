@@ -26,6 +26,16 @@ LEGACY_AUTH_PROXY_TARGET=http://127.0.0.1:3001
 
 Abra `http://localhost:5173/login`. O Vite envia `/api/*` para o Express em `localhost:3000`. `VITE_AV_LOCAL_API=false` isola as telas antigas de demonstração para os testes de regressão.
 
+Se o backend usar outra porta, configure `API_PROXY_TARGET` com a porta do processo atualizado. Confira também `.env.local`, que tem precedência sobre `.env`. Reinicie o Vite após ajustar a configuração.
+
+### Senha de atendimento ausente
+
+A senha é gerada pelo backend ao confirmar a entrada na fila (`POST /api/v1/entries`) e retornada em `queueCode`. Quando esse valor está vazio, a recepção mostra “—”. Cadastrar somente os dados pessoais não gera senha.
+
+Na investigação de 25/10/2026, a interface em `127.0.0.1:5173` apontava para um backend antigo na porta `27366`, enquanto a versão atualizada rodava na `27365`. O ajuste local foi `API_PROXY_TARGET=http://127.0.0.1:27365`. Essas portas são específicas desse ambiente; use a porta configurada no seu backend.
+
+Após o ajuste, um cadastro fictício realizado pela própria interface na porta `5173` retornou HTTP 201 com `queueCode: AV-005`, exibido na fila. A correção não atribui senhas aos atendimentos já existentes. O arquivo `.env` permanece fora do Git.
+
 ## Fluxos integrados
 
 ### Recepção
