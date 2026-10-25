@@ -71,7 +71,7 @@ test("recepção busca paciente existente por nome e registra entrada com médic
   await page.getByLabel("Classificação informada pela recepção").selectOption("AMARELO");
   await page.getByLabel("Médico de plantão").selectOption(doctorId);
   await page.getByLabel("Sintomas / queixa relatada").fill("Dor de cabeça");
-  await page.getByRole("button",{name:"Confirmar entrada no servidor"}).click();
+  await page.getByRole("button",{name:"Confirmar"}).click();
   await expect(page.getByRole("status").getByText("Entrada registrada com sucesso")).toBeVisible();
   expect(posted).toBe(true);
 });
@@ -96,7 +96,7 @@ test("novo paciente exige duas requisições independentes de cadastro e entrada
   await page.getByRole("button",{name:/Cadastrar e continuar/}).click();
   await expect(page.getByText(/Paciente:.*Pessoa Teste/)).toBeVisible();
   await page.getByLabel("Sintomas / queixa relatada").fill("Dor de cabeça");
-  await page.getByRole("button",{name:"Confirmar entrada no servidor"}).click();
+  await page.getByRole("button",{name:"Confirmar"}).click();
   await expect(page.getByText("Entrada registrada com sucesso")).toBeVisible();
   expect(patientCreated && entryCreated).toBe(true);
 });

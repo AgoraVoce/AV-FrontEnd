@@ -1,3 +1,6 @@
+.admin-live-header-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:12px; }
+.admin-live-header-actions .local-primary { display:inline-flex; align-items:center; gap:9px; text-decoration:none; white-space:nowrap; }
+@media(max-width:610px) { .admin-live-header-actions { justify-content:flex-start; width:100%; } }
 .admin-live-dashboard { gap: 24px; }
 .admin-live-head { padding: 6px 0 2px; }
 .admin-live-overview { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 15px; }

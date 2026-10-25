@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, ArrowUpRight, CalendarClock, ClipboardCheck, ClipboardList, DoorOpen, RefreshCw, ShieldCheck, Stethoscope, UsersRound, HeartPulse } from "lucide-react";
+import { Activity, ArrowUpRight, CalendarClock, ClipboardCheck, ClipboardList, DoorOpen, RefreshCw, ShieldCheck, Stethoscope, UsersRound, HeartPulse, UserPlus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
@@ -74,9 +74,12 @@ export function AdminDashboard() {
             <h1>Visão da operação</h1>
             <p>Indicadores reais do atendimento e acesso rápido à gestão clínica.</p>
           </div>
-          <button className="local-secondary-button" type="button" onClick={refresh} disabled={pending}>
-            <RefreshCw size={17} aria-hidden="true" /> {pending ? "Atualizando…" : "Atualizar painel"}
-          </button>
+          <div className="admin-live-header-actions">
+            <Link className="local-primary" to="/admin/novo-funcionario"><UserPlus size={17} aria-hidden="true" /> Novo funcionário</Link>
+            <button className="local-secondary-button" type="button" onClick={refresh} disabled={pending}>
+              <RefreshCw size={17} aria-hidden="true" /> {pending ? "Atualizando…" : "Atualizar painel"}
+            </button>
+          </div>
         </header>
         <section className="admin-live-overview" aria-label="Indicadores operacionais">
           {cards.map(({ label, value, sub, icon: Icon }) => (
