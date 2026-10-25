@@ -115,6 +115,25 @@ export async function installApiFixtures(page: Page, role: VisualRole) {
         page: 1, pageSize: 10, total: 3,
       });
     }
+    if (path === "/admin/dashboard" && method === "GET") {
+      return json({ date: "2026-10-19", timezone: "America/Sao_Paulo",
+        waiting: 2, called: 1, inProgress: 1, completedToday: 3, cancelledToday: 0 });
+    }
+    if (path === "/doctors/me/profile" && method === "GET") {
+      return json({ ...doctor, user, specialtyId: doctor.specialty.id,
+        crmNumber: "12345", crmUf: "SP", phone: "11999999999",
+        defaultRoomId: null, defaultRoom: null,
+        nextShift: { ...doctor.shift, doctorId, availabilityStatus: "DISPONIVEL" } });
+    }
+    if ((path === "/entries/" + entryId + "/reassessments" ||
+      path === "/entries/" + secondEntryId + "/reassessments") && method === "GET") {
+      return json({ items: [], total: 0, page: 1, pageSize: 20 });
+    }
+    if (path === "/entries/" + secondEntryId && method === "GET") {
+      return json({ ...detail(), id: secondEntryId,
+        patient: { ...detail().patient, fullName: "Outra Pessoa Fictícia" },
+        otherSymptoms: "Mal-estar", severity: "VERDE", queueCode: "V-019" });
+    }
     if (path === "/entries/" + entryId && method === "GET") return json(detail());
     if (path === "/entries/" + entryId + "/doctor" && method === "PATCH") return json({ id: entryId, status: "AGUARDANDO" });
     if (path === "/entries/" + entryId + "/status" && method === "PATCH") {

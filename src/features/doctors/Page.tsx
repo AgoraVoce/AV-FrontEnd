@@ -7,6 +7,7 @@ import type { Professional, ProfessionalInput } from "../clinic/types";
 import {
   ClinicPage,
   Confirm,
+  EditorDialog,
   FieldError,
   FormActions,
   ResourceState,
@@ -238,6 +239,7 @@ export function DoctorsPage() {
         )}
       </section>
       {editing && (
+        <EditorDialog title={editing === "new" ? "Novo médico" : "Editar médico"} busy={save.saving} onClose={() => setEditing(null)}>
         <form className="local-form" onSubmit={(e) => void submit(e)}>
           <h2>{editing === "new" ? "Novo médico" : "Editar médico"}</h2>
           <p className="local-note">
@@ -381,6 +383,7 @@ export function DoctorsPage() {
             }}
           />
         </form>
+        </EditorDialog>
       )}
       {confirm && (
         <Confirm
