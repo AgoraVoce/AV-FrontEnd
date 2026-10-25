@@ -5,6 +5,7 @@ import type { Specialty } from "../clinic/types";
 import {
   ClinicPage,
   Confirm,
+  EditorDialog,
   FieldError,
   FormActions,
   ResourceState,
@@ -127,6 +128,11 @@ export function SpecialtiesPage() {
           ))}
       </section>
       {editing && (
+        <EditorDialog
+          title={editing === "new" ? "Nova especialidade" : "Editar especialidade"}
+          busy={save.saving}
+          onClose={() => setEditing(null)}
+        >
         <form className="local-form" onSubmit={(e) => void submit(e)}>
           <h2>
             {editing === "new" ? "Nova especialidade" : "Editar especialidade"}
@@ -136,6 +142,7 @@ export function SpecialtiesPage() {
               <label>
                 Nome *
                 <input
+                  autoFocus
                   required
                   maxLength={120}
                   value={name}
@@ -165,6 +172,7 @@ export function SpecialtiesPage() {
           </fieldset>
           <FormActions {...save} onCancel={() => setEditing(null)} />
         </form>
+        </EditorDialog>
       )}
       {confirm && (
         <Confirm

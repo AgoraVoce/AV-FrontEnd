@@ -137,6 +137,46 @@ export function Confirm({
     </dialog>
   );
 }
+/** Accessible modal editor for clinic workflows. */
+export function EditorDialog({
+  title,
+  busy,
+  onClose,
+  children,
+}: {
+  title: string;
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = dialog.current;
+    const focused = document.activeElement;
+    opener.current = focused instanceof HTMLElement ? focused : null;
+    el?.showModal();
+    return () => {
+      if (el?.open) el.close();
+      if (opener.current?.isConnected) opener.current.focus();
+    };
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="clinic-dialog clinic-editor-dialog"
+      aria-label={title}
+      aria-busy={busy}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      {children}
+    </dialog>
+  );
+}
+
 export function FormActions({
   saving,
   onCancel,

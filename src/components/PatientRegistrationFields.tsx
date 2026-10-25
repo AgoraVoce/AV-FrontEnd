@@ -1,3 +1,4 @@
+import { formatCpfInput, formatPhoneInput } from "../integrations/input-masks";
 import {
   clinicDate,
   type PatientRegistration,
@@ -60,7 +61,13 @@ export function PatientRegistrationFields({
               id={`patient-${field.key}`}
               name={`patient-${field.key}`}
               type={field.type}
-              value={patient[field.key]}
+              value={
+                field.key === "cpf"
+                  ? formatCpfInput(patient.cpf)
+                  : field.key === "phone"
+                    ? formatPhoneInput(patient.phone)
+                    : patient[field.key]
+              }
               disabled={busy}
               autoFocus={field.key === "fullName"}
               autoComplete="off"
@@ -87,7 +94,14 @@ export function PatientRegistrationFields({
                       ? "patient-cpf-help"
                       : undefined
               }
-              onChange={(event) => onChange(field.key, event.target.value)}
+              onChange={(event) =>
+                onChange(
+                  field.key,
+                  field.key === "cpf" || field.key === "phone"
+                    ? event.target.value.replace(/\D/g, "").slice(0, 11)
+                    : event.target.value,
+                )
+              }
             />
             {error ? (
               <small
