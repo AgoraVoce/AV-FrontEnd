@@ -337,3 +337,18 @@ test("nome do paciente não aceita e-mail da conta e campos não reutilizam auto
     page.getByText("Paciente: Nome Correto do Paciente"),
   ).toBeVisible();
 });
+
+test("máscaras de CPF/telefone apresentam formatação, mantendo os valores do POST limpos", async ({
+  page,
+}) => {
+  const controls = await setup(page);
+  await controls.fill();
+  const cpf = page.getByRole("textbox", { name: "CPF *", exact: true });
+  await expect(cpf).toHaveValue("529.982.247-25");
+  const phone = page.getByRole("textbox", { name: "Telefone", exact: true });
+  await phone.fill("11999999999");
+  await expect(phone).toHaveValue("(11) 99999-9999");
+  await page.getByRole("button", { name: "Cadastrar e continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Registrar entrada", exact: true })).toBeVisible();
+  expect(controls.payloads[0]).toMatchObject({ cpf: "52998224725", phone: "11999999999" });
+});
