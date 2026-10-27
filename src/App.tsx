@@ -47,7 +47,10 @@ export default function App() {
     <div
       key={location.pathname}
       className={`route-transition${routeChanged ? " is-entering" : ""}`}
-      onAnimationStart={() => setHasNavigated(true)}
+      onAnimationStart={(event) => {
+        // Do not restart the page transition when a nested spinner or toast animates.
+        if (event.target === event.currentTarget) setHasNavigated(true);
+      }}
     >
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
