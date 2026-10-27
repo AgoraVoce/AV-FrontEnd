@@ -1,550 +1,215 @@
 import { expect, test, type Page } from "@playwright/test";
-import { validateShift } from "../src/features/shifts/validation";
-import { validateDoctor } from "../src/features/doctors/validation";
-import type { Shift } from "../src/features/clinic/types";
-const specialty = {
-  id: "s1",
-  name: "Clínica médica",
-  description: null,
-  active: true,
-  doctorCount: 1,
-};
-const room = {
-  id: "r1",
-  name: "Consultório 04",
-  type: "Consultório",
-  status: "ativa",
-};
-const doctor = {
-  id: "d1",
-  userId: "u1",
-  name: "Helena Martins",
-  user: { email: "helena@example.test" },
-  crmNumber: "12345",
-  crmUf: "SP",
-  phone: "11999999999",
-  specialtyId: "s1",
-  specialty,
-  defaultRoomId: "r1",
-  defaultRoom: room,
-  active: true,
-};
-const shift: Shift = {
-  id: "p1",
-  doctorId: "d1",
-  roomId: "r1",
-  room: "Consultório 04",
-  startsAt: "2026-10-26T08:00:00-03:00",
-  endsAt: "2026-10-26T12:00:00-03:00",
-  availabilityStatus: "DISPONIVEL",
-  recurrenceId: null,
-  doctor: { id: "d1", name: doctor.name, specialtyId: "s1" },
-};
-const paged = (items: unknown[]) => ({
-  items,
-  total: items.length,
-  page: 1,
-  pageSize: 10,
-});
-async function setup(page: Page, role = "ADMIN") {
-  await page.route("**/api/v1/**", async (route) => {
-    const url = new URL(route.request().url()),
-      path = url.pathname,
-      method = route.request().method();
-    if (path.endsWith("/auth/login"))
-      return route.fulfill({
-        json: {
-          accessToken: "synthetic-token",
-          tokenType: "Bearer",
-          expiresIn: 900,
-          user: {
-            id: "u1",
-            name: doctor.name,
-            email: "helena@example.test",
-            role,
-          },
-        },
-      });
-    if (path.endsWith("/specialties") && method === "GET")
-      return route.fulfill({ json: paged([specialty]) });
-    if (path.endsWith("/rooms") && method === "GET")
-      return route.fulfill({ json: { items: [room] } });
-    if (path.endsWith("/admin/doctors") && method === "GET")
-      return route.fulfill({ json: paged([doctor]) });
-    if (path.endsWith("/employees")) return route.fulfill({ json: paged([]) });
-    if (path.endsWith("/queues/me"))
-      return route.fulfill({ json: { items: [] } });
-    if (path.endsWith("/doctors/me/profile"))
-      return route.fulfill({ json: { ...doctor, nextShift: shift } });
-    if (path.endsWith("/admin/shifts") || path.endsWith("/doctors/me/shifts"))
-      return route.fulfill({ json: { items: [shift] } });
-    return route.fulfill({
-      status: 503,
-      json: { error: { code: "UNMOCKED_ENDPOINT" } },
-    });
-  });
-  await page.goto("/login");
-  await page.getByLabel("E-mail", { exact: true }).fill("helena@example.test");
-  await page.getByLabel("Senha", { exact: true }).fill("senha-teste");
-  await page.getByRole("button", { name: "Entrar no sistema" }).click();
-  await expect(page).toHaveURL(role === "ADMIN" ? "/admin" : "/medico");
-}
-test("valida formatos e conflitos de médico/sala, permite intervalos adjacentes e ignora cancelados", () => {
-  const input = {
-    startsAt: "2026-10-26T10:00:00-03:00",
-    endsAt: "2026-10-26T11:00:00-03:00",
-    roomId: "r2",
-    availabilityStatus: "DISPONIVEL" as const,
-  };
-  expect(validateShift(input, "d1", [shift])).toContain("médico");
-  expect(validateShift({ ...input, roomId: "r1" }, "d2", [shift])).toContain(
-    "sala",
-  );
-  expect(
-    validateShift(
-      { ...input, startsAt: shift.endsAt, endsAt: "2026-10-26T13:00:00-03:00" },
-      "d1",
-      [shift],
-    ),
-  ).toBe("");
-  expect(
-    validateShift({ ...input, endsAt: input.startsAt }, "d1", []),
-  ).toContain("final");
-  expect(
-    validateShift(input, "d1", [
-      { ...shift, availabilityStatus: "INDISPONIVEL" },
-    ]),
-  ).toBe("");
-  expect(
-    validateShift(
-      {
-        ...input,
-        startsAt: "2026-10-19T10:00:00-03:00",
-        endsAt: "2026-10-19T11:00:00-03:00",
-      },
-      "d1",
-      [shift],
-      undefined,
-      "2026-11-02",
-    ),
-  ).toContain("médico");
-  expect(
-    validateDoctor({
-      name: "A",
-      email: "invalid",
-      crmNumber: "001",
-      crmUf: "XX",
-      phone: "1",
-      specialtyId: "",
-      defaultRoomId: null,
-      active: true,
-    }),
-  ).toHaveProperty("crmNumber");
-});
-test("sidebar navega entre todas as telas administrativas e volta, com item ativo correto", async ({
-  page,
-}) => {
-  await setup(page);
-  for (const [label, path] of [
-    ["Especialidades", "especialidades"],
-    ["Salas e consultórios", "salas"],
-    ["Médicos", "medicos"],
-    ["Plantões", "plantoes"],
-    ["Gestão de Usuários", "usuarios"],
-  ]) {
-    await page
-      .getByRole("navigation", { name: "Módulos de atendimento" })
-      .getByRole("link", { name: label, exact: true })
-      .click();
-    await expect(page).toHaveURL("/admin/" + path);
-    await expect(page.locator(".sidebar .is-active")).toHaveCount(1);
-    await page
-      .getByRole("link", { name: "Painel Administrativo", exact: true })
-      .click();
-    await expect(page).toHaveURL("/admin");
-  }
-});
-test("especialidades cria, edita e confirma inativação de vinculada sem DELETE", async ({
-  page,
-}) => {
-  await setup(page);
-  let writes = 0;
-  await page.route("**/api/v1/specialties", async (route) => {
-    if (route.request().method() === "GET") return route.fallback();
-    writes++;
-    expect(route.request().postDataJSON()).toMatchObject({
-      name: "Cardiologia",
-      active: true,
-    });
-    await route.fulfill({
-      status: 201,
-      json: { ...specialty, id: "s2", name: "Cardiologia" },
-    });
-  });
-  await page.getByRole("link", { name: "Especialidades", exact: true }).click();
-  await page.getByRole("button", { name: "Nova especialidade" }).click();
-  await expect(page.getByRole("dialog", { name: "Nova especialidade" })).toBeVisible();
-  await page.getByLabel("Nome *", { exact: true }).fill("Cardiologia");
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await expect(page.getByText("Alteração salva")).toBeVisible();
-  expect(writes).toBe(1);
-  await page.route("**/api/v1/specialties/s1", async (route) => {
-    expect(route.request().method()).toBe("PATCH");
-    expect(route.request().postDataJSON().active).toBe(false);
-    await route.fulfill({ json: { ...specialty, active: false } });
-  });
-  await page.getByRole("button", { name: "Especialidade vinculada" }).click();
-  await expect(page.getByRole("dialog")).toContainText("não pode ser excluída");
-  await page.getByRole("button", { name: "Confirmar", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-});
-test("sala vinculada não é removida e oferece inativar após conflito da API", async ({
-  page,
-}) => {
-  await setup(page);
-  let inactive = false;
-  await page.route("**/api/v1/rooms/r1", async (route) => {
-    if (route.request().method() === "DELETE")
-      return route.fulfill({
-        status: 409,
-        json: { error: { code: "ROOM_IN_USE" } },
-      });
-    inactive = true;
-    expect(route.request().postDataJSON().status).toBe("inativa");
-    return route.fulfill({ json: { ...room, status: "inativa" } });
-  });
-  await page
-    .getByRole("link", { name: "Salas e consultórios", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Excluir", exact: true }).click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Confirmar", exact: true })
-    .click();
-  await expect(page.getByRole("dialog")).toContainText("Sala vinculada");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Confirmar", exact: true })
-    .click();
-  await expect.poll(() => inactive).toBe(true);
-});
-test("médico exibe erro CRM no campo, mantém dados para nova tentativa e salva edição", async ({
-  page,
-}) => {
-  await setup(page);
-  let attempts = 0;
-  await page.route("**/api/v1/admin/doctors/d1", async (route) => {
-    attempts++;
-    if (attempts === 1)
-      return route.fulfill({
-        status: 409,
-        json: { error: { code: "CRM_EXISTS" } },
-      });
-    expect(route.request().postDataJSON().name).toBe("Helena Atualizada");
-    return route.fulfill({ json: { ...doctor, name: "Helena Atualizada" } });
-  });
-  await page.getByRole("link", { name: "Médicos", exact: true }).click();
-  await page.getByRole("button", { name: "Editar Helena Martins" }).click();
-  await page.getByLabel("Nome completo *").fill("Helena Atualizada");
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await expect(
-    page.locator("form label").filter({ hasText: "CRM (número)" }),
-  ).toContainText("já estão cadastrados");
-  await expect(page.getByLabel("Nome completo *")).toHaveValue(
-    "Helena Atualizada",
-  );
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Editar médico", exact: true }),
-  ).toHaveCount(0);
-  expect(attempts).toBe(2);
-});
-test("plantão bloqueia conflito e envia avulso adjacente e recorrência para a API", async ({
-  page,
-}) => {
-  await setup(page);
-  let saved = 0;
-  await page.route("**/api/v1/doctors/d1/shifts", async (route) => {
-    saved++;
-    expect(route.request().postDataJSON()).toMatchObject({
-      roomId: "r1",
-      startsAt: "2026-10-26T12:00:00-03:00",
-    });
-    await route.fulfill({ status: 201, json: { ...shift, id: "p2" } });
-  });
-  await page.getByRole("link", { name: "Plantões", exact: true }).click();
-  await page.getByRole("button", { name: "Novo plantão" }).click();
-  await expect(page.getByRole("dialog", { name: "Novo plantão" })).toBeVisible();
-  await page
-    .getByRole("combobox", { name: "Médico *", exact: true })
-    .selectOption("d1");
-  await page
-    .getByRole("combobox", { name: "Sala *", exact: true })
-    .selectOption("r1");
-  await page.getByLabel("Data e horário de início *").fill("2026-10-26T10:00");
-  await page.getByLabel("Data e horário de fim *").fill("2026-10-26T11:00");
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await expect(page.locator("form").getByRole("alert")).toContainText(
-    "médico já possui",
-  );
-  expect(saved).toBe(0);
-  await page.getByLabel("Data e horário de início *").fill("2026-10-26T12:00");
-  await page.getByLabel("Data e horário de fim *").fill("2026-10-26T13:00");
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await expect.poll(() => saved).toBe(1);
-  await page.route("**/api/v1/doctors/d1/shifts/series", async (route) => {
-    saved++;
-    expect(route.request().postDataJSON().until).toBe("2026-11-30");
-    await route.fulfill({ status: 201, json: { items: [] } });
-  });
-  await page.getByRole("button", { name: "Novo plantão" }).click();
-  await expect(page.getByRole("dialog", { name: "Novo plantão" })).toBeVisible();
-  await page
-    .getByRole("combobox", { name: "Médico *", exact: true })
-    .selectOption("d1");
-  await page
-    .getByRole("combobox", { name: "Sala *", exact: true })
-    .selectOption("r1");
-  await page.getByLabel("Data e horário de início *").fill("2026-11-02T12:00");
-  await page.getByLabel("Data e horário de fim *").fill("2026-11-02T13:00");
-  await page
-    .getByRole("combobox", { name: "Recorrência", exact: true })
-    .selectOption("true");
-  await page.getByLabel("Repetir semanalmente até *").fill("2026-11-30");
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await expect.poll(() => saved).toBe(2);
-});
-test("médico vê dados reais e navega pelo perfil, plantões, fila e atendimento sem ações administrativas", async ({
-  page,
-}) => {
-  await setup(page, "MEDICO");
-  await expect(
-    page.getByRole("heading", { name: "Meu consultório e escala" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Consultório 04", { exact: true }).first(),
-  ).toBeVisible();
-  for (const [label, path] of [
-    ["Meu perfil e consultório", "perfil"],
-    ["Meus plantões", "plantoes"],
-    ["Minha fila", "fila"],
-    ["Paciente atual", "atendimento"],
-  ]) {
-    await page
-      .locator(".sidebar")
-      .getByRole("link", { name: label, exact: true })
-      .click();
-    await expect(page).toHaveURL("/medico/" + path);
-    await expect(page.locator(".sidebar .is-active")).toHaveCount(1);
-    await expect(
-      page.getByRole("button", { name: /Novo médico|Novo plantão/ }),
-    ).toHaveCount(0);
-    await page
-      .locator(".sidebar")
-      .getByRole("link", { name: "Consultório Médico", exact: true })
-      .click();
-    await expect(page).toHaveURL("/medico");
-  }
-  await page.evaluate(() => {
-    history.pushState({}, "", "/admin/medicos");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  });
-  await expect(
-    page.getByText("Esta área não está disponível para seu perfil."),
-  ).toBeVisible();
-});
-test("carregamento, vazio, erro com nova tentativa e layout móvel", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await setup(page);
-  await page.getByRole("button", { name: "Abrir menu" }).click();
-  await page.getByRole("link", { name: "Especialidades", exact: true }).click();
-  let fail = true;
-  await page.route("**/api/v1/specialties?*", (route) =>
-    route.fulfill(
-      fail
-        ? { status: 503, json: { error: { code: "UNAVAILABLE" } } }
-        : { json: paged([]) },
-    ),
-  );
-  await page
-    .getByRole("link", { name: "Voltar ao Painel Administrativo" })
-    .click();
-  await page.getByRole("button", { name: "Abrir menu" }).click();
-  await page.getByRole("link", { name: "Especialidades", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Tentar novamente" }),
-  ).toBeVisible();
-  fail = false;
-  await page.getByRole("button", { name: "Tentar novamente" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Nenhum registro encontrado" }),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-});
 
-test("cadastro médico envia campos completos e inativação exige confirmação", async ({
-  page,
-}) => {
-  await setup(page);
-  let created = false,
-    deactivated = false;
-  await page.route("**/api/v1/admin/doctors", async (route) => {
-    expect(route.request().method()).toBe("POST");
-    expect(route.request().postDataJSON()).toMatchObject({
-      name: "Ana Lima",
-      email: "ana@example.test",
-      crmNumber: "98765",
-      crmUf: "RJ",
-      specialtyId: "s1",
-      defaultRoomId: "r1",
-      password: "senha-sintetica",
+// Contract-oriented regression tests for the endpoints implemented by AV-Backend.
+// All data is synthetic. Requests never reach production.
+const userId = "11111111-1111-4111-8111-111111111111";
+const doctorId = "22222222-2222-4222-8222-222222222222";
+const specialtyId = "33333333-3333-4333-8333-333333333333";
+const patientId = "44444444-4444-4444-8444-444444444444";
+const entryId = "55555555-5555-4555-8555-555555555555";
+const shiftId = "66666666-6666-4666-8666-666666666666";
+const ticketId = "77777777-7777-4777-8777-777777777777";
+const ts = "2026-10-19T15:00:00.000Z";
+
+const doctor = { id: doctorId, userId, name: "Dra. Helena Teste", specialtyId, active: true,
+  specialty: { id: specialtyId, name: "Clínica médica", active: true } };
+const employee = { id: userId, name: "Dra. Helena Teste", email: "helena@example.test", role: "MEDICO", active: true };
+const patient = { id: patientId, fullName: "Paciente Sintético", cpf: "52998224725", email: "teste@example.test",
+  phone: null, birthDate: null, createdAt: ts, updatedAt: ts };
+const visit = { id: entryId, patientId, enteredAt: ts, status: "FINALIZADO", severity: "AMARELO", queueCode: "AV-001",
+  patient: { id: patientId, fullName: patient.fullName }, doctor: { id: doctorId, name: doctor.name },
+  attendance: { calledAt: ts, startedAt: ts, finishedAt: ts, room: "02" } };
+const shift = { id: shiftId, doctorId, startsAt: "2026-11-01T11:00:00.000Z",
+  endsAt: "2026-11-01T17:00:00.000Z", availabilityStatus: "DISPONIVEL", room: "02" };
+const ticket = { id: ticketId, codigo: "N001", tipo: "normal", status: "aguardando",
+  horarioEmissao: ts, horarioChamada: null, horarioFinalizacao: null, entryId: null, nomePaciente: null };
+const pageOf = (items: unknown[], p = 1, pageSize = 10) => ({ items, page: p, pageSize, total: items.length });
+
+type State = { requests: Array<{ method: string; path: string; body?: unknown }> };
+async function backend(page: Page, role: "ADMIN" | "MEDICO" | "RECEPCIONISTA" | null): Promise<State> {
+  const state: State = { requests: [] };
+  let currentTicket: typeof ticket | null = null;
+  let waitingTickets = [ticket];
+  let currentEmployee = { ...employee };
+  await page.route("**/api/v1/**", route => {
+    const req = route.request();
+    const method = req.method();
+    const url = new URL(req.url());
+    const path = url.pathname.replace("/api/v1", "");
+    const body = method === "POST" || method === "PATCH" ? req.postDataJSON() : undefined;
+    state.requests.push({ method, path, body });
+    const reply = (value: unknown, status = 200) => route.fulfill({ status, json: value });
+    if (path === "/auth/login" && method === "POST") return reply({
+      accessToken: "synthetic-browser-token", tokenType: "Bearer", expiresIn: 900,
+      user: { id: userId, name: "Equipe Teste", email: "helena@example.test", role: role || "ADMIN" },
     });
-    created = true;
-    await route.fulfill({ status: 201, json: { ...doctor, id: "d2" } });
-  });
-  await page.route("**/api/v1/doctors/d1", async (route) => {
-    expect(route.request().postDataJSON()).toEqual({ active: false });
-    deactivated = true;
-    await route.fulfill({ json: { ...doctor, active: false } });
-  });
-  await page.getByRole("link", { name: "Médicos", exact: true }).click();
-  await page.getByRole("button", { name: "Novo médico" }).click();
-  await page.getByLabel("Nome completo *").fill("Ana Lima");
-  await page.getByLabel("E-mail *").fill("ana@example.test");
-  await page.getByLabel("CRM (número) *").fill("98765");
-  await page
-    .getByRole("combobox", { name: "UF do CRM *", exact: true })
-    .selectOption("RJ");
-  await page
-    .getByRole("combobox", { name: "Especialidade principal *", exact: true })
-    .selectOption("s1");
-  await page
-    .getByRole("combobox", { name: "Sala padrão", exact: true })
-    .selectOption("r1");
-  await page.getByLabel("Senha inicial *").fill("senha-sintetica");
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await expect.poll(() => created).toBe(true);
-  await expect(page.locator("form")).toHaveCount(0);
-  await page.getByRole("button", { name: "Inativar", exact: true }).click();
-  expect(deactivated).toBe(false);
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Confirmar", exact: true })
-    .click();
-  await expect.poll(() => deactivated).toBe(true);
-});
-test("salas criam e editam nome, tipo e situação com os serviços reais da interface", async ({
-  page,
-}) => {
-  await setup(page);
-  let created = false,
-    edited = false;
-  await page.route("**/api/v1/rooms", async (route) => {
-    if (route.request().method() === 'GET') return route.fallback();
-    expect(route.request().postDataJSON()).toEqual({
-      name: "Sala de teste",
-      type: "Procedimentos",
-      status: "ativa",
-    });
-    created = true;
-    await route.fulfill({ status: 201, json: { ...room, id: "r2" } });
-  });
-  await page.route("**/api/v1/rooms/r1", async (route) => {
-    expect(route.request().postDataJSON()).toMatchObject({
-      name: "Consultório renomeado",
-      status: "ativa",
-    });
-    edited = true;
-    await route.fulfill({ json: room });
-  });
-  await page
-    .getByRole("link", { name: "Salas e consultórios", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Nova sala" }).click();
-  await page.getByLabel("Nome / número *").fill("Sala de teste");
-  await page.getByLabel("Tipo *").fill("Procedimentos");
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await expect.poll(() => created).toBe(true);
-  await expect(page.locator("form")).toHaveCount(0);
-  await page.getByRole("button", { name: "Editar Consultório 04" }).click();
-  await page.getByLabel("Nome / número *").fill("Consultório renomeado");
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await expect.poll(() => edited).toBe(true);
-});
-test("plantão edita ocorrência e cancela apenas após confirmar no modal", async ({
-  page,
-}) => {
-  await setup(page);
-  let edited = false,
-    cancelled = false;
-  await page.route("**/api/v1/doctors/d1/shifts/p1", async (route) => {
-    const body = route.request().postDataJSON();
-    if (body.availabilityStatus === "INDISPONIVEL") cancelled = true;
-    else {
-      expect(body.endsAt).toBe("2026-10-26T13:00:00-03:00");
-      edited = true;
+    if (path === "/auth/me" && method === "GET") return reply({ id: userId, name: "Equipe Teste", email: "helena@example.test", role });
+    if (path === "/auth/logout" && method === "POST") return route.fulfill({ status: 204, body: "" });
+
+    if (path === "/admin/dashboard" || path === "/doctors/me/dashboard")
+      return reply({ date: "2026-10-19", waiting: 1, called: 0, inProgress: 0, completedToday: 2, cancelledToday: 1 });
+    if (path === "/employees" && method === "GET") return reply(pageOf([currentEmployee], Number(url.searchParams.get("page") || 1), Number(url.searchParams.get("pageSize") || 10)));
+    if (path === "/employees/" + userId && method === "PATCH") { currentEmployee = { ...currentEmployee, ...body }; return reply(currentEmployee); }
+    if (path === "/admin/doctors" && method === "GET") return reply(pageOf([doctor], 1, Number(url.searchParams.get("pageSize") || 10)));
+    if (path === "/specialties" && method === "GET") return reply(pageOf([doctor.specialty], 1, 100));
+    if (path === "/doctors" && method === "GET") return reply(pageOf([{ id: doctorId, name: doctor.name,
+      specialty: doctor.specialty, shift: { ...shift, id: shiftId } }], 1, 100));
+    if (path === "/doctors" && method === "POST") return reply(doctor, 201);
+    if (path === "/doctors/" + doctorId && method === "GET") return reply(doctor);
+    if (path === "/doctors/" + doctorId && method === "PATCH") return reply({ ...doctor, ...body });
+    if (path === "/doctors/" + doctorId + "/shifts" && method === "GET") return reply(pageOf([shift], 1, 100));
+    if (path === "/doctors/" + doctorId + "/shifts" && method === "POST") return reply({ ...shift, ...body }, 201);
+    if (path === "/doctors/" + doctorId + "/shifts/" + shiftId && method === "PATCH") return reply({ ...shift, ...body });
+    if (path === "/doctors/me/active") return reply(null);
+    if (path === "/queues/me" || path === "/queues/waiting") return reply({ items: [] });
+    if (path === "/doctors/me/entries" || path === "/entries" || path === "/patients/" + patientId + "/entries")
+      return reply(pageOf([visit], Number(url.searchParams.get("page") || 1)));
+    if (path === "/patients/" + patientId && method === "GET") return reply(patient);
+    if (path === "/patients/" + patientId && method === "PATCH") return reply({ ...patient, ...body });
+    if (path === "/patients" && method === "GET") return reply(pageOf([patient]));
+    if (path === "/entries/" + entryId + "/prescription.pdf" && method === "GET") {
+      return route.fulfill({ status: 200, headers: { "Content-Type": "application/pdf" }, body: "%PDF-1.4\n%%EOF" });
     }
-    await route.fulfill({ json: shift });
+    if (path === "/admin/reports" && method === "GET") return reply({
+      period: { dateFrom: url.searchParams.get("dateFrom"), dateTo: url.searchParams.get("dateTo"), timezone: "America/Sao_Paulo" },
+      summary: { totalEntries: 2, waiting: 0, called: 0, inProgress: 0, completed: 1, cancelled: 1, averageWaitSeconds: null, measuredWaits: 0 },
+      bySeverity: [{ severity: "AMARELO", count: 2 }],
+      doctors: [{ doctorId, name: doctor.name, completed: 1, averageAttendanceSeconds: 900 }],
+    });
+    if (path === "/public/calls" && method === "GET") return reply({ items: [{ queueCode: "AV-001", room: "02", calledAt: ts }] });
+    if (path === "/tickets/waiting" && method === "GET") return reply({ items: waitingTickets });
+    if (path === "/tickets/current" && method === "GET") return reply(currentTicket);
+    if (path === "/tickets" && method === "POST") { waitingTickets = [ticket]; return reply(ticket, 201); }
+    if (path === "/tickets/call-next" && method === "POST") {
+      if (!waitingTickets.length) return route.fulfill({ status: 204, body: "" });
+      currentTicket = { ...ticket, status: "chamada", horarioChamada: ts }; waitingTickets = []; return reply(currentTicket);
+    }
+    if (path === "/tickets/" + ticketId + "/recall" && method === "POST") return reply(currentTicket);
+    if (path === "/tickets/" + ticketId + "/status" && method === "PATCH") {
+      currentTicket = null; waitingTickets = []; return reply({ ...ticket, status: body.status });
+    }
+    if (path === "/auth/password-reset/request" && method === "POST") return reply({ message: "Se houver uma conta ativa, enviaremos um link." }, 202);
+    if (path === "/auth/password-reset/confirm" && method === "POST") return route.fulfill({ status: 204, body: "" });
+    return reply({ error: { code: "UNMOCKED_ENDPOINT", message: path } }, 503);
   });
-  await page.getByRole("link", { name: "Plantões", exact: true }).click();
-  await page
-    .getByRole("combobox", { name: "Visualização", exact: true })
-    .selectOption("list");
-  await page.getByRole("button", { name: "Editar", exact: true }).click();
-  await page.getByLabel("Data e horário de fim *").fill("2026-10-26T13:00");
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await expect.poll(() => edited).toBe(true);
-  await expect(page.locator("form")).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Cancelar plantão", exact: true })
-    .click();
-  await page.keyboard.press("Escape");
-  expect(cancelled).toBe(false);
-  await page
-    .getByRole("button", { name: "Cancelar plantão", exact: true })
-    .click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Confirmar", exact: true })
-    .click();
-  await expect.poll(() => cancelled).toBe(true);
+
+  if (role) {
+    await page.goto("/login");
+    await page.getByLabel("E-mail", { exact: true }).fill("helena@example.test");
+    await page.getByLabel("Senha", { exact: true }).fill("senha-local");
+    await page.getByRole("button", { name: "Entrar no sistema" }).click();
+    await expect(page).toHaveURL(role === "ADMIN" ? "/admin" : role === "MEDICO" ? "/medico" : "/recepcao");
+  }
+  return state;
+}
+async function go(page: Page, path: string) {
+  await page.evaluate(route => { history.pushState({}, "", route); dispatchEvent(new PopStateEvent("popstate")); }, path);
+  await expect(page).toHaveURL(path);
+}
+
+test("admin cria perfil médico pelo contrato POST /doctors vinculado a uma conta existente", async ({ page }) => {
+  const state = await backend(page, "ADMIN");
+  await go(page, "/admin/medicos");
+  await expect(page.getByRole("heading", { name: "Médicos", exact: true })).toBeVisible();
+  await page.getByLabel("Conta médica ativa").selectOption(userId);
+  await page.getByLabel("Especialidade").selectOption(specialtyId);
+  await page.getByRole("button", { name: "Cadastrar perfil médico" }).click();
+  await expect.poll(() => state.requests.some(r => r.method === "POST" && r.path === "/doctors")).toBe(true);
+  expect(state.requests.find(r => r.method === "POST" && r.path === "/doctors")?.body)
+    .toEqual({ userId, specialtyId, active: true });
+  await page.getByRole("button", { name: "Detalhes" }).click();
+  await expect(page.getByRole("heading", { name: doctor.name })).toBeVisible();
+  expect(state.requests.some(r => r.path === "/doctors/" + doctorId)).toBe(true);
+  expect(state.requests.some(r => r.path === "/doctors/" + doctorId + "/shifts")).toBe(true);
 });
 
-test("novas telas permanecem responsivas e produzem prévia para revisão", async ({
-  page,
-}) => {
-  await setup(page);
-  await page.getByRole("link", { name: "Médicos", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Editar Helena Martins" }),
-  ).toBeVisible();
-  await page.screenshot({ path: "/tmp/av-clinic-desktop.png", fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
-  for (const label of [
-    "Médicos",
-    "Plantões",
-    "Salas e consultórios",
-    "Especialidades",
-  ]) {
-    await page.getByRole("button", { name: "Abrir menu" }).click();
-    await page
-      .locator(".sidebar")
-      .getByRole("link", { name: label, exact: true })
-      .click();
-    await expect(
-      page.getByRole("heading", { name: label, exact: true }),
-    ).toBeVisible();
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
-  }
-  await page.screenshot({ path: "/tmp/av-clinic-mobile.png", fullPage: true });
+test("admin cadastra plantão com sala textual e janela ISO, sem usar rotas inexistentes", async ({ page }) => {
+  const state = await backend(page, "ADMIN");
+  await go(page, "/admin/plantoes");
+  await page.getByLabel("Médico", { exact: true }).selectOption(doctorId);
+  await page.getByLabel("Início").fill("2026-11-02T08:00");
+  await page.getByLabel("Fim").fill("2026-11-02T12:00");
+  await page.getByLabel("Sala ou consultório").fill("03");
+  await page.getByRole("button", { name: "Adicionar plantão" }).click();
+  await expect.poll(() => state.requests.some(r => r.path === "/doctors/" + doctorId + "/shifts" && r.method === "POST")).toBe(true);
+  const body = state.requests.find(r => r.path === "/doctors/" + doctorId + "/shifts" && r.method === "POST")?.body as { room: string; startsAt: string; endsAt: string };
+  expect(body.room).toBe("03");
+  expect(new Date(body.startsAt).getTime()).toBeLessThan(new Date(body.endsAt).getTime());
+  expect(state.requests.some(r => r.path === "/admin/shifts")).toBe(false);
+});
+
+test("recepção emite, chama, repete e finaliza senha sem interferir na fila do médico", async ({ page }) => {
+  const state = await backend(page, "RECEPCIONISTA");
+  await go(page, "/recepcao/senhas");
+  await expect(page.getByRole("heading", { name: "Controle de senhas" })).toBeVisible();
+  await page.getByRole("button", { name: "Emitir senha" }).click();
+  await expect.poll(() => state.requests.some(r => r.method === "POST" && r.path === "/tickets")).toBe(true);
+  await page.getByRole("button", { name: "Chamar próxima" }).click();
+  await expect(page.getByRole("button", { name: "Chamar novamente" })).toBeVisible();
+  await page.getByRole("button", { name: "Chamar novamente" }).click();
+  await page.getByRole("button", { name: "Finalizar senha" }).click();
+  await expect.poll(() => state.requests.some(r => r.path === "/tickets/" + ticketId + "/status")).toBe(true);
+  expect(state.requests.some(r => r.path === "/queues/me/next")).toBe(false);
+});
+
+test("histórico de recepção e paciente, edição de contato e impressão autorizada", async ({ page }) => {
+  const state = await backend(page, "RECEPCIONISTA");
+  await go(page, "/recepcao/entradas");
+  await expect(page.getByRole("cell", { name: patient.fullName })).toBeVisible();
+  await go(page, "/novo-cadastro?patient=" + patientId);
+  await expect(page.getByRole("heading", { name: "Histórico de comparecimentos" })).toBeVisible();
+  await page.getByRole("button", { name: "Editar contato" }).click();
+  await page.getByRole("textbox", { name: "Telefone" }).fill("11999999999");
+  await page.getByRole("button", { name: "Salvar contato" }).click();
+  await expect.poll(() => state.requests.some(r => r.path === "/patients/" + patientId && r.method === "PATCH")).toBe(true);
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Baixar prescrição" }).click();
+  expect((await download).suggestedFilename()).toBe("prescricao-" + entryId + ".pdf");
+});
+
+test("médico recupera atendimento ativo e consulta histórico real sem falsos dados", async ({ page }) => {
+  const state = await backend(page, "MEDICO");
+  await expect(page.getByRole("heading", { name: "Dashboard médico" })).toBeVisible();
+  await expect.poll(() => state.requests.some(r => r.path === "/doctors/me/active")).toBe(true);
+  await expect.poll(() => state.requests.some(r => r.path === "/doctors/me/dashboard")).toBe(true);
+  await go(page, "/medico/historico");
+  await expect(page.getByRole("cell", { name: patient.fullName })).toBeVisible();
+  expect(state.requests.some(r => r.path === "/doctors/me/entries")).toBe(true);
+});
+
+test("admin altera funcionário e visualiza relatório real agregado por período", async ({ page }) => {
+  const state = await backend(page, "ADMIN");
+  await go(page, "/admin/usuarios");
+  await page.getByRole("button", { name: "Editar" }).click();
+  await page.getByLabel("Nome", { exact: true }).fill("Dra. Helena Atualizada");
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect.poll(() => state.requests.some(r => r.path === "/employees/" + userId && r.method === "PATCH")).toBe(true);
+  await go(page, "/admin/relatorios");
+  await page.getByRole("button", { name: "Gerar relatório" }).click();
+  await expect(page.getByRole("heading", { name: "Visão geral" })).toBeVisible();
+  expect(state.requests.some(r => r.path === "/admin/reports")).toBe(true);
+});
+
+test("TV pública mostra somente senha e sala, sem identificação do paciente", async ({ page }) => {
+  const state = await backend(page, null);
+  await page.goto("/transmissao/tv");
+  await expect(page.locator(".chamada-ticket")).toHaveText("AV-001");
+  await expect(page.getByText("02", { exact: true })).toBeVisible();
+  await expect(page.getByText(patient.fullName)).toHaveCount(0);
+  expect(state.requests.some(r => r.path === "/public/calls")).toBe(true);
+});
+
+test("recuperação por token funciona sem autenticação e confirma nova senha", async ({ page }) => {
+  const state = await backend(page, null);
+  await page.goto("/recuperar-senha");
+  await page.getByLabel("E-mail corporativo").fill("helena@example.test");
+  await page.getByRole("button", { name: "Solicitar link" }).click();
+  await expect(page.getByText(/Se existir uma conta ativa/)).toBeVisible();
+  await page.goto("/reset-password?token=" + "a".repeat(64));
+  await page.getByLabel("Nova senha").fill("senhaSeguraComMaisDeOito");
+  await page.getByLabel("Repita a senha").fill("senhaSeguraComMaisDeOito");
+  await page.getByRole("button", { name: "Redefinir senha" }).click();
+  await expect(page.getByText(/Senha atualizada/)).toBeVisible();
+  expect(state.requests.some(r => r.path === "/auth/password-reset/request")).toBe(true);
+  expect(state.requests.some(r => r.path === "/auth/password-reset/confirm")).toBe(true);
 });
