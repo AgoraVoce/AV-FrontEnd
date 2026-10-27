@@ -212,6 +212,7 @@ export function AppShell({
                         icon: Building2,
                       },
                       { to: "/admin/medicos", label: "Médicos", icon: Users },
+                      { to: "/admin/relatorios", label: "Relatórios", icon: BarChart3 },
                       {
                         to: "/admin/plantoes",
                         label: "Plantões",
