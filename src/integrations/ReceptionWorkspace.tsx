@@ -11,6 +11,7 @@ import { matchesAge, matchesWait, patientAge, waitingMinutes, type AgeFilter, ty
 import { PatientRegistrationFields } from "../components/PatientRegistrationFields";
 import { patientRegistrationError, validatePatientRegistration, type PatientRegistrationErrors } from "./patient-registration";
 import { AppShell } from "../components/AppShell";
+import { PatientRecords } from "./ClinicDataPages";
 import { usePageTitle } from "../components/usePageTitle";
 import { useToast } from "../components/useToast";
 import { getReceptionWaitingQueue, type ReceptionQueueItem } from "./reception-waiting";
@@ -406,6 +407,7 @@ export function PatientWorkspace() {
         <Link className="local-secondary-button" to="/pacientes">Consultar pacientes</Link>
       </div>
     </form>}
+    {chosen && !loadingExisting && <PatientRecords patientId={chosen.id} />}
     {chosen && !loadingExisting && <form className="local-form operational-single-form" onSubmit={e => void saveEntry(e)}>
       {entryError && <p className="local-message is-error" role="alert">{entryError}</p>}
       <div className="operational-row"><div><h2>Informações da entrada</h2><p className="local-note">Paciente: <strong>{chosen.name}</strong></p></div>
