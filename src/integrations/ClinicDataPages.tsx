@@ -77,8 +77,10 @@ export function PatientRecords({ patientId }: { patientId: string }) {
   }, [patientId, page]);
   useEffect(() => {
     const controller = new AbortController();
-    void reload(controller.signal).catch(error => { if (!controller.signal.aborted) { setFailed(true); toast.error("Não foi possível carregar o histórico", errorText(error)); } });
-    return () => controller.abort();
+    const timer = window.setTimeout(() => {
+      void reload(controller.signal).catch(error => { if (!controller.signal.aborted) { setFailed(true); toast.error("Não foi possível carregar o histórico", errorText(error)); } });
+    }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [reload, revision, toast]);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
