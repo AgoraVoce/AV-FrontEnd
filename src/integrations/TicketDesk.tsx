@@ -28,9 +28,9 @@ export function TicketDesk() {
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    void refresh(controller.signal);
+    const initial = window.setTimeout(() => void refresh(controller.signal), 0);
     const id = window.setInterval(() => { if (!document.hidden && !locked.current) void refresh(controller.signal); }, 15000);
-    return () => { controller.abort(); window.clearInterval(id); };
+    return () => { controller.abort(); window.clearTimeout(initial); window.clearInterval(id); };
   }, [refresh]);
 
   const action = async (task: () => Promise<unknown>, feedback: string) => {
