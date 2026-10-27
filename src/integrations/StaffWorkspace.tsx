@@ -66,7 +66,7 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (lock.current || actor !== "ADMIN" || view !== "create") return;
-    if (name.trim().length < 2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim()) || password.length < 8) {
+    if (name.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || password.length < 8) {
       setFormError("Preencha o nome, informe um e-mail válido e use uma senha de pelo menos 8 caracteres.");
       return;
     }
