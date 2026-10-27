@@ -28,7 +28,7 @@ const pageOf = (items: unknown[], p = 1, pageSize = 10) => ({ items, page: p, pa
 type State = { requests: Array<{ method: string; path: string; body?: unknown }> };
 async function backend(page: Page, role: "ADMIN" | "MEDICO" | "RECEPCIONISTA" | null): Promise<State> {
   const state: State = { requests: [] };
-  let currentTicket: typeof ticket | null = null;
+  let currentTicket: Record<string, unknown> | null = null;
   let waitingTickets = [ticket];
   let currentEmployee = { ...employee };
   await page.route("**/api/v1/**", route => {
