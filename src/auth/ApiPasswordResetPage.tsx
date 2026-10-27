@@ -45,8 +45,8 @@ export function ApiPasswordResetPage() {
     } catch (err) { setError(err instanceof Error ? err.message : "Não foi possível continuar."); }
     finally { setBusy(false); }
   }
-  return <AuthLayout><main className="local-page operational-page">
-    <header className="local-page-head"><div><h1>{confirming ? "Defina sua nova senha" : "Recuperar acesso"}</h1>
+  return <AuthLayout titleId="api-reset-title"><main className="local-page operational-page">
+    <header className="local-page-head"><div><h1 id="api-reset-title">{confirming ? "Defina sua nova senha" : "Recuperar acesso"}</h1>
       <p>{confirming ? "Sua nova senha substituirá a anterior." : "Informe seu e-mail corporativo para receber o link de recuperação."}</p></div></header>
     <section className="local-form operational-single-form">
       {success ? <>
