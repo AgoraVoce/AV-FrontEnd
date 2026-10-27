@@ -59,10 +59,20 @@ Após o ajuste, um cadastro fictício realizado pela própria interface na porta
 - `GET /auth/me` verifica a identidade com o Bearer ativo; `POST /auth/logout` revoga o token no servidor antes de atualizar a UI.
 - O accessToken permanece **somente em memória** e expira no máximo em 15 minutos; atualizar a página ainda exige login, pois não há refresh token. Resposta 401 invalida a sessão; falhas 503 não são apresentadas como logout confirmado.
 
+## Novos fluxos integrados (PR #19)
+- Recepção: controle de senhas administrativas, histórico geral de entradas, histórico por paciente, edição de contato e PDF das prescrições concluídas.
+- Médico: dashboard do servidor, restauração do atendimento ativo, histórico paginado e download de prescrição.
+- Administração: vínculo de contas médicas existentes, cadastro e disponibilidade de plantões, edição de funcionários e relatórios por período.
+- Público: painel de chamadas das últimas 24 horas com atualização periódica, sem dados pessoais.
+- Acesso: solicitação de recuperação por e-mail e redefinição por token de uso único.
+- Não usar os módulos `tickets` e `queues` como se fossem a mesma fila; o painel público exibe chamadas clínicas, não as senhas administrativas.
+
 ## Limitações e dependências do backend
-- Falta uma rota autorizada para **descobrir o atendimento ativo do médico** em outro navegador/dispositivo. Um `409 DOCTOR_BUSY` não pode ser resolvido só pela fila `GET /queues/me` (que inclui apenas pacientes aguardando).
+- O atendimento ativo agora pode ser recuperado com `GET /doctors/me/active`, inclusive em outro navegador após novo login.
 - O contrato de `/entries/:id/complete` exige **ao menos um medicamento**. Precisamos discutir atendimentos encerrados sem medicação.
-- Não há API pública apropriada para a TV, recuperação de senha, relatórios administrativos ou gerenciamento completo de funcionários; esses módulos não exibem dados falsos como se fossem reais.
+- O backend disponibiliza `GET /public/calls` (sem identificação de pacientes), recuperação por link/token via `/auth/password-reset/*` e relatório administrativo `GET /admin/reports`. A recuperação só envia links se o backend possuir provedor de e-mail configurado.
+- O módulo `/tickets` é uma fila administrativa independente da fila clínica `/queues`; os estados não podem ser confundidos.
+- Perfis e plantões médicos devem usar `POST /doctors` e `/doctors/:id/shifts` após a criação da conta via `POST /employees`. A gestão de salas em entidade própria e o perfil/plantões do médico autenticado ainda não possuem rotas compatíveis.
 - **Prescrições dependem da migration `20261018191000_add_prescriptions`** no banco usado. A equipe informou que não estava aplicada ao Aiven em 18/10/2026. Não execute migrations de produção sem autorização.
 - O histórico do backend contém credenciais antigas que precisam ser rotacionadas conforme aviso da PR #3.
 
