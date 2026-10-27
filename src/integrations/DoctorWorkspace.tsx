@@ -1,4 +1,4 @@
-import { DashboardProfile } from "../features/doctors/DashboardProfile";
+import { extended, type ClinicDashboard } from "./extended-api";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight, ClipboardCheck, ClipboardList, Clock3, Plus, RefreshCw, Stethoscope, Trash2, UserRound, Users } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -30,7 +30,8 @@ export function DoctorWorkspace({ view = "dashboard" }: { view?: "dashboard" | "
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"" | "calling" | "starting" | "finishing">("");
   const [active, setActive] = useState<EntryDetail | null>(null);
-  const [restoring, setRestoring] = useState(() => Boolean(userId && sessionStorage.getItem(cacheKey(userId))));
+  const [restoring, setRestoring] = useState(true);
+  const [dashboard, setDashboard] = useState<ClinicDashboard | null>(null);
   const [detail, setDetail] = useState<EntryDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(view === "detail");
   const [detailFailed, setDetailFailed] = useState(false);
@@ -51,10 +52,14 @@ export function DoctorWorkspace({ view = "dashboard" }: { view?: "dashboard" | "
     try {
       const result = await getDoctorQueue(controller.signal);
       if (!controller.signal.aborted) { setQueue(result); setQueueError(false); }
+      if (view === "dashboard") {
+        try { const data = await extended.doctorDashboard(controller.signal); if (!controller.signal.aborted) setDashboard(data); }
+        catch { if (!controller.signal.aborted) setDashboard(null); }
+      }
     } catch (cause) {
       if (!controller.signal.aborted) { setQueueError(true); toast.error("Não foi possível carregar a fila", errorText(cause)); }
     } finally { if (!controller.signal.aborted) setLoading(false); }
-  }, [toast]);
+  }, [toast, view]);
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(true), 0);
     const timer = window.setInterval(() => void refresh(), 30000);
@@ -63,17 +68,20 @@ export function DoctorWorkspace({ view = "dashboard" }: { view?: "dashboard" | "
 
   useEffect(() => {
     if (!userId) return;
-    const stored = sessionStorage.getItem(cacheKey(userId));
-    if (!stored) return;
-    let cancelled = false;
-    void operations.entry(stored).then(result => {
-      if (cancelled) return;
-      if (result.status === "called" || result.status === "in_progress") setActive(result);
-      else sessionStorage.removeItem(cacheKey(userId));
+    const controller = new AbortController();
+    void extended.active(controller.signal).then(result => {
+      if (controller.signal.aborted) return;
+      if (result && (result.status === "called" || result.status === "in_progress")) {
+        setActive(result);
+        sessionStorage.setItem(cacheKey(userId), result.id);
+      } else {
+        setActive(null);
+        sessionStorage.removeItem(cacheKey(userId));
+      }
     }).catch(cause => {
-      if (!cancelled) toast.error("Não foi possível recuperar o atendimento ativo", errorText(cause));
-    }).finally(() => { if (!cancelled) setRestoring(false); });
-    return () => { cancelled = true; };
+      if (!controller.signal.aborted) toast.error("Não foi possível recuperar o atendimento ativo", errorText(cause));
+    }).finally(() => { if (!controller.signal.aborted) setRestoring(false); });
+    return () => controller.abort();
   }, [userId, toast]);
 
   useEffect(() => {
@@ -185,12 +193,13 @@ export function DoctorWorkspace({ view = "dashboard" }: { view?: "dashboard" | "
     </header>
 
     {view === "dashboard" && <>
-      <DashboardProfile />
+      <p className="local-note">Indicadores consultados diretamente no servidor. Atualização a cada 30 segundos.</p>
       <div className="operational-summary">
-        <div className="operational-kpi"><span>Pacientes aguardando</span><strong>{loading ? "—" : queue.length}</strong><small>Priorizados pelo sistema</small></div>
+        <div className="operational-kpi"><span>Pacientes aguardando</span><strong>{loading ? "—" : dashboard?.waiting ?? queue.length}</strong><small>Pacientes atribuídos a você</small></div>
         <div className="operational-kpi"><span>Seu atendimento</span><strong className="operational-time">{restoring ? "Verificando…" : active ? (active.status === "called" ? "Paciente chamado" : "Em andamento") : "Disponível"}</strong>
           <small>{active ? active.patient.fullName : "Pronto para a próxima chamada"}</small></div>
       </div>
+      <div className="operational-summary"><div className="operational-kpi"><span>Finalizados hoje</span><strong>{dashboard?.completedToday ?? "—"}</strong></div><div className="operational-kpi"><span>Em atendimento</span><strong>{dashboard?.inProgress ?? "—"}</strong></div></div>
       <div className="operational-dashboard-actions">
         <Link to="/medico/fila" className="operational-dash-link"><ClipboardList size={22} aria-hidden="true" /><strong>Minha fila</strong>
           <span>Consulte os pacientes, a classificação e os detalhes de cada entrada.</span><ArrowRight size={18} aria-hidden="true" className="operational-dash-arrow" /></Link>
