@@ -1,7 +1,8 @@
 import { AdminDashboard } from "./integrations/AdminDashboard";
 import { SpecialtiesPage } from "./features/specialties/Page";
+import { DoctorsDirectory, DoctorShiftsAdmin } from "./integrations/ProfessionalWorkspaces";
 import { RoomsPage } from "./features/rooms/Page";
-import { DoctorsPage, OwnProfilePage } from "./features/doctors/Page";
+import { OwnProfilePage } from "./features/doctors/Page";
 import { ShiftsPage } from "./features/shifts/Page";
 import { Navigate, Route, Routes, Link, useLocation } from "react-router-dom";
 import { useState } from "react";
@@ -143,7 +144,7 @@ export default function App() {
               path="/admin/medicos"
               element={
                 <ProtectedArea role="ADMIN">
-                  <DoctorsPage />
+                  <DoctorsDirectory />
                 </ProtectedArea>
               }
             />
@@ -151,7 +152,7 @@ export default function App() {
               path="/admin/plantoes"
               element={
                 <ProtectedArea role="ADMIN">
-                  <ShiftsPage />
+                  <DoctorShiftsAdmin />
                 </ProtectedArea>
               }
             />
