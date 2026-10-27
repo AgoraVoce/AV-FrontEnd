@@ -105,7 +105,6 @@ export function DoctorsDirectory() {
 }
 
 function DoctorShifts({ doctorId }: { doctorId: string }) {
-  const toast = useToast();
   const [shifts, setShifts] = useState<DoctorShift[]>([]);
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
