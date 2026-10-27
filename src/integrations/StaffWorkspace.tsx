@@ -7,6 +7,7 @@ import { useToast } from "../components/useToast";
 import { createEmployee, type EmployeeRecord } from "./client";
 import { operations, type Employee, type Page } from "./operational-api";
 import { errorText } from "./shared-helpers";
+import { extended } from "./extended-api";
 import "./local.css";
 import "./operations.css";
 
@@ -32,6 +33,11 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
   const [newRole, setNewRole] = useState<EmployeeRecord["role"]>("MEDICO");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [editing, setEditing] = useState<Employee | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editRole, setEditRole] = useState<Employee["role"]>("MEDICO");
+  const [editActive, setEditActive] = useState(true);
   const lock = useRef(false);
   const load = useCallback(async (signal: AbortSignal) => {
     if (actor !== "ADMIN" || view !== "list") return;
@@ -78,6 +84,18 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
     } finally { lock.current = false; setSaving(false); }
   }
 
+  async function updateEmployee(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing || saving) return;
+    if (!editName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmail.trim())) { setFormError("Confira nome e e-mail."); return; }
+    if ((editing.role !== editRole || editing.active !== editActive) && !window.confirm("Alterar perfil ou situação pode encerrar o acesso do funcionário. Confirmar?")) return;
+    setSaving(true); setFormError("");
+    try {
+      await extended.updateEmployee(editing.id, { name: editName.trim(), email: editEmail.trim(), role: editRole, active: editActive });
+      toast.success("Funcionário atualizado"); setEditing(null); setRevision(n => n + 1);
+    } catch (cause) { toast.error("Não foi possível atualizar funcionário", errorText(cause)); }
+    finally { setSaving(false); }
+  }
   if (actor !== "ADMIN") {
     return <AppShell><div className="local-page operational-page">
       <section className="local-empty"><ShieldAlert size={28} aria-hidden="true" />
@@ -144,10 +162,11 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
       {!loading && !failed && listing?.items.length === 0 && <div className="local-empty"><Users size={24} aria-hidden="true" />
         <h3>Nenhum funcionário encontrado</h3><p>Experimente limpar os filtros ou cadastre uma conta.</p></div>}
       {!loading && !failed && listing && listing.items.length > 0 && <div className="local-table-wrap"><table className="local-table"><thead><tr>
-        <th scope="col">Funcionário</th><th scope="col">E-mail</th><th scope="col">Perfil</th><th scope="col">Situação</th>
+        <th scope="col">Funcionário</th><th scope="col">E-mail</th><th scope="col">Perfil</th><th scope="col">Situação</th><th scope="col">Ações</th>
       </tr></thead><tbody>{listing.items.map(employee => <tr key={employee.id}>
         <td><strong>{employee.name}</strong></td><td>{employee.email}</td><td>{ROLE_LABEL[employee.role]}</td>
         <td><span className={"operational-state " + (employee.active ? "is-completed" : "is-cancelled")}>{employee.active ? "Ativo" : "Inativo"}</span></td>
+        <td><button type="button" className="local-secondary-button" onClick={() => { setEditing(employee); setEditName(employee.name); setEditEmail(employee.email); setEditRole(employee.role); setEditActive(employee.active); }}>Editar</button></td>
       </tr>)}</tbody></table>
       <div className="operational-mobile-cards" aria-label="Funcionários cadastrados">
         {listing.items.map(employee => <article className="operational-mobile-card" key={employee.id}>
@@ -165,6 +184,15 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
         </div>
       </div>}
     </section>
+    {editing && <section className="local-form operational-single-form" aria-label="Editar funcionário"><h2>Editar funcionário</h2>
+      <form className="local-fields" onSubmit={e => void updateEmployee(e)}>
+        <label>Nome<input required minLength={2} maxLength={150} value={editName} onChange={e => setEditName(e.target.value)} /></label>
+        <label>E-mail<input required type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} /></label>
+        <label>Perfil<select value={editRole} onChange={e => setEditRole(e.target.value as Employee["role"])}><option value="ADMIN">Administrador</option><option value="MEDICO">Médico</option><option value="RECEPCIONISTA">Recepcionista</option></select></label>
+        <label>Situação<select value={String(editActive)} onChange={e => setEditActive(e.target.value === "true")}><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
+        {formError && <p className="local-message is-error" role="alert">{formError}</p>}
+        <div className="local-actions"><button type="submit" className="local-primary" disabled={saving}>{saving ? "Salvando…" : "Salvar alterações"}</button><button type="button" className="local-secondary-button" onClick={() => setEditing(null)}>Cancelar</button></div>
+      </form></section>}
     <Link to="/admin/novo-funcionario" className="operational-text-link">Adicionar outro funcionário <ArrowRight size={15} aria-hidden="true" /></Link>
   </div></AppShell>;
 }

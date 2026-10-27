@@ -1,11 +1,16 @@
 import { AdminDashboard } from "./integrations/AdminDashboard";
 import { SpecialtiesPage } from "./features/specialties/Page";
+import { DoctorsDirectory, DoctorShiftsAdmin } from "./integrations/ProfessionalWorkspaces";
 import { RoomsPage } from "./features/rooms/Page";
-import { DoctorsPage, OwnProfilePage } from "./features/doctors/Page";
+import { OwnProfilePage } from "./features/doctors/Page";
 import { ShiftsPage } from "./features/shifts/Page";
 import { Navigate, Route, Routes, Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { RecoveryPage } from "./auth/RecoveryPage";
+import { ApiPasswordResetPage } from "./auth/ApiPasswordResetPage";
+import { PublicCallsScreen } from "./integrations/PublicCallsScreen";
+import { TicketDesk } from "./integrations/TicketDesk";
+import { EntryHistoryPage, ReportsPage } from "./integrations/ClinicDataPages";
 import { API_MODE } from "./auth/api";
 import { LocalUnavailablePage } from "./integrations/LocalPages";
 import { ReceptionWorkspace, PatientWorkspace, PatientSearchWorkspace } from "./integrations/ReceptionWorkspace";
@@ -42,19 +47,23 @@ export default function App() {
     <div
       key={location.pathname}
       className={`route-transition${routeChanged ? " is-entering" : ""}`}
-      onAnimationStart={() => setHasNavigated(true)}
+      onAnimationStart={(event) => {
+        // Do not restart the page transition when a nested spinner or toast animates.
+        if (event.target === event.currentTarget) setHasNavigated(true);
+      }}
     >
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/recuperar-senha" element={API_MODE ? <LocalUnavailablePage title="Recuperação indisponível" description="O backend ainda não oferece recuperação de senha. Entre em contato com a administração para recuperar seu acesso." /> : <RecoveryPage />} />
+        <Route path="/recuperar-senha" element={API_MODE ? <ApiPasswordResetPage /> : <RecoveryPage />} />
+        <Route path="/reset-password" element={<ApiPasswordResetPage />} />
         <Route
           path="/transmissao/tv"
-          element={API_MODE ? <LocalUnavailablePage title="TV aguardando API" description="A tela pública exige uma sessão autorizada e uma API de transmissão. Não exibimos dados locais fictícios." /> : <PainelPublicoPage presentation="tv" />}
+          element={API_MODE ? <PublicCallsScreen presentation="tv" /> : <PainelPublicoPage presentation="tv" />}
         />
         <Route
           path="/transmissao"
-          element={API_MODE ? <LocalUnavailablePage title="Transmissão em integração" description="A API não oferece um canal público de chamadas. A fila de espera só pode ser consultada com credenciais da recepção." /> : <PainelPublicoPage presentation="admin" />}
+          element={API_MODE ? <PublicCallsScreen presentation="admin" /> : <PainelPublicoPage presentation="admin" />}
         />
         <Route
           path="/recepcao"
@@ -64,6 +73,8 @@ export default function App() {
             </ProtectedArea>
           }
         />
+        {API_MODE && <Route path="/recepcao/senhas" element={<ProtectedArea role="RECEPCIONISTA"><TicketDesk /></ProtectedArea>} />}
+        {API_MODE && <Route path="/recepcao/entradas" element={<ProtectedArea role="RECEPCIONISTA"><EntryHistoryPage kind="reception" /></ProtectedArea>} />}
         <Route
           path="/recepcao/usuarios"
           element={
@@ -89,6 +100,7 @@ export default function App() {
           element={<ProtectedArea role="MEDICO">{API_MODE ? <DoctorWorkspace view="dashboard" /> : <MedicoPage />}</ProtectedArea>}
         />
         {API_MODE && <>
+          <Route path="/medico/historico" element={<ProtectedArea role="MEDICO"><EntryHistoryPage kind="doctor" /></ProtectedArea>} />
           <Route path="/medico/fila" element={<ProtectedArea role="MEDICO"><DoctorWorkspace view="queue" /></ProtectedArea>} />
           <Route path="/medico/fila/:entryId" element={<ProtectedArea role="MEDICO"><DoctorWorkspace view="detail" /></ProtectedArea>} />
           <Route path="/medico/atendimento" element={<ProtectedArea role="MEDICO"><DoctorWorkspace view="current" /></ProtectedArea>} />
@@ -108,7 +120,7 @@ export default function App() {
             path={`/admin/${section}`}
             element={
               <ProtectedArea role="ADMIN">
-                {API_MODE ? (section === "usuarios" ? <StaffWorkspace actor="ADMIN" /> : <LocalUnavailablePage title={section === "fila" ? "Fila administrativa ainda sem API" : "Relatórios ainda sem API"} description="Este módulo ainda depende de uma rota de consulta autorizada no backend. O painel não apresenta dados simulados como reais." />) : <AdminPage />}
+                {API_MODE ? (section === "usuarios" ? <StaffWorkspace actor="ADMIN" /> : section === "relatorios" ? <ReportsPage /> : <LocalUnavailablePage title="Fila administrativa sem permissão na API" description="A consulta geral de entradas exige perfil de recepção. Não exibimos dados não autorizados." />) : <AdminPage />}
               </ProtectedArea>
             }
           />
@@ -135,7 +147,7 @@ export default function App() {
               path="/admin/medicos"
               element={
                 <ProtectedArea role="ADMIN">
-                  <DoctorsPage />
+                  <DoctorsDirectory />
                 </ProtectedArea>
               }
             />
@@ -143,7 +155,7 @@ export default function App() {
               path="/admin/plantoes"
               element={
                 <ProtectedArea role="ADMIN">
-                  <ShiftsPage />
+                  <DoctorShiftsAdmin />
                 </ProtectedArea>
               }
             />

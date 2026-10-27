@@ -17,6 +17,7 @@ const doctor = {
 
 export async function installApiFixtures(page: Page, role: VisualRole) {
   let entryStatus: "waiting" | "called" | "in_progress" | "completed" = "waiting";
+  let currentTicket: Record<string, unknown> | null = null;
   const unexpected: string[] = [];
   const user = {
     id: "99999999-9999-4999-8999-999999999999",
@@ -145,6 +146,45 @@ export async function installApiFixtures(page: Page, role: VisualRole) {
       entryStatus = "completed";
       return json(detail());
     }
+    if (path === "/public/calls" && method === "GET") {
+      return json({ items: [{ queueCode: "A-012", room: "Consultório 02", calledAt: NOW }] });
+    }
+    if (path === "/doctors/me/dashboard" && method === "GET") {
+      return json({ date: "2026-10-19", waiting: 2, called: 0, inProgress: 0, completedToday: 3, cancelledToday: 0 });
+    }
+    if (path === "/doctors/me/active" && method === "GET") return json(entryStatus === "waiting" || entryStatus === "completed" ? null : detail());
+    const historyEntry = { id: entryId, patientId, enteredAt: NOW, status: "FINALIZADO",
+      severity: "AMARELO", queueCode: "A-012", patient: { id: patientId, fullName: patient.fullName },
+      doctor: { id: doctorId, name: doctor.name },
+      attendance: { room: "Consultório 02", calledAt: NOW, startedAt: NOW, finishedAt: NOW } };
+    if ((path === "/entries" || path === "/doctors/me/entries" || path === "/patients/" + patientId + "/entries") && method === "GET") {
+      return json({ items: [historyEntry], total: 1, page: Number(url.searchParams.get("page") || 1), pageSize: 10 });
+    }
+    if (path === "/patients/" + patientId && method === "PATCH") return json({ ...patient, ...route.request().postDataJSON() });
+    if (path.startsWith("/employees/") && method === "PATCH") return json({ ...user, ...route.request().postDataJSON() });
+    if (path === "/admin/reports" && method === "GET") {
+      return json({ period: { dateFrom: url.searchParams.get("dateFrom"), dateTo: url.searchParams.get("dateTo"), timezone: "America/Sao_Paulo" },
+        summary: { totalEntries: 3, waiting: 0, called: 0, inProgress: 0, completed: 2, cancelled: 1, averageWaitSeconds: 720, measuredWaits: 2 },
+        bySeverity: [{ severity: "AMARELO", count: 3 }],
+        doctors: [{ doctorId, name: doctor.name, completed: 2, averageAttendanceSeconds: 900 }] });
+    }
+    const profile = { id: doctorId, userId: user.id, name: doctor.name, active: true, specialtyId: doctor.specialty.id, specialty: { ...doctor.specialty, active: true } };
+    if (path === "/admin/doctors" && method === "GET") return json({ items: [profile], total: 1, page: 1, pageSize: Number(url.searchParams.get("pageSize") || 10) });
+    if (path === "/specialties" && method === "GET") return json({ items: [profile.specialty], total: 1, page: 1, pageSize: Number(url.searchParams.get("pageSize") || 20) });
+    if (path === "/doctors" && method === "POST") return json(profile, 201);
+    if (path === "/doctors/" + doctorId && method === "GET") return json(profile);
+    if (path === "/doctors/" + doctorId && method === "PATCH") return json({ ...profile, ...route.request().postDataJSON() });
+    if (path === "/doctors/" + doctorId + "/shifts" && method === "GET") return json({ items: [{ ...doctor.shift, doctorId, availabilityStatus: "DISPONIVEL" }], total: 1, page: 1, pageSize: 100 });
+    if (path === "/doctors/" + doctorId + "/shifts" && method === "POST") return json({ ...doctor.shift, ...route.request().postDataJSON() }, 201);
+    if (path === "/tickets/waiting" && method === "GET") return json({ items: [] });
+    if (path === "/tickets/current" && method === "GET") return json(currentTicket);
+    if (path === "/tickets" && method === "POST") return json({ id: "22222222-2222-4222-8222-222222222222", codigo: "N001", tipo: "normal", status: "aguardando", horarioEmissao: NOW, horarioChamada: null, horarioFinalizacao: null, entryId: null, nomePaciente: null }, 201);
+    if (path === "/tickets/call-next" && method === "POST") return route.fulfill({ status: 204, body: "" });
+    if (path === "/tickets/22222222-2222-4222-8222-222222222222/recall" && method === "POST") return json(currentTicket);
+    if (path.endsWith("/status") && path.startsWith("/tickets/") && method === "PATCH") { currentTicket = null; return json({ status: "finalizada" }); }
+    if (path === "/auth/password-reset/request" && method === "POST") return json({ message: "Verifique seu e-mail" }, 202);
+    if (path === "/auth/password-reset/confirm" && method === "POST") return route.fulfill({ status: 204, body: "" });
+    if (path === "/entries/" + entryId + "/prescription.pdf" && method === "GET") return route.fulfill({ status: 200, headers: { "Content-Type": "application/pdf" }, body: "%PDF-1.4\\n%%EOF" });
     unexpected.push(method + " " + path);
     return json({ error: { code: "VISUAL_FIXTURE_NOT_FOUND", message: "Mock visual não configurado" } }, 404);
   });

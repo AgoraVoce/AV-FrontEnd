@@ -186,9 +186,14 @@ export function AppShell({
                   <span>{label}</span>
                 </NavLink>
               ))}
+              {API_MODE && activeRole === "RECEPCIONISTA" && <>
+                <NavLink to="/recepcao/senhas" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><ListChecks size={18} aria-hidden="true" /><span>Senhas da recepção</span></NavLink>
+                <NavLink to="/recepcao/entradas" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Search size={18} aria-hidden="true" /><span>Histórico de entradas</span></NavLink>
+              </>}
               {API_MODE && activeRole === "RECEPCIONISTA" && <NavLink to="/pacientes" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Search size={18} aria-hidden="true" /><span>Pacientes cadastrados</span></NavLink>}
               {API_MODE && activeRole === "MEDICO" && <>
                 <NavLink end to="/medico" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><LayoutDashboard size={18} aria-hidden="true" /><span>Consultório Médico</span></NavLink>
+                <NavLink to="/medico/historico" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Search size={18} aria-hidden="true" /><span>Meus atendimentos</span></NavLink>
                 <NavLink to="/medico/fila" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><ListChecks size={18} aria-hidden="true" /><span>Minha fila</span></NavLink>
                 <NavLink to="/medico/atendimento" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Stethoscope size={18} aria-hidden="true" /><span>Paciente atual</span></NavLink>
               </>}
@@ -207,6 +212,7 @@ export function AppShell({
                         icon: Building2,
                       },
                       { to: "/admin/medicos", label: "Médicos", icon: Users },
+                      { to: "/admin/relatorios", label: "Relatórios", icon: BarChart3 },
                       {
                         to: "/admin/plantoes",
                         label: "Plantões",

@@ -14,11 +14,13 @@ type Screen = {
 
 const screens: Screen[] = [
   { id: "login", path: "/login" },
-  { id: "recuperar-senha-indisponivel", path: "/recuperar-senha" },
-  { id: "transmissao-indisponivel", path: "/transmissao" },
-  { id: "tv-publica-indisponivel", path: "/transmissao/tv" },
+  { id: "recuperar-senha", path: "/recuperar-senha" },
+  { id: "transmissao-api", path: "/transmissao" },
+  { id: "tv-publica-api", path: "/transmissao/tv" },
   { id: "pagina-nao-encontrada", path: "/pagina-inexistente" },
   { id: "recepcao-fila", path: "/recepcao", role: "RECEPCIONISTA" },
+  { id: "recepcao-senhas", path: "/recepcao/senhas", role: "RECEPCIONISTA" },
+  { id: "recepcao-entradas", path: "/recepcao/entradas", role: "RECEPCIONISTA" },
   { id: "recepcao-detalhes", path: "/recepcao", role: "RECEPCIONISTA", state: "details" },
   { id: "recepcao-usuarios-restrito", path: "/recepcao/usuarios", role: "RECEPCIONISTA" },
   { id: "pacientes-lista", path: "/pacientes", role: "RECEPCIONISTA" },
@@ -27,6 +29,7 @@ const screens: Screen[] = [
   { id: "novo-cadastro-entrada", path: "/novo-cadastro?patient=" + patientId, role: "RECEPCIONISTA", state: "select-patient" },
   { id: "medico-dashboard", path: "/medico", role: "MEDICO" },
   { id: "medico-fila", path: "/medico/fila", role: "MEDICO" },
+  { id: "medico-historico", path: "/medico/historico", role: "MEDICO" },
   { id: "medico-detalhes-paciente", path: "/medico/fila/" + entryId, role: "MEDICO" },
   { id: "medico-paciente-chamado", path: "/medico", role: "MEDICO", state: "called" },
   { id: "medico-atendimento", path: "/medico", role: "MEDICO", state: "attending" },
@@ -36,8 +39,10 @@ const screens: Screen[] = [
   { id: "admin-funcionarios", path: "/admin", role: "ADMIN" },
   { id: "admin-novo-funcionario", path: "/admin/novo-funcionario", role: "ADMIN" },
   { id: "admin-usuarios", path: "/admin/usuarios", role: "ADMIN" },
+  { id: "admin-medicos", path: "/admin/medicos", role: "ADMIN" },
+  { id: "admin-plantoes", path: "/admin/plantoes", role: "ADMIN" },
   { id: "admin-fila-indisponivel", path: "/admin/fila", role: "ADMIN" },
-  { id: "admin-relatorios-indisponivel", path: "/admin/relatorios", role: "ADMIN" },
+  { id: "admin-relatorios", path: "/admin/relatorios", role: "ADMIN" },
 ];
 
 const startByRole: Record<VisualRole, string> = {
