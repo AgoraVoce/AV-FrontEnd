@@ -21,9 +21,9 @@ export function PublicCallsScreen({ presentation }: { presentation: "tv" | "admi
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    void refresh(controller.signal);
+    const initial = window.setTimeout(() => void refresh(controller.signal), 0);
     const timer = window.setInterval(() => { if (!document.hidden) void refresh(controller.signal); }, 10000);
-    return () => { controller.abort(); window.clearInterval(timer); };
+    return () => { controller.abort(); window.clearTimeout(initial); window.clearInterval(timer); };
   }, [refresh]);
   const content = <div className={"painel-publico" + (presentation === "tv" ? " is-tv-mode" : "")}>
     <HeaderPainel presentation={presentation} developmentMode={false} />
