@@ -175,7 +175,6 @@ export function ReceptionWorkspace() {
     </div>
     <div className="reception-toolbar reception-panel">
       <label className="reception-search"><Search size={17}/><input ref={searchInput} aria-label="Buscar por nome ou senha" value={filter} onChange={e=>{setFilter(e.target.value);setPriorityFeedback(null);setPage(1);}} type="search" placeholder="Filtrar por nome, senha ou queixa..." /></label>
-      <button className="local-secondary-button" type="button" disabled={refreshing || loading} onClick={()=>void load()}><RefreshCw size={16}/> {refreshing ? "Atualizando…" : "Atualizar fila"}</button>
       <button className="local-secondary-button" aria-controls="reception-clinical-filters" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(v=>!v)}><Filter size={16}/> Filtrar{activeFilterCount > 0 && <span className="reception-filter-count">{activeFilterCount}</span>}</button>
       <Link className="local-secondary-button" to="/pacientes"><Search size={16}/> Buscar pacientes</Link>
       <Link className="local-primary" to="/novo-cadastro"><UserPlus size={16}/> Cadastrar Paciente</Link>
