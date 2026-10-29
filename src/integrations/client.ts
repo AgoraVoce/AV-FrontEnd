@@ -15,6 +15,7 @@ function contract(value: unknown): Record<string, unknown> {
 }
 const ERRORS: Record<string, string> = {
   SPECIALTY_NAME_EXISTS: "Já existe uma especialidade com esse nome.",
+  SPECIALTY_NAME_CONFLICT: "Já existe uma especialidade com esse nome.",
   ROOM_NAME_EXISTS: "Já existe uma sala com esse nome.",
   SPECIALTY_IN_USE: "Especialidade vinculada a médicos. Você pode inativá-la.",
   ROOM_IN_USE: "Sala vinculada a médicos ou plantões. Você pode inativá-la.",
