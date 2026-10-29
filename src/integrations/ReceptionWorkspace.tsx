@@ -9,7 +9,7 @@ import { priorityInfo } from "./priority-store";
 import { loadReceptionClinicalData } from "./reception-clinical-data";
 import { matchesAge, matchesWait, patientAge, waitingMinutes, type AgeFilter, type WaitFilter } from "./reception-filters";
 import { PatientRegistrationFields } from "../components/PatientRegistrationFields";
-import { patientRegistrationError, validatePatientRegistration, type PatientRegistrationErrors } from "./patient-registration";
+import { patientRegistrationError, validatePatientRegistration, validPatientCpf, type PatientRegistrationErrors } from "./patient-registration";
 import { AppShell } from "../components/AppShell";
 import { PatientRecords } from "./ClinicDataPages";
 import { usePageTitle } from "../components/usePageTitle";
@@ -246,6 +246,7 @@ export function PatientSearchWorkspace() {
   usePageTitle("Pacientes cadastrados");
   const toast = useToast();
   const [search, setSearch] = useState("");
+  const [searchDraft,setSearchDraft] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
   const [listing, setListing] = useState<import("./operational-api").Page<Patient> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -275,9 +276,9 @@ export function PatientSearchWorkspace() {
     <section className="local-form">
       <div className="operational-row"><h2><UsersRound size={19} aria-hidden="true" /> Buscar pacientes</h2>
         <button type="button" className="local-secondary-button operational-small-button" disabled={loading} onClick={() => setRevision(n => n + 1)}><RefreshCw size={15} aria-hidden="true" /> Atualizar</button></div>
-      <label className="local-search">Buscar paciente por nome ou CPF
-        <input type="search" value={search} onChange={e => { setSearch(e.target.value); setPageNumber(1); }} placeholder="Digite o nome ou CPF" autoComplete="off" />
-      </label>
+      <form className="reception-patient-search-form" role="search" onSubmit={e=>{e.preventDefault();setSearch(searchDraft);setPageNumber(1);}}><label className="local-search">Buscar paciente por nome ou CPF
+        <input type="search" value={searchDraft} onChange={e=>setSearchDraft(e.target.value)} placeholder="Digite o nome ou CPF" autoComplete="off" />
+      </label><button className="local-primary" type="submit"><Search size={16} aria-hidden="true"/> Buscar</button></form>
       {loading && <p className="local-note" role="status">Buscando pacientes…</p>}
       {!loading && failed && <button type="button" className="local-secondary-button" onClick={() => setRevision(n => n + 1)}>Tentar novamente</button>}
       {!loading && !failed && listing?.items.length === 0 && <div className="local-empty">
@@ -305,6 +306,10 @@ export function PatientWorkspace() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const patientId = params.get("patient");
+  const [cpfLookup,setCpfLookup]=useState("");
+  const [cpfVerified,setCpfVerified]=useState(Boolean(patientId));
+  const [lookupBusy,setLookupBusy]=useState(false);
+  const [lookupError,setLookupError]=useState("");
   const [patient, setPatient] = useState<NewPatient>({ ...EMPTY });
   const [patientErrors, setPatientErrors] = useState<PatientRegistrationErrors>({});
   const [patientFormError, setPatientFormError] = useState("");
@@ -339,6 +344,21 @@ export function PatientWorkspace() {
     return () => controller.abort();
   }, [chosen, toast]);
 
+  async function searchCpf(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const cpf=cpfLookup.replace(/\D/g,"");
+    if(!validPatientCpf(cpf)){setLookupError("Informe um CPF válido.");return;}
+    if(lookupBusy)return;
+    setLookupBusy(true);setLookupError("");
+    try {
+      const result=await operations.patients({cpf,page:1,pageSize:1});
+      const found=result.items[0];
+      if(found)setChosen({id:found.id,name:found.fullName});
+      else setPatient(p=>({...p,cpf}));
+      setCpfVerified(true);
+    } catch(error){setLookupError(errorText(error));}
+    finally{setLookupBusy(false);}
+  }
   async function savePatient(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (lock.current) return;
@@ -390,25 +410,28 @@ export function PatientWorkspace() {
   return <AppShell><div className="local-page operational-page">
     <header className="local-page-head"><div><span className="local-eyebrow">Recepção · Pronto-socorro</span>
       <h1>{chosen ? "Registrar entrada" : "Novo paciente"}</h1>
-      <p>{chosen ? "Registre os sintomas, a classificação e o médico de plantão." : "Cadastre o paciente diretamente. Para consultar fichas existentes, utilize Pacientes cadastrados."}</p></div>
-      <Link className="local-secondary-button" to={chosen ? "/pacientes" : "/recepcao"}><ChevronLeft size={16} aria-hidden="true" /> {chosen ? "Voltar aos pacientes" : "Voltar à fila"}</Link>
+      <p>{chosen ? "Registre os sintomas, a classificação e o médico de plantão." : "Identifique o paciente pelo CPF para iniciar."}</p></div>
     </header>
     {loadingExisting && <p className="local-note" role="status">Carregando dados do paciente…</p>}
-    {!chosen && !loadingExisting && <form className="local-form operational-single-form" autoComplete="off" noValidate onSubmit={e => void savePatient(e)}>
-      <div className="operational-row"><div><h2>Dados do paciente</h2><p className="local-note">Preencha as informações para iniciar um novo cadastro.</p></div>
-        <Link className="local-secondary-button operational-small-button" to="/pacientes">Buscar paciente existente</Link></div>
+    {!cpfVerified && !loadingExisting && <form className="local-form operational-single-form" noValidate onSubmit={e=>void searchCpf(e)}>
+      <h2>Identificar paciente</h2><p className="local-note">Informe o CPF para verificar se o paciente já possui cadastro.</p>
+      <label className="local-search">CPF *<input type="text" autoFocus inputMode="numeric" maxLength={14} value={cpfLookup} placeholder="000.000.000-00" onChange={e=>{setCpfLookup(e.target.value);setLookupError("");}} aria-invalid={Boolean(lookupError)} /></label>
+      {lookupError && <p role="alert" className="local-message is-error">{lookupError}</p>}
+      <button className="local-primary" type="submit" disabled={lookupBusy}>{lookupBusy?"Buscando…":"Continuar"} <ArrowRight size={16}/></button>
+    </form>}
+    {!chosen && cpfVerified && !loadingExisting && <form className="local-form operational-single-form" autoComplete="off" noValidate onSubmit={e => void savePatient(e)}>
+      <div className="operational-row"><div><h2>Novo paciente</h2><p className="local-note">CPF não encontrado. Complete os dados do cadastro.</p></div></div>
       {patientFormError && <p className="local-message is-error" role="alert">{patientFormError}</p>}
-      <PatientRegistrationFields patient={patient} errors={patientErrors} busy={busy} onChange={(field,value)=>{setPatient(current=>({...current,[field]:value}));setPatientErrors(current=>({...current,[field]:undefined}));setPatientFormError("");}}/>
+      <PatientRegistrationFields patient={patient} errors={patientErrors} busy={busy} onChange={(field,value)=>{if(field==="cpf"&&value.replace(/\D/g,"")!==cpfLookup.replace(/\D/g,"")){setCpfLookup(value);setCpfVerified(false);}setPatient(current=>({...current,[field]:value}));setPatientErrors(current=>({...current,[field]:undefined}));setPatientFormError("");}}/>
       <div className="local-actions"><button type="submit" disabled={busy} className="local-primary">
         {busy ? "Salvando…" : "Cadastrar e continuar"} <ArrowRight size={16} aria-hidden="true" /></button>
-        <Link className="local-secondary-button" to="/pacientes">Consultar pacientes</Link>
       </div>
     </form>}
     {chosen && !loadingExisting && <PatientRecords patientId={chosen.id} />}
     {chosen && !loadingExisting && <form className="local-form operational-single-form" onSubmit={e => void saveEntry(e)}>
       {entryError && <p className="local-message is-error" role="alert">{entryError}</p>}
       <div className="operational-row"><div><h2>Informações da entrada</h2><p className="local-note">Paciente: <strong>{chosen.name}</strong></p></div>
-        <Link className="local-secondary-button operational-small-button" to="/pacientes">Trocar paciente</Link></div>
+        <button className="local-secondary-button operational-small-button" type="button" onClick={()=>{setChosen(null);setCpfVerified(false);setCpfLookup("");setPatient({...EMPTY});}}>Nova pesquisa</button></div>
       <div className="local-fields">
         <label>Classificação informada pela recepção *<select value={severity} onChange={e => setSeverity(e.target.value as Severity)}>
           <option value="VERDE">Verde · Baixa prioridade</option><option value="AMARELO">Amarelo · Atenção</option><option value="VERMELHO">Vermelho · Urgente</option>
