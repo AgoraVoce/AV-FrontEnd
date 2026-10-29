@@ -4,12 +4,18 @@ import { Link, useNavigate } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
 import { useToast } from "../components/useToast";
-import { createEmployee, type EmployeeRecord } from "./client";
+import { createEmployee, request, type EmployeeRecord } from "./client";
 import { operations, type Employee, type Page } from "./operational-api";
 import { errorText } from "./shared-helpers";
 import { extended } from "./extended-api";
 import "./local.css";
 import "./operations.css";
+
+async function operationsSpecialties(signal: AbortSignal): Promise<Array<{id:string;name:string;active:boolean}>> {
+  const result = await request("/specialties?page=1&pageSize=100", "GET", undefined, signal);
+  if (!result || typeof result !== "object" || !("items" in result) || !Array.isArray(result.items)) throw Error("Lista de especialidades inválida");
+  return result.items as Array<{id:string;name:string;active:boolean}>;
+}
 
 const ROLE_LABEL: Record<EmployeeRecord["role"], string> = {
   ADMIN: "Administrador", MEDICO: "Médico", RECEPCIONISTA: "Recepcionista",
@@ -31,6 +37,9 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newRole, setNewRole] = useState<EmployeeRecord["role"]>("MEDICO");
+  const [newSpecialtyId, setNewSpecialtyId] = useState("");
+  const [specialties, setSpecialties] = useState<Array<{id:string;name:string;active:boolean}>>([]);
+  const [specialtiesError, setSpecialtiesError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [editing, setEditing] = useState<Employee | null>(null);
@@ -63,10 +72,17 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [actor, view, load, revision, q]);
 
+  useEffect(() => {
+    if (actor !== "ADMIN" || view !== "create") return;
+    const ctrl = new AbortController();
+    void operationsSpecialties(ctrl.signal).then(items => {if(!ctrl.signal.aborted)setSpecialties(items.filter(s=>s.active));}).catch(()=>{if(!ctrl.signal.aborted)setSpecialtiesError(true)});
+    return () => ctrl.abort();
+  }, [actor, view]);
+
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (lock.current || actor !== "ADMIN" || view !== "create") return;
-    if (name.trim().length < 2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim()) || password.length < 8) {
+    if (name.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || password.length < 8) {
       setFormError("Preencha o nome, informe um e-mail válido e use uma senha de pelo menos 8 caracteres.");
       return;
     }
@@ -75,9 +91,14 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
     try {
       const created = await createEmployee({ name: name.trim(), email: email.trim(), password, role: newRole });
       setPassword("");
-      toast.success("Funcionário cadastrado", newRole === "MEDICO"
-        ? "A conta de " + created.name + " foi criada. Agora vincule uma especialidade ao cadastro médico."
-        : "Conta de " + created.name + " criada com sucesso.");
+      if (newRole === "MEDICO" && newSpecialtyId) {
+        try {
+          await extended.createDoctor(created.id, newSpecialtyId);
+          toast.success("Médico cadastrado", created.name + " e sua especialidade foram vinculados.");
+        } catch (linkError) {
+          toast.error("Conta criada, mas falta vincular o médico", errorText(linkError) + " Vincule-o na tela de Médicos. Não cadastre a conta novamente.");
+        }
+      } else toast.success("Funcionário cadastrado", "Conta de " + created.name + " criada com sucesso.");
       navigate("/admin/usuarios", { replace: true });
     } catch (cause) {
       toast.error("Não foi possível cadastrar o funcionário", errorText(cause));
@@ -122,9 +143,9 @@ export function StaffWorkspace({ actor, view = "list" }: { actor: "ADMIN" | "REC
           <label>Perfil *<select value={newRole} onChange={e => setNewRole(e.target.value as EmployeeRecord["role"])}>
             <option value="MEDICO">Médico</option><option value="RECEPCIONISTA">Recepcionista</option><option value="ADMIN">Administrador</option>
           </select></label>
+          {newRole === "MEDICO" && <label>Especialidade (opcional por enquanto)<select value={newSpecialtyId} onChange={event => setNewSpecialtyId(event.target.value)}><option value="">Vincular depois</option>{specialties.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{specialtiesError && <span className="local-note">Especialidades indisponíveis. Você ainda pode criar a conta e vincular depois.</span>}</label>}
         </div>
         <p className="local-note">Senha obrigatória: mínimo de 8 caracteres. Ela não será exibida na lista.</p>
-        {newRole === "MEDICO" && <p className="local-message" role="note">O perfil Médico cria uma conta de acesso. Para entrar na fila e atender pacientes, será necessário cadastrar o vínculo médico com uma especialidade no módulo Médicos.</p>}
         {formError && <p className="local-message is-error" role="alert">{formError}</p>}
         <div className="local-actions">
           <button className="local-primary" type="submit" disabled={saving}>
