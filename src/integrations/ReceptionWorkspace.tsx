@@ -53,7 +53,6 @@ export function ReceptionWorkspace() {
   const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [selected, setSelected] = useState<EntryDetail | null>(null);
@@ -70,7 +69,7 @@ export function ReceptionWorkspace() {
     ongoing.current?.abort();
     const controller = new AbortController();
     ongoing.current = controller;
-    if (initial) setLoading(true); else setRefreshing(true);
+    if (initial) setLoading(true);
     try {
       const result = await getReceptionWaitingQueue(controller.signal);
       if (!controller.signal.aborted) {
@@ -92,7 +91,7 @@ export function ReceptionWorkspace() {
         if (!queueErrorNotified.current) { queueErrorNotified.current = true; toast.error("Não foi possível atualizar a fila", errorText(cause)); }
       }
     } finally {
-      if (!controller.signal.aborted) { setLoading(false); setRefreshing(false); setClinicalLoading(false); }
+      if (!controller.signal.aborted) { setLoading(false); setClinicalLoading(false); }
     }
   }, [toast]);
   useEffect(() => {
