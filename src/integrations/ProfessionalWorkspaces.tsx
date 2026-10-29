@@ -214,8 +214,9 @@ export function DoctorShiftsAdmin() {
   return <AppShell><div className="local-page operational-page"><header className="local-page-head"><div><span className="local-eyebrow">Administração · Escalas</span>
     <h1>Plantões médicos</h1><p>Configure turnos reais e salas de atendimento. Plantões sobrepostos são rejeitados pelo servidor.</p></div>
     <Link to="/admin/medicos" className="local-secondary-button">Médicos</Link></header>
-    <section className="local-form"><label>Médico<select value={doctorId} onChange={e => setDoctorId(e.target.value)}><option value="">Escolha o profissional</option>{doctors.map(d => <option key={d.id} value={d.id}>{d.name} · {d.specialty.name}</option>)}</select></label>
+    <section className="local-form"><h2>Escala por profissional</h2><div className="local-fields"><label>Médico<select value={doctorId} onChange={e => setDoctorId(e.target.value)}><option value="">Escolha o profissional</option>{doctors.map(d => <option key={d.id} value={d.id}>{d.name} · {d.specialty.name}</option>)}</select></label></div>
       {error && <p className="local-message is-error" role="alert">{error}</p>}
+      {!doctorId && !error && <p className="local-note">Selecione um médico para consultar seus plantões e cadastrar novos horários.</p>}
       {doctorId && <><form onSubmit={e => void submit(e)} className="local-fields">
         <label>Início<input type="datetime-local" required value={start} onChange={e => setStart(e.target.value)} /></label>
         <label>Fim<input type="datetime-local" required value={end} onChange={e => setEnd(e.target.value)} /></label>
