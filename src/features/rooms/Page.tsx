@@ -97,6 +97,7 @@ export function RoomsPage() {
             </select>
           </label>
         </div>
+        {resource.error && <p className="local-note" role="status">O módulo de salas requer endpoints específicos da API, ainda não implementados no back-end atual. O cadastro permanece indisponível.</p>}
         <ResourceState
           {...resource}
           retry={resource.reload}
