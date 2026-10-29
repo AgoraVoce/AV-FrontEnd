@@ -8,7 +8,7 @@ import { useToast } from "../components/useToast";
 import { request } from "./client";
 import { operations, type Employee, type Page } from "./operational-api";
 import { extended, type DoctorProfile, type DoctorShift } from "./extended-api";
-import { errorText, formatDate } from "./shared-helpers";
+import { errorText } from "./shared-helpers";
 import "./local.css";
 import "./operations.css";
 
@@ -160,25 +160,6 @@ export function DoctorsDirectory() {
       </form>
     </EditorDialog>}
   </div></AppShell>;
-}
-
-function DoctorShifts({ doctorId }: { doctorId: string }) {
-  const [shifts, setShifts] = useState<DoctorShift[]>([]);
-  const [revision, setRevision] = useState(0);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    const controller = new AbortController();
-    void extended.shifts(doctorId, controller.signal).then(r => { if (!controller.signal.aborted) { setShifts(r.items); setError(""); } }).catch(err => { if (!controller.signal.aborted) setError(errorText(err)); });
-    return () => controller.abort();
-  }, [doctorId, revision]);
-  return <div><h3>Plantões do profissional</h3>{error && <p role="alert" className="local-message is-error">{error}</p>}
-    {shifts.length === 0 && !error && <p className="local-note">Nenhum plantão encontrado.</p>}
-    <div className="local-table-wrap"><table className="local-table"><thead><tr><th scope="col">Início</th><th scope="col">Fim</th><th scope="col">Sala</th><th scope="col">Situação</th></tr></thead><tbody>
-      {shifts.map(s => <tr key={s.id}><td>{formatDate(s.startsAt)}</td><td>{formatDate(s.endsAt)}</td><td>{s.room || "Não informada"}</td><td>{s.availabilityStatus === "DISPONIVEL" ? "Disponível" : "Indisponível"}</td></tr>)}
-    </tbody></table></div>
-    <button type="button" className="local-secondary-button" onClick={() => setRevision(i => i + 1)}>Atualizar plantões</button>
-    <Link className="local-secondary-button" to={"/admin/plantoes?doctor=" + encodeURIComponent(doctorId)}>Gerenciar plantões</Link>
-  </div>;
 }
 
 export function DoctorShiftsAdmin() {
