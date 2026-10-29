@@ -87,12 +87,7 @@ export function AppShell({
         ? "/admin/usuarios?dev=admin" : "/admin/usuarios")
     : (import.meta.env.DEV && state.status !== "authenticated"
         ? "/recepcao/usuarios?dev=recepcionista" : "/recepcao/usuarios");
-  const unitContext = headerContext ?? (
-    <span className="app-unit-chip">
-      <Building2 size={14} aria-hidden="true" />
-      {API_MODE ? "PRONTO-SOCORRO · AMBIENTE LOCAL" : "PRONTO-SOCORRO CENTRAL"}
-    </span>
-  );
+  const unitContext = headerContext ?? (API_MODE ? null : <span className="app-unit-chip"><Building2 size={14} aria-hidden="true" />PRONTO-SOCORRO CENTRAL</span>);
 
   async function handleSignOut() {
     if (isSigningOut) return;
@@ -119,7 +114,7 @@ export function AppShell({
   }
 
   return (
-    <div className={`app-shell${location.pathname === "/recepcao" ? " reception-shell" : ""}`}>
+    <div className="app-shell">
       <header className="site-header">
         <div className="header-left">
           <div className="header-brand-wrap">
@@ -128,7 +123,6 @@ export function AppShell({
           <div className="header-context">{unitContext}</div>
         </div>
 
-        {location.pathname === "/recepcao" && <div className="reception-center-brand"><Brand compact /></div>}
         <div className="header-right">
           {headerTools && <div className="header-tools">{headerTools}</div>}
           <button
@@ -187,7 +181,6 @@ export function AppShell({
                 </NavLink>
               ))}
               {API_MODE && activeRole === "RECEPCIONISTA" && <>
-                <NavLink to="/recepcao/senhas" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><ListChecks size={18} aria-hidden="true" /><span>Senhas da recepção</span></NavLink>
                 <NavLink to="/recepcao/entradas" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Search size={18} aria-hidden="true" /><span>Histórico de entradas</span></NavLink>
               </>}
               {API_MODE && activeRole === "RECEPCIONISTA" && <NavLink to="/pacientes" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Search size={18} aria-hidden="true" /><span>Pacientes cadastrados</span></NavLink>}
@@ -262,7 +255,7 @@ export function AppShell({
 
             <div className="nav-group">
               <p className="nav-group-title">TRANSMISSÃO</p>
-              {!API_MODE && TRANSMISSION_MENU.map(({ to, label, icon: Icon }) => (
+              {TRANSMISSION_MENU.filter(() => !API_MODE || activeRole === "RECEPCIONISTA").map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -288,11 +281,7 @@ export function AppShell({
             <span>{isSigningOut ? "Saindo..." : "Sair"}</span>
           </button>
 
-          <div className="sidebar-footer">
-            <span className="service-status-dot" aria-hidden="true" />
-            <span>{API_MODE ? "Ambiente local" : "Serviço Ativo"}</span>
-            <strong>v2.4</strong>
-          </div>
+          {!API_MODE && <div className="sidebar-footer"><span className="service-status-dot" aria-hidden="true" /><span>Serviço Ativo</span></div>}
         </aside>
 
         <main className="workspace-content">{children}</main>
