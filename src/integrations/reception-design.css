@@ -3,7 +3,7 @@
 .reception-center-brand .brand-mark {width:18px;height:18px;background:var(--color-brand-surface);color:var(--color-primary);}
 .reception-center-brand svg {width:13px;height:13px;}
 .reception-live.local-page {width:100%;max-width:none;margin:0;padding:0;gap:20px;}
-.reception-live, .reception-live *, .site-header *, .sidebar * {letter-spacing:0;}
+.reception-live, .reception-live * {letter-spacing:0;}
 .reception-live .local-eyebrow {font-size:11px;color:var(--color-muted);}
 .reception-live .local-eyebrow em {font-style:normal;color:var(--color-primary);}
 .reception-live h1 {font-size:clamp(24px,2vw,34px);}
