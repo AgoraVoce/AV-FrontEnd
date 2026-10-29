@@ -2,7 +2,7 @@ import { allPages, record, request } from "../clinic/api";
 import type { Specialty } from "../clinic/types";
 export const specialtiesApi = {
   list: (signal?: AbortSignal) => allPages<Specialty>("/specialties", signal),
-  save: (input: Omit<Specialty, "id" | "doctorCount">, id?: string) =>
+  save: (input: Pick<Specialty, "name" | "active">, id?: string) =>
     request(
       "/specialties" + (id ? "/" + encodeURIComponent(id) : ""),
       id ? "PATCH" : "POST",
