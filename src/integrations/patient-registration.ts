@@ -83,7 +83,7 @@ export function patientRegistrationError(cause: unknown): {
     cause.code === "PATIENT_ALREADY_EXISTS"
   ) {
     const message =
-      "Já existe um paciente com este CPF. Use Buscar paciente existente para registrar uma nova entrada.";
+      "Já existe um paciente com este CPF. Retorne à identificação para localizar o cadastro e registrar uma nova entrada.";
     return { message, fields: { cpf: message } };
   }
   const fields: PatientRegistrationErrors = {};
