@@ -125,7 +125,7 @@ test("admin consulta médicos em tabela e edita o vínculo em modal", async ({pa
 test("admin cadastra plantão pelo modal com sala e horário ISO", async ({page}) => {
   const state=await backend(page,"ADMIN");
   await go(page,"/admin/plantoes");
-  await page.getByLabel("Médico",{exact:true}).selectOption(doctorId);
+  await page.getByRole("combobox",{name:"Médico",exact:true}).selectOption(doctorId);
   await page.getByRole("button",{name:"Novo plantão"}).click();
   const dialog=page.getByRole("dialog");
   await dialog.getByLabel("Início").fill("2026-11-02T08:00");
@@ -200,7 +200,7 @@ test("recuperação por token funciona sem autenticação e confirma nova senha"
   await page.getByRole("button", { name: "Solicitar link" }).click();
   await expect(page.getByText(/Se existir uma conta ativa/)).toBeVisible();
   await page.goto("/reset-password?token=" + "a".repeat(64));
-  await page.getByLabel("Nova senha").fill("senhaSeguraComMaisDeOito");
+  await page.getByLabel("Nova senha *",{exact:true}).fill("senhaSeguraComMaisDeOito");
   await page.getByLabel("Repita a senha").fill("senhaSeguraComMaisDeOito");
   await page.getByRole("button", { name: "Redefinir senha" }).click();
   await expect(page.getByText(/Senha atualizada/)).toBeVisible();
