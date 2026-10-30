@@ -250,38 +250,8 @@ test("barra preserva ordem e modal fecha por X, cancelar, ESC e overlay com foco
   page,
 }) => {
   const { trigger, open } = await setup(page);
-  await expect(
-    page.locator(".reception-toolbar").locator("button,a"),
-  ).toHaveText([
-    "Atualizar fila",
-    "Filtrar",
-    "Buscar pacientes",
-    "Cadastrar Paciente",
-  ]);
-  const styles = await page.locator(".reception-toolbar").evaluate((bar) => {
-    const filter = Array.from(bar.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "Filtrar",
-    )!;
-    const search = bar.querySelector('a[href="/pacientes"]')!;
-    const properties = [
-      "height",
-      "border",
-      "borderRadius",
-      "backgroundColor",
-      "fontFamily",
-      "fontWeight",
-      "fontSize",
-      "padding",
-      "textDecorationLine",
-      "flexGrow",
-      "whiteSpace",
-    ] as const;
-    return [filter, search].map((element) => {
-      const style = getComputedStyle(element);
-      return properties.map((property) => style[property]);
-    });
-  });
-  expect(styles[0]).toEqual(styles[1]);
+  await expect(page.locator(".reception-toolbar").locator("button,a")).toHaveText(["Filtrar","Cadastrar Paciente"]);
+  await expect(page.locator('.reception-toolbar a[href="/novo-cadastro"]')).toBeVisible();
   for (const method of ["x", "cancel", "escape", "overlay"]) {
     await open();
     const modal = page.getByRole("dialog");
@@ -380,7 +350,7 @@ test("valida justificativa, mantém rascunho no polling e salva auditoria, cores
       localStorage.getItem("av:reception-reassessments:v1:review-user"),
     ),
   ).toBeNull();
-  await page.getByRole("button", { name: "Atualizar fila" }).click();
+  await expect(page.getByRole("button", { name: "Atualizar fila" })).toHaveCount(0);
   await expect(page.locator("tbody tr").first()).toHaveClass(/urgent/);
   await page.reload();
   await page.getByLabel("E-mail", { exact: true }).fill(user.email);
@@ -634,7 +604,7 @@ test("sintomas podem mudar sem trocar gravidade e histórico vem do servidor", a
   const row = page.locator('tr[data-priority-entry="entry-second"]');
   await expect(row).toContainText("Queixa atualizada após reavaliação.");
   await expect(row).toContainText("Aguardando");
-  await row.getByRole("button", { name: "Ver detalhes" }).click();
+  await row.getByRole("link", { name: "Ver detalhes" }).click();
   const history = page.getByRole("region", {
     name: "Histórico de reavaliações",
   });
@@ -740,7 +710,7 @@ test("histórico de reavaliações pagina registros do servidor", async ({
   controls.seedHistory(6);
   await page
     .locator('tr[data-priority-entry="entry-second"]')
-    .getByRole("button", { name: "Ver detalhes" })
+    .getByRole("link", { name: "Ver detalhes" })
     .click();
   const history = page.getByRole("region", {
     name: "Histórico de reavaliações",
@@ -786,7 +756,7 @@ test("contrato ampliado usa justification e preserva observação operacional", 
   await expect(row).toContainText(
     "Descrição clínica confirmada pelo servidor.",
   );
-  await row.getByRole("button", { name: "Ver detalhes" }).click();
+  await row.getByRole("link", { name: "Ver detalhes" }).click();
   await expect(
     page
       .getByRole("region", { name: "Histórico de reavaliações" })
@@ -799,7 +769,8 @@ test("fila ampliada mantém gravidade, queixa e espera quando um detalhe falha",
 }) => {
   const controls = await setup(page, "AMARELO", [], true);
   controls.fail();
-  await page.getByRole("button", { name: "Atualizar fila" }).click();
+  await page.getByRole("link", { name: "Pacientes cadastrados" }).click();
+  await page.getByRole("link", { name: "Triagem & Fila" }).click();
   await expect(
     page.getByText(/Não foi possível consultar os dados clínicos de 2/),
   ).toBeVisible();
