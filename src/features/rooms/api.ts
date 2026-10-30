@@ -9,5 +9,4 @@ export const roomsApi = {
       id ? "PATCH" : "POST",
       input,
     ).then(record<Room>),
-  remove: (id: string) => request("/rooms/" + encodeURIComponent(id), "DELETE"),
 };

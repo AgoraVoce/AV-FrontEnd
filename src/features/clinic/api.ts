@@ -44,21 +44,18 @@ export function page<T>(value: unknown): Page<T> {
 export async function allPages<T>(
   path: string,
   signal?: AbortSignal,
+  filters: Record<string, string> = {},
 ): Promise<T[]> {
+  const query = (p: number) =>
+    new URLSearchParams({ ...filters, page: String(p), pageSize: "100" });
   const first = page<T>(
-    await request(path + "?page=1&pageSize=100", "GET", undefined, signal),
+    await request(path + "?" + query(1), "GET", undefined, signal),
   );
   const result = [...first.items];
   for (let p = 2; (p - 1) * 100 < first.total; p++)
     result.push(
-      ...page<T>(
-        await request(
-          path + "?page=" + p + "&pageSize=100",
-          "GET",
-          undefined,
-          signal,
-        ),
-      ).items,
+      ...page<T>(await request(path + "?" + query(p), "GET", undefined, signal))
+        .items,
     );
   return result;
 }

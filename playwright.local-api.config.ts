@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e-local",
+  outputDir: "./test-results/local-api",
   fullyParallel: true,
   workers: 2,
   timeout: 30_000,

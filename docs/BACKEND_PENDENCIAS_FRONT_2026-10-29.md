@@ -2,7 +2,11 @@
 
 Este documento foi levantado a partir do código de **AV-Backend/main** e da integração atual no **AV-FrontEnd**. O front-end não deve simular autorização nem operações de persistência.
 
-## Prioridade 0 — Cadastro de salas não existe na API
+## Gestão médica e salas: atualização após sincronização
+
+O AV-Backend `9a8725b` já implementa salas, cadastro completo com CRM/telefone/sala padrão, busca por nome/CRM e escala administrativa. O frontend foi integrado e validado com API real e PostgreSQL descartável. Consulte [o checklist e os contratos atuais](gestao-medicos-validacao.md). As seções históricas abaixo sobre ausência de salas e edição limitada de médicos foram superadas; permissões de recepção e demais assuntos continuam fora desta entrega. A especialidade continua obrigatória no cadastro completo.
+
+## Histórico — Cadastro de salas não existia na API
 
 A UI usa `GET /api/v1/rooms`, `POST /api/v1/rooms`, `PATCH /api/v1/rooms/:id` e `DELETE /api/v1/rooms/:id`, mas **não há rotas `/rooms` registradas** no servidor atual.
 

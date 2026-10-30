@@ -62,7 +62,7 @@ Após o ajuste, um cadastro fictício realizado pela própria interface na porta
 ## Novos fluxos integrados (PR #19)
 - Recepção: controle de senhas administrativas, histórico geral de entradas, histórico por paciente, edição de contato e PDF das prescrições concluídas.
 - Médico: dashboard do servidor, restauração do atendimento ativo, histórico paginado e download de prescrição.
-- Administração: vínculo de contas médicas existentes, cadastro e disponibilidade de plantões, edição de funcionários e relatórios por período.
+- Administração: listagem, cadastro completo e edição de médicos com CRM/UF, telefone, especialidade e sala padrão; busca por nome/CRM e filtros; salas cadastradas e plantões com reserva de sala, edição e cancelamento.
 - Público: painel de chamadas das últimas 24 horas com atualização periódica, sem dados pessoais.
 - Acesso: solicitação de recuperação por e-mail e redefinição por token de uso único.
 - Não usar os módulos `tickets` e `queues` como se fossem a mesma fila; o painel público exibe chamadas clínicas, não as senhas administrativas.
@@ -72,7 +72,7 @@ Após o ajuste, um cadastro fictício realizado pela própria interface na porta
 - O contrato de `/entries/:id/complete` exige **ao menos um medicamento**. Precisamos discutir atendimentos encerrados sem medicação.
 - O backend disponibiliza `GET /public/calls` (sem identificação de pacientes), recuperação por link/token via `/auth/password-reset/*` e relatório administrativo `GET /admin/reports`. A recuperação só envia links se o backend possuir provedor de e-mail configurado.
 - O módulo `/tickets` é uma fila administrativa independente da fila clínica `/queues`; os estados não podem ser confundidos.
-- Perfis e plantões médicos devem usar `POST /doctors` e `/doctors/:id/shifts` após a criação da conta via `POST /employees`. A gestão de salas em entidade própria e o perfil/plantões do médico autenticado ainda não possuem rotas compatíveis.
+- Gestão médica integrada ao AV-Backend `9a8725b`: `GET/POST /admin/doctors`, `PATCH /doctors/:id`, `GET/POST/PATCH /rooms` e `GET /admin/shifts`. Plantões enviam `roomId`. Consulte [o checklist, os contratos e a validação local real](docs/gestao-medicos-validacao.md). No ambiente publicado, confirmar deploy e migration `20261030010000_doctor_profiles_rooms`.
 - **Prescrições dependem da migration `20261018191000_add_prescriptions`** no banco usado. A equipe informou que não estava aplicada ao Aiven em 18/10/2026. Não execute migrations de produção sem autorização.
 - O histórico do backend contém credenciais antigas que precisam ser rotacionadas conforme aviso da PR #3.
 

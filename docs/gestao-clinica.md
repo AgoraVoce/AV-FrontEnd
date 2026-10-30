@@ -1,4 +1,6 @@
-# Gestão clínica — entrega de 24/10/2026
+# Gestão clínica — proposta de extensão de 24/10/2026
+
+> Documento histórico de proposta. Após sincronização com AV-Backend `9a8725b`, a implementação usa contratos diferentes dos propostos abaixo. Consulte [os contratos atuais, o checklist concluído e a validação com API real local](gestao-medicos-validacao.md). Este documento não comprova deploy.
 
 Implementada no projeto existente, em modo integrado (`VITE_AV_LOCAL_API=true`). As telas de demonstração continuam separadas. A gestão clínica depende da extensão do AV-Backend descrita abaixo; não usa armazenamento local para simular persistência.
 

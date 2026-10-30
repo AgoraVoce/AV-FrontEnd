@@ -168,7 +168,10 @@ export async function installApiFixtures(page: Page, role: VisualRole) {
         bySeverity: [{ severity: "AMARELO", count: 3 }],
         doctors: [{ doctorId, name: doctor.name, completed: 2, averageAttendanceSeconds: 900 }] });
     }
-    const profile = { id: doctorId, userId: user.id, name: doctor.name, active: true, specialtyId: doctor.specialty.id, specialty: { ...doctor.specialty, active: true } };
+    const room = { id: "33333333-3333-4333-8333-333333333333", name: "Consultório 02", type: "Consultório", status: "ativa" };
+    const profile = { id: doctorId, userId: user.id, name: doctor.name, active: true, specialtyId: doctor.specialty.id, specialty: { ...doctor.specialty, active: true }, user: { email: "medica@exemplo.test" }, crmNumber: "12345", crmUf: "SP", phone: "11999999999", defaultRoomId: room.id, defaultRoom: room };
+    if (path === "/rooms" && method === "GET") return json({ items: [room] });
+    if (path === "/admin/shifts" && method === "GET") return json({ items: [{ ...doctor.shift, doctorId, doctor: { id: doctorId, name: doctor.name, specialtyId: profile.specialtyId }, roomId: room.id, availabilityStatus: "DISPONIVEL", recurrenceId: null }], total: 1, page: 1, pageSize: Number(url.searchParams.get("pageSize") || 100) });
     if (path === "/admin/doctors" && method === "GET") return json({ items: [profile], total: 1, page: 1, pageSize: Number(url.searchParams.get("pageSize") || 10) });
     if (path === "/specialties" && method === "GET") return json({ items: [profile.specialty], total: 1, page: 1, pageSize: Number(url.searchParams.get("pageSize") || 20) });
     if (path === "/doctors" && method === "POST") return json(profile, 201);

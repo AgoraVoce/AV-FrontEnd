@@ -4,6 +4,7 @@ const apiMode = process.env.VISUAL_API_MODE === "true";
 
 export default defineConfig({
   testDir: "./visual",
+  outputDir: apiMode ? "./test-results/visual-api" : "./test-results/visual-demo",
   testMatch: apiMode ? "**/api.visual.spec.ts" : "**/demo.visual.spec.ts",
   fullyParallel: false,
   workers: 1,

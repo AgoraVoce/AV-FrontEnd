@@ -13,6 +13,8 @@ import {
   ResourceState,
   Status,
 } from "../clinic/shared";
+import { useSearchParams } from "react-router-dom";
+import { LinkDoctorDialog } from "./LinkDoctorDialog";
 import { UFS, validateDoctor } from "./validation";
 const blank: ProfessionalInput = {
   name: "",
@@ -42,18 +44,22 @@ const options = async (signal: AbortSignal) => {
   return { specialties, rooms };
 };
 export function DoctorsPage() {
+  const [params] = useSearchParams();
+  const [linking, setLinking] = useState(false);
   const [q, setQ] = useState(""),
     [specialty, setSpecialty] = useState(""),
     [active, setActive] = useState(""),
     [page, setPage] = useState(1);
   const load = useCallback(
     (signal: AbortSignal) =>
-      doctorsApi.list(q, specialty, active, page, signal),
+      doctorsApi.list(q.trim(), specialty, active, page, signal),
     [q, specialty, active, page],
   );
   const resource = useResource(load),
     references = useResource(options);
-  const [editing, setEditing] = useState<Professional | "new" | null>(null),
+  const [editing, setEditing] = useState<Professional | "new" | null>(
+      params.get("novo") === "1" ? "new" : null,
+    ),
     [input, setInput] = useState<ProfessionalInput>(blank),
     [errors, setErrors] = useState<Record<string, string>>({}),
     [confirm, setConfirm] = useState<Professional | null>(null);
@@ -63,6 +69,7 @@ export function DoctorsPage() {
     resource.reload();
   });
   function edit(d: Professional | "new") {
+    save.reset();
     setEditing(d);
     setErrors({});
     setInput(
@@ -92,6 +99,9 @@ export function DoctorsPage() {
         email: input.email.trim().toLowerCase(),
       },
       fields = validateDoctor(clean);
+    if (editing && editing !== "new" && editing.phone && !clean.phone)
+      fields.phone =
+        "Informe o telefone. O telefone cadastrado não pode ser removido.";
     setErrors(fields);
     if (Object.keys(fields).length) return;
     if (editing && editing !== "new" && editing.active && !input.active) {
@@ -102,6 +112,7 @@ export function DoctorsPage() {
       doctorsApi.save(
         clean,
         editing && editing !== "new" ? editing.id : undefined,
+        editing && editing !== "new" ? editing : undefined,
       ),
     );
   }
@@ -113,19 +124,28 @@ export function DoctorsPage() {
       <section className="local-form">
         <div className="operational-row">
           <h2>Equipe médica</h2>
-          <button
-            className="local-primary"
-            disabled={references.loading || !!references.error}
-            onClick={() => edit("new")}
-          >
-            Novo médico
-          </button>
+          <div className="local-actions">
+            <button
+              className="local-secondary-button"
+              onClick={() => setLinking(true)}
+            >
+              Vincular conta existente
+            </button>
+            <button
+              className="local-primary"
+              disabled={references.loading || !!references.error}
+              onClick={() => edit("new")}
+            >
+              Novo médico
+            </button>
+          </div>
         </div>
         <div className="local-fields">
           <label>
             Buscar por nome ou CRM
             <input
               type="search"
+              maxLength={150}
               value={q}
               onChange={(e) => {
                 setQ(e.target.value);
@@ -203,10 +223,14 @@ export function DoctorsPage() {
                 >
                   Editar {d.name}
                 </button>
+                {!d.active && <button className="local-secondary-button" disabled={save.saving} onClick={() => { save.reset(); void save.run(() => doctorsApi.reactivate(d.id)); }}>Reativar {d.name}</button>}
                 {d.active && (
                   <button
                     className="local-secondary-button"
-                    onClick={() => setConfirm(d)}
+                    onClick={() => {
+                      save.reset();
+                      setConfirm(d);
+                    }}
                   >
                     Inativar
                   </button>
@@ -238,151 +262,169 @@ export function DoctorsPage() {
           </div>
         )}
       </section>
+      {linking && (
+        <LinkDoctorDialog
+          onClose={() => setLinking(false)}
+          onSaved={() => {
+            setLinking(false);
+            resource.reload();
+          }}
+        />
+      )}
       {editing && (
-        <EditorDialog title={editing === "new" ? "Novo médico" : "Editar médico"} busy={save.saving} onClose={() => setEditing(null)}>
-        <form className="local-form" onSubmit={(e) => void submit(e)}>
-          <h2>{editing === "new" ? "Novo médico" : "Editar médico"}</h2>
-          <p className="local-note">
-            Campos obrigatórios marcados com *. O cadastro cria a conta de
-            acesso e o perfil médico na mesma operação.
-          </p>
-          <fieldset className="clinic-fieldset" disabled={save.saving}>
-            <div className="local-fields">
-              <label>
-                Nome completo *
-                <input
-                  autoFocus
-                  required
-                  minLength={2}
-                  maxLength={150}
-                  value={input.name}
-                  onChange={(e) => change("name", e.target.value)}
-                />
-                {error("name")}
-              </label>
-              <label>
-                E-mail *
-                <input
-                  required
-                  type="email"
-                  maxLength={150}
-                  value={input.email}
-                  onChange={(e) => change("email", e.target.value)}
-                />
-                {error("email")}
-              </label>
-              <label>
-                CRM (número) *
-                <input
-                  required
-                  inputMode="numeric"
-                  pattern="[1-9][0-9]{0,6}"
-                  value={input.crmNumber}
-                  onChange={(e) => change("crmNumber", e.target.value)}
-                />
-                {error("crmNumber")}
-              </label>
-              <label>
-                UF do CRM *
-                <select
-                  value={input.crmUf}
-                  onChange={(e) => change("crmUf", e.target.value)}
-                >
-                  {UFS.map((uf) => (
-                    <option key={uf}>{uf}</option>
-                  ))}
-                </select>
-                {error("crmUf")}
-              </label>
-              <label>
-                Telefone
-                <input
-                  type="tel"
-                  placeholder="DDD e número"
-                  value={input.phone ?? ""}
-                  onChange={(e) =>
-                    change("phone", e.target.value.replace(/\D/g, "") || null)
-                  }
-                />
-                {error("phone")}
-              </label>
-              <label>
-                Especialidade principal *
-                <select
-                  required
-                  value={input.specialtyId}
-                  onChange={(e) => change("specialtyId", e.target.value)}
-                >
-                  <option value="">Selecione</option>
-                  {references.data?.specialties
-                    .filter((s) => s.active || s.id === input.specialtyId)
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                        {!s.active ? " (inativa)" : ""}
-                      </option>
-                    ))}
-                </select>
-                {error("specialtyId")}
-              </label>
-              <label>
-                Sala padrão
-                <select
-                  value={input.defaultRoomId ?? ""}
-                  onChange={(e) =>
-                    change("defaultRoomId", e.target.value || null)
-                  }
-                >
-                  <option value="">Sem sala padrão</option>
-                  {references.data?.rooms
-                    .filter(
-                      (r) =>
-                        r.status === "ativa" || r.id === input.defaultRoomId,
-                    )
-                    .map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                        {r.status !== "ativa" ? " (indisponível)" : ""}
-                      </option>
-                    ))}
-                </select>
-                {error("defaultRoomId")}
-              </label>
-              <label>
-                Situação
-                <select
-                  value={String(input.active)}
-                  onChange={(e) => change("active", e.target.value === "true")}
-                >
-                  <option value="true">Ativo</option>
-                  <option value="false">Inativo</option>
-                </select>
-              </label>
-              {editing === "new" && (
+        <EditorDialog
+          title={editing === "new" ? "Novo médico" : "Editar médico"}
+          busy={save.saving}
+          onClose={() => setEditing(null)}
+        >
+          <form className="local-form" onSubmit={(e) => void submit(e)}>
+            <h2>{editing === "new" ? "Novo médico" : "Editar médico"}</h2>
+            <p className="local-note">
+              Campos obrigatórios marcados com *. O cadastro cria a conta de
+              acesso e o perfil médico na mesma operação.
+            </p>
+            <fieldset className="clinic-fieldset" disabled={save.saving}>
+              <div className="local-fields">
                 <label>
-                  Senha inicial *
+                  Nome completo *
+                  <input
+                    autoFocus
+                    required
+                    minLength={2}
+                    maxLength={150}
+                    value={input.name}
+                    onChange={(e) => change("name", e.target.value)}
+                  />
+                  {error("name")}
+                </label>
+                <label>
+                  E-mail *
                   <input
                     required
-                    minLength={8}
-                    maxLength={1024}
-                    type="password"
-                    autoComplete="new-password"
-                    value={input.password}
-                    onChange={(e) => change("password", e.target.value)}
+                    type="email"
+                    maxLength={150}
+                    value={input.email}
+                    onChange={(e) => change("email", e.target.value)}
                   />
-                  {error("password")}
+                  {error("email")}
                 </label>
-              )}
-            </div>
-          </fieldset>
-          <FormActions
-            {...save}
-            onCancel={() => {
-              setInput(blank);
-              setEditing(null);
-            }}
-          />
-        </form>
+                <label>
+                  CRM (número) *
+                  <input
+                    required
+                    inputMode="numeric"
+                    pattern="[0-9]{1,10}"
+                    maxLength={10}
+                    value={input.crmNumber}
+                    onChange={(e) => change("crmNumber", e.target.value)}
+                  />
+                  {error("crmNumber")}
+                </label>
+                <label>
+                  UF do CRM *
+                  <select
+                    value={input.crmUf}
+                    onChange={(e) => change("crmUf", e.target.value)}
+                  >
+                    {UFS.map((uf) => (
+                      <option key={uf}>{uf}</option>
+                    ))}
+                  </select>
+                  {error("crmUf")}
+                </label>
+                <label>
+                  Telefone{editing === "new" ? " *" : ""}
+                  <input
+                    type="tel"
+                    required={editing === "new"}
+                    maxLength={11}
+                    placeholder="DDD e número"
+                    value={input.phone ?? ""}
+                    onChange={(e) =>
+                      change("phone", e.target.value.replace(/\D/g, "") || null)
+                    }
+                  />
+                  {error("phone")}
+                </label>
+                <label>
+                  Especialidade principal *
+                  <select
+                    required
+                    value={input.specialtyId}
+                    onChange={(e) => change("specialtyId", e.target.value)}
+                  >
+                    <option value="">Selecione</option>
+                    {references.data?.specialties
+                      .filter((s) => s.active || s.id === input.specialtyId)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                          {!s.active ? " (inativa)" : ""}
+                        </option>
+                      ))}
+                  </select>
+                  {error("specialtyId")}
+                </label>
+                <label>
+                  Sala padrão
+                  <select
+                    value={input.defaultRoomId ?? ""}
+                    onChange={(e) =>
+                      change("defaultRoomId", e.target.value || null)
+                    }
+                  >
+                    <option value="">Sem sala padrão</option>
+                    {references.data?.rooms
+                      .filter(
+                        (r) =>
+                          r.status === "ativa" || r.id === input.defaultRoomId,
+                      )
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                          {r.status !== "ativa" ? " (indisponível)" : ""}
+                        </option>
+                      ))}
+                  </select>
+                  {error("defaultRoomId")}
+                </label>
+                <label>
+                  Situação
+                  <select
+                    value={String(input.active)}
+                    onChange={(e) =>
+                      change("active", e.target.value === "true")
+                    }
+                  >
+                    <option value="true">Ativo</option>
+                    <option value="false">Inativo</option>
+                  </select>
+                </label>
+                {editing === "new" && (
+                  <label>
+                    Senha inicial *
+                    <input
+                      required
+                      minLength={8}
+                      maxLength={1024}
+                      type="password"
+                      autoComplete="new-password"
+                      value={input.password}
+                      onChange={(e) => change("password", e.target.value)}
+                    />
+                    {error("password")}
+                  </label>
+                )}
+              </div>
+            </fieldset>
+            <FormActions
+              {...save}
+              onCancel={() => {
+                setInput(blank);
+                setEditing(null);
+              }}
+            />
+          </form>
         </EditorDialog>
       )}
       {confirm && (
@@ -393,7 +435,16 @@ export function DoctorsPage() {
           onConfirm={() =>
             void save.run(() =>
               editing === confirm
-                ? doctorsApi.save({ ...input, active: false }, confirm.id)
+                ? doctorsApi.save(
+                    {
+                      ...input,
+                      name: input.name.trim(),
+                      email: input.email.trim().toLowerCase(),
+                      active: false,
+                    },
+                    confirm.id,
+                    confirm,
+                  )
                 : doctorsApi.deactivate(confirm.id),
             )
           }

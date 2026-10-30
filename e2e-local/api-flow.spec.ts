@@ -127,11 +127,11 @@ test("admin lista contas reais, filtra e cadastra funcionário sem expor senha",
   let created=false;let listed=false;
   await page.route("**/api/v1/employees?*",async route=>{
     listed=true;
-    await route.fulfill({json:{items:created?[{id:"ef18ca6f-c68f-4748-ae75-653d188287f5",name:"Nova Médica",email:"medica@clinica.test",role:"MEDICO",active:true,createdAt:"2026-10-19T09:00:00Z",updatedAt:"2026-10-19T09:00:00Z"}]:[],page:1,pageSize:10,total:created?1:0}});
+    await route.fulfill({json:{items:created?[{id:"ef18ca6f-c68f-4748-ae75-653d188287f5",name:"Nova Recepcionista",email:"medica@clinica.test",role:"RECEPCIONISTA",active:true,createdAt:"2026-10-19T09:00:00Z",updatedAt:"2026-10-19T09:00:00Z"}]:[],page:1,pageSize:10,total:created?1:0}});
   });
   await page.route("**/api/v1/employees",async route=>{
     const data=route.request().postDataJSON();
-    expect(data).toEqual({name:"Nova Médica",email:"medica@clinica.test",password:"senhaSegura123",role:"MEDICO"});
+    expect(data).toEqual({name:"Nova Recepcionista",email:"medica@clinica.test",password:"senhaSegura123",role:"RECEPCIONISTA"});
     created=true;
     await route.fulfill({status:201,json:{id:"ef18ca6f-c68f-4748-ae75-653d188287f5",name:data.name,email:data.email,role:data.role,active:true}});
   });
@@ -142,13 +142,13 @@ test("admin lista contas reais, filtra e cadastra funcionário sem expor senha",
   await expect(page).toHaveURL("/admin/novo-funcionario");
   await expect(page.getByRole("heading",{name:"Equipe cadastrada"})).toHaveCount(0);
   await expect(page.getByRole("link",{name:/Voltar aos funcionários/})).toBeVisible();
-  await page.getByLabel("Nome completo").fill("Nova Médica");
+  await page.getByLabel("Nome completo").fill("Nova Recepcionista");
   await page.getByLabel("E-mail corporativo").fill("medica@clinica.test");
   await page.getByLabel("Senha inicial").fill("senhaSegura123");
-  await page.locator("form").getByLabel("Perfil").selectOption("MEDICO");
+  await page.locator("form").getByLabel("Perfil").selectOption("RECEPCIONISTA");
   await page.getByRole("button",{name:/Cadastrar funcionário/}).click();
   await expect(page).toHaveURL("/admin/usuarios");
-  await expect(page.getByRole("cell",{name:"Nova Médica"})).toBeVisible();
+  await expect(page.getByRole("cell",{name:"Nova Recepcionista"})).toBeVisible();
   await expect(page.getByText("senhaSegura123")).toHaveCount(0);
   expect(created && listed).toBe(true);
 });
