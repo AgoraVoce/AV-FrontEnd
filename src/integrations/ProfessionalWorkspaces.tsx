@@ -185,13 +185,13 @@ export function DoctorShiftsAdmin() {
     return ()=>ctrl.abort();
   },[revision]);
   useEffect(()=>{
-    if(!doctorId){setShifts([]);return;}
+    if(!doctorId){const clear=window.setTimeout(()=>setShifts([]),0);return ()=>window.clearTimeout(clear);}
     const ctrl=new AbortController();
-    setLoading(true);
+    const startLoading=window.setTimeout(()=>setLoading(true),0);
     void extended.shifts(doctorId,ctrl.signal).then(data=>{if(!ctrl.signal.aborted){setShifts(data.items);setError("");}})
       .catch(cause=>{if(!ctrl.signal.aborted)setError(errorText(cause));})
       .finally(()=>{if(!ctrl.signal.aborted)setLoading(false);});
-    return ()=>ctrl.abort();
+    return ()=>{window.clearTimeout(startLoading);ctrl.abort();};
   },[doctorId,revision]);
   async function submit(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
