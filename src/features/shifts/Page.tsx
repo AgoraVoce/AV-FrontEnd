@@ -64,8 +64,6 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
     [roomId, setRoomId] = useState(""),
     [startsAt, setStartsAt] = useState(""),
     [endsAt, setEndsAt] = useState(""),
-    [recurring, setRecurring] = useState(false),
-    [until, setUntil] = useState(""),
     [validation, setValidation] = useState(""),
     [confirm, setConfirm] = useState<Shift | null>(null);
   const save = useSave(() => {
@@ -74,18 +72,26 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
     resource.reload();
   });
   function edit(s: Shift | "new") {
+    save.reset();
     setEditing(s);
     setValidation("");
     setDoctorId(s === "new" ? "" : s.doctorId);
     setRoomId(s === "new" ? "" : (s.roomId ?? ""));
     setStartsAt(s === "new" ? "" : localInput(s.startsAt));
     setEndsAt(s === "new" ? "" : localInput(s.endsAt));
-    setRecurring(false);
-    setUntil("");
   }
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!startsAt || !endsAt) return;
+    if (!startsAt || !endsAt) {
+      setValidation("Preencha os horários de início e fim.");
+      return;
+    }
+    if (
+      !refs.data?.rooms.some((r) => r.id === roomId && r.status === "ativa")
+    ) {
+      setValidation("Selecione uma sala ativa e disponível.");
+      return;
+    }
     const input = {
       startsAt: startsAt + ":00-03:00",
       endsAt: endsAt + ":00-03:00",
@@ -97,7 +103,7 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
       doctorId,
       resource.data ?? [],
       editing && editing !== "new" ? editing.id : undefined,
-      recurring ? until : undefined,
+      refs.data?.rooms.find((r) => r.id === roomId)?.name,
     );
     setValidation(error);
     if (error) return;
@@ -106,7 +112,6 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
         doctorId,
         input,
         editing && editing !== "new" ? editing.id : undefined,
-        recurring ? until : undefined,
       ),
     );
   }
@@ -123,6 +128,13 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
     { length: 7 },
     (_, i) => new Date(+monday + i * 86400000),
   );
+  const visible =
+    view === "list"
+      ? list
+      : list.filter((s) => {
+          const day = localInput(s.startsAt).slice(0, 10);
+          return dates.some((date) => date.toISOString().slice(0, 10) === day);
+        });
   function entry(s: Shift) {
     return (
       <article key={s.id} className="clinic-slot">
@@ -131,7 +143,9 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
         </time>
         <strong>{s.doctor?.name || "Meu plantão"}</strong>
         <span>
-          {s.room || "Sem sala"}
+          {refs.data?.rooms.find((r) => r.id === s.roomId)?.name ||
+            s.room ||
+            "Sem sala"}
           {s.recurrenceId ? " · Semanal" : ""}
         </span>
         <Status
@@ -147,7 +161,10 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
             </button>
             <button
               className="local-secondary-button"
-              onClick={() => setConfirm(s)}
+              onClick={() => {
+                save.reset();
+                setConfirm(s);
+              }}
             >
               Cancelar plantão
             </button>
@@ -248,7 +265,7 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
         <ResourceState
           {...resource}
           retry={resource.reload}
-          empty={!list.length}
+          empty={!visible.length}
         />
         {!resource.loading &&
           !resource.error &&
@@ -287,97 +304,87 @@ export function ShiftsPage({ own = false }: { own?: boolean }) {
           busy={save.saving}
           onClose={() => setEditing(null)}
         >
-        <form className="local-form" onSubmit={(e) => void submit(e)}>
-          <h2>{editing === "new" ? "Novo plantão" : "Editar ocorrência"}</h2>
-          <p className="local-note">
-            Horários de Brasília. Em uma série semanal, editar ou cancelar afeta
-            somente a ocorrência selecionada.
-          </p>
-          <fieldset disabled={save.saving} className="clinic-fieldset">
-            <div className="local-fields">
-              <label>
-                Médico *
-                <select
-                  autoFocus
-                  required
-                  disabled={editing !== "new"}
-                  value={doctorId}
-                  onChange={(e) => setDoctorId(e.target.value)}
-                >
-                  <option value="">Selecione</option>
-                  {refs.data?.doctors
-                    .filter((d) => d.active || d.id === doctorId)
-                    .map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                Sala *
-                <select
-                  required
-                  value={roomId}
-                  onChange={(e) => setRoomId(e.target.value)}
-                >
-                  <option value="">Selecione</option>
-                  {refs.data?.rooms
-                    .filter((r) => r.status === "ativa" || r.id === roomId)
-                    .map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                Data e horário de início *
-                <input
-                  type="datetime-local"
-                  required
-                  value={startsAt}
-                  onChange={(e) => setStartsAt(e.target.value)}
-                />
-              </label>
-              <label>
-                Data e horário de fim *
-                <input
-                  type="datetime-local"
-                  required
-                  value={endsAt}
-                  onChange={(e) => setEndsAt(e.target.value)}
-                />
-              </label>
-              {editing === "new" && (
+          <form className="local-form" onSubmit={(e) => void submit(e)}>
+            <h2>{editing === "new" ? "Novo plantão" : "Editar ocorrência"}</h2>
+            <p className="local-note">
+              Horários de Brasília. A sala selecionada será reservada para este
+              plantão.
+            </p>
+            <fieldset disabled={save.saving} className="clinic-fieldset">
+              <div className="local-fields">
                 <label>
-                  Recorrência
+                  Médico *
                   <select
-                    value={String(recurring)}
-                    onChange={(e) => setRecurring(e.target.value === "true")}
+                    autoFocus
+                    required
+                    disabled={editing !== "new"}
+                    value={doctorId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setDoctorId(id);
+                      const preferred = refs.data?.doctors.find(
+                        (d) => d.id === id,
+                      )?.defaultRoomId;
+                      setRoomId(
+                        refs.data?.rooms.some(
+                          (r) => r.id === preferred && r.status === "ativa",
+                        )
+                          ? preferred!
+                          : "",
+                      );
+                    }}
                   >
-                    <option value="false">Avulso</option>
-                    <option value="true">Semanal no dia da data inicial</option>
+                    <option value="">Selecione</option>
+                    {refs.data?.doctors
+                      .filter((d) => d.active || d.id === doctorId)
+                      .map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
                   </select>
                 </label>
-              )}
-              {recurring && (
                 <label>
-                  Repetir semanalmente até *
-                  <input
-                    type="date"
+                  Sala *
+                  <select
                     required
-                    min={startsAt.slice(0, 10)}
-                    value={until}
-                    onChange={(e) => setUntil(e.target.value)}
+                    value={roomId}
+                    onChange={(e) => setRoomId(e.target.value)}
+                  >
+                    <option value="">Selecione</option>
+                    {refs.data?.rooms
+                      .filter((r) => r.status === "ativa" || r.id === roomId)
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                          {r.status !== "ativa" ? " (indisponível)" : ""}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  Data e horário de início *
+                  <input
+                    type="datetime-local"
+                    required
+                    value={startsAt}
+                    onChange={(e) => setStartsAt(e.target.value)}
                   />
                 </label>
-              )}
-            </div>
-          </fieldset>
-          {validation && <p role="alert">{validation}</p>}
-          <FormActions {...save} onCancel={() => setEditing(null)} />
-        </form>
+                <label>
+                  Data e horário de fim *
+                  <input
+                    type="datetime-local"
+                    required
+                    value={endsAt}
+                    onChange={(e) => setEndsAt(e.target.value)}
+                  />
+                </label>
+              </div>
+            </fieldset>
+            {validation && <p role="alert">{validation}</p>}
+            <FormActions {...save} onCancel={() => setEditing(null)} />
+          </form>
         </EditorDialog>
       )}
       {confirm && (

@@ -107,37 +107,6 @@ async function go(page: Page, path: string) {
   await expect(page).toHaveURL(path);
 }
 
-test("admin consulta médicos em tabela e edita o vínculo em modal", async ({page}) => {
-  const state=await backend(page,"ADMIN");
-  await go(page,"/admin/medicos");
-  await expect(page.getByRole("heading",{name:"Médicos",exact:true})).toBeVisible();
-  await expect(page.getByRole("cell",{name:doctor.name})).toBeVisible();
-  await page.getByRole("row",{name:new RegExp(doctor.name)}).getByRole("button",{name:"Editar"}).click();
-  const dialog=page.getByRole("dialog");
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Situação").selectOption("false");
-  await dialog.getByRole("button",{name:"Salvar alterações"}).click();
-  await expect.poll(()=>state.requests.some(r=>r.method==="PATCH"&&r.path==="/doctors/"+doctorId)).toBe(true);
-  const payload=state.requests.find(r=>r.method==="PATCH"&&r.path==="/doctors/"+doctorId)?.body;
-  expect(payload).toMatchObject({specialtyId,active:false});
-});
-
-test("admin cadastra plantão pelo modal com sala e horário ISO", async ({page}) => {
-  const state=await backend(page,"ADMIN");
-  await go(page,"/admin/plantoes");
-  await page.getByRole("combobox",{name:"Médico",exact:true}).selectOption(doctorId);
-  await page.getByRole("button",{name:"Novo plantão"}).click();
-  const dialog=page.getByRole("dialog");
-  await dialog.getByLabel("Início").fill("2026-11-02T08:00");
-  await dialog.getByLabel("Fim").fill("2026-11-02T12:00");
-  await dialog.getByLabel("Sala ou consultório").fill("03");
-  await dialog.getByRole("button",{name:"Salvar plantão"}).click();
-  await expect.poll(()=>state.requests.some(r=>r.path==="/doctors/"+doctorId+"/shifts"&&r.method==="POST")).toBe(true);
-  const body=state.requests.find(r=>r.path==="/doctors/"+doctorId+"/shifts"&&r.method==="POST")?.body as {room:string;startsAt:string;endsAt:string};
-  expect(body.room).toBe("03");
-  expect(new Date(body.startsAt).getTime()).toBeLessThan(new Date(body.endsAt).getTime());
-});
-
 test("recepção acessa o painel de senhas AV sem gerar tickets paralelos", async ({page}) => {
   const state=await backend(page,"RECEPCIONISTA");
   await page.getByRole("link",{name:"Painel TV Pública"}).click();

@@ -6,7 +6,7 @@ import { AppShell } from "../components/AppShell";
 import { usePageTitle } from "../components/usePageTitle";
 import { useToast } from "../components/useToast";
 import { useAuth } from "../auth/context";
-import { getDoctorQueue, type DoctorItem } from "./client";
+import { ApiError, getDoctorQueue, type DoctorItem } from "./client";
 import { operations, type EntryDetail, type Medication, type Prescription } from "./operational-api";
 import { errorText, formatDate } from "./shared-helpers";
 import { RiskPill, StatePill } from "./shared-ui";
@@ -27,6 +27,7 @@ export function DoctorWorkspace({ view = "dashboard" }: { view?: "dashboard" | "
   const userId = state.status === "authenticated" ? state.user.id : "";
   const [queue, setQueue] = useState<DoctorItem[]>([]);
   const [queueError, setQueueError] = useState(false);
+  const [profileUnavailable, setProfileUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"" | "calling" | "starting" | "finishing">("");
   const [active, setActive] = useState<EntryDetail | null>(null);
@@ -57,14 +58,19 @@ export function DoctorWorkspace({ view = "dashboard" }: { view?: "dashboard" | "
         catch { if (!controller.signal.aborted) setDashboard(null); }
       }
     } catch (cause) {
-      if (!controller.signal.aborted) { setQueueError(true); toast.error("Não foi possível carregar a fila", errorText(cause)); }
+      if (!controller.signal.aborted) {
+        setQueueError(true);
+        if (cause instanceof ApiError && cause.code === "DOCTOR_PROFILE_UNAVAILABLE") setProfileUnavailable(true);
+        else toast.error("Não foi possível carregar a fila", errorText(cause));
+      }
     } finally { if (!controller.signal.aborted) setLoading(false); }
   }, [toast, view]);
   useEffect(() => {
+    if (profileUnavailable) return;
     const initial = window.setTimeout(() => void refresh(true), 0);
     const timer = window.setInterval(() => void refresh(), 30000);
     return () => { window.clearTimeout(initial); window.clearInterval(timer); ongoing.current?.abort(); };
-  }, [refresh]);
+  }, [refresh, profileUnavailable]);
 
   useEffect(() => {
     if (!userId) return;
@@ -79,7 +85,10 @@ export function DoctorWorkspace({ view = "dashboard" }: { view?: "dashboard" | "
         sessionStorage.removeItem(cacheKey(userId));
       }
     }).catch(cause => {
-      if (!controller.signal.aborted) toast.error("Não foi possível recuperar o atendimento ativo", errorText(cause));
+      if (!controller.signal.aborted) {
+        if (cause instanceof ApiError && cause.code === "DOCTOR_PROFILE_UNAVAILABLE") setProfileUnavailable(true);
+        else toast.error("Não foi possível recuperar o atendimento ativo", errorText(cause));
+      }
     }).finally(() => { if (!controller.signal.aborted) setRestoring(false); });
     return () => controller.abort();
   }, [userId, toast]);
@@ -177,6 +186,26 @@ export function DoctorWorkspace({ view = "dashboard" }: { view?: "dashboard" | "
     } finally { lock.current = false; setBusy(""); }
   }
 
+  async function checkProfile() {
+    setRestoring(true);
+    try {
+      const result = await extended.active();
+      setActive(result);
+      if (result) sessionStorage.setItem(cacheKey(userId), result.id);
+      else sessionStorage.removeItem(cacheKey(userId));
+      setProfileUnavailable(false);
+    } catch (cause) {
+      if (!(cause instanceof ApiError && cause.code === "DOCTOR_PROFILE_UNAVAILABLE"))
+        toast.error("Não foi possível verificar o cadastro", errorText(cause));
+    } finally { setRestoring(false); }
+  }
+  if (profileUnavailable) return <AppShell><div className="local-page operational-page">
+    <section className="local-form" role="alert"><h1>Cadastro médico indisponível</h1>
+      <p>O cadastro médico desta conta está ausente ou inativo. Peça à administração para vincular sua conta a um perfil clínico ou reativar o perfil existente na tela de Médicos.</p>
+      <p>Conta: {state.status === "authenticated" ? state.user.login : doctorName}</p>
+      <button className="local-primary" disabled={restoring} onClick={() => void checkProfile()}>{restoring ? "Verificando…" : "Verificar cadastro novamente"}</button>
+    </section>
+  </div></AppShell>;
   const canCall = !loading && !queueError && !restoring && !active && queue.length > 0;
   return <AppShell><div className="local-page operational-page">
     <header className="local-page-head"><div>

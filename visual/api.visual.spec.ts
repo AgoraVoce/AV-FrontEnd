@@ -39,6 +39,7 @@ const screens: Screen[] = [
   { id: "admin-novo-funcionario", path: "/admin/novo-funcionario", role: "ADMIN" },
   { id: "admin-usuarios", path: "/admin/usuarios", role: "ADMIN" },
   { id: "admin-medicos", path: "/admin/medicos", role: "ADMIN" },
+  { id: "admin-salas", path: "/admin/salas", role: "ADMIN" },
   { id: "admin-plantoes", path: "/admin/plantoes", role: "ADMIN" },
   { id: "admin-fila-indisponivel", path: "/admin/fila", role: "ADMIN" },
   { id: "admin-relatorios", path: "/admin/relatorios", role: "ADMIN" },
@@ -129,6 +130,9 @@ for (const screen of screens) {
     }
     await expect(page.locator("h1:visible, h2:visible").first()).toBeVisible();
     await prepareState(page, screen);
+    if (screen.id === "admin-medicos") await expect(page.locator(".clinic-record").first()).toContainText("Dra. Helena Exemplo");
+    if (screen.id === "admin-salas") await expect(page.locator(".clinic-record").first()).toContainText("Consultório 02");
+    if (screen.id === "admin-plantoes") await expect(page.locator(".clinic-slot").first()).toContainText("Consultório 02");
     await captureScreen(page, info, "api", screen.id, errors);
     expect(fixtures.unexpected, "Todas as chamadas da API devem estar simuladas").toEqual([]);
   });

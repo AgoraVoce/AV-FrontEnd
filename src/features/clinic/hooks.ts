@@ -63,5 +63,10 @@ export function useSave(onSuccess: () => void) {
       setSaving(false);
     }
   }
-  return { saving, fields, error, run, lastError };
+  function reset() {
+    setFields({});
+    setError("");
+    lastError.current = null;
+  }
+  return { saving, fields, error, run, lastError, reset };
 }

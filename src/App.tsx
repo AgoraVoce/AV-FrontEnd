@@ -1,6 +1,6 @@
 import { AdminDashboard } from "./integrations/AdminDashboard";
 import { SpecialtiesPage } from "./features/specialties/Page";
-import { DoctorsDirectory, DoctorShiftsAdmin } from "./integrations/ProfessionalWorkspaces";
+import { DoctorsPage } from "./features/doctors/Page";
 import { RoomsPage } from "./features/rooms/Page";
 import { OwnProfilePage } from "./features/doctors/Page";
 import { ShiftsPage } from "./features/shifts/Page";
@@ -147,7 +147,7 @@ export default function App() {
               path="/admin/medicos"
               element={
                 <ProtectedArea role="ADMIN">
-                  <DoctorsDirectory />
+                  <DoctorsPage />
                 </ProtectedArea>
               }
             />
@@ -155,7 +155,7 @@ export default function App() {
               path="/admin/plantoes"
               element={
                 <ProtectedArea role="ADMIN">
-                  <DoctorShiftsAdmin />
+                  <ShiftsPage />
                 </ProtectedArea>
               }
             />
