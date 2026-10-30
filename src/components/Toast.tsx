@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ToastContext, type ToastTone as Tone, type ToastNotify as Notify } from "./toast-context";
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 import "./toast.css";
@@ -14,9 +15,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const remove = useCallback((id: number) => setMessages((current) => current.filter((item) => item.id !== id)), []);
   return <ToastContext.Provider value={notify}>
     {children}
-    <div className="av-toast-stack">
+    {createPortal(<div className="av-toast-stack">
       {messages.map((message) => <ToastItem key={message.id} message={message} onClose={() => remove(message.id)} />)}
-    </div>
+    </div>, document.querySelector<HTMLDialogElement>("dialog[open]") ?? document.body)}
   </ToastContext.Provider>;
 }
 

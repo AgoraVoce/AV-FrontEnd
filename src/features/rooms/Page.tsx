@@ -72,7 +72,7 @@ export function RoomsPage() {
       <section className="local-form">
         <div className="operational-row">
           <h2>Salas cadastradas</h2>
-          <button className="local-primary" onClick={() => edit("new")}>
+          <button className="local-primary" disabled={Boolean(resource.error)} title={resource.error ? "Cadastro indisponível no backend" : undefined} onClick={() => edit("new")}>
             Nova sala
           </button>
         </div>
@@ -97,6 +97,7 @@ export function RoomsPage() {
             </select>
           </label>
         </div>
+        {resource.error && <p className="local-note" role="status">O módulo de salas requer endpoints específicos da API, ainda não implementados no back-end atual. O cadastro permanece indisponível.</p>}
         <ResourceState
           {...resource}
           retry={resource.reload}
@@ -163,12 +164,13 @@ export function RoomsPage() {
             </label>
             <label>
               Tipo *
-              <input
-                required
-                maxLength={80}
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-              />
+              <select required value={type} onChange={(e) => setType(e.target.value)}>
+                <option value="Consultório">Consultório</option>
+                <option value="Sala de triagem">Sala de triagem</option>
+                <option value="Sala de observação">Sala de observação</option>
+                <option value="Sala de procedimentos">Sala de procedimentos</option>
+                <option value="Sala de emergência">Sala de emergência</option>
+              </select>
             </label>
             <label>
               Situação

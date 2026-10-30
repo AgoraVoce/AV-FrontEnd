@@ -9,7 +9,7 @@ import { useState } from "react";
 import { RecoveryPage } from "./auth/RecoveryPage";
 import { ApiPasswordResetPage } from "./auth/ApiPasswordResetPage";
 import { PublicCallsScreen } from "./integrations/PublicCallsScreen";
-import { TicketDesk } from "./integrations/TicketDesk";
+import { ReceptionEntryDetail } from "./integrations/ReceptionEntryDetail";
 import { EntryHistoryPage, ReportsPage } from "./integrations/ClinicDataPages";
 import { API_MODE } from "./auth/api";
 import { LocalUnavailablePage } from "./integrations/LocalPages";
@@ -73,7 +73,7 @@ export default function App() {
             </ProtectedArea>
           }
         />
-        {API_MODE && <Route path="/recepcao/senhas" element={<ProtectedArea role="RECEPCIONISTA"><TicketDesk /></ProtectedArea>} />}
+        {API_MODE && <Route path="/recepcao/entradas/:entryId" element={<ProtectedArea role="RECEPCIONISTA"><ReceptionEntryDetail /></ProtectedArea>} />}
         {API_MODE && <Route path="/recepcao/entradas" element={<ProtectedArea role="RECEPCIONISTA"><EntryHistoryPage kind="reception" /></ProtectedArea>} />}
         <Route
           path="/recepcao/usuarios"

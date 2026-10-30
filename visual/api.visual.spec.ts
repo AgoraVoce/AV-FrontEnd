@@ -19,7 +19,6 @@ const screens: Screen[] = [
   { id: "tv-publica-api", path: "/transmissao/tv" },
   { id: "pagina-nao-encontrada", path: "/pagina-inexistente" },
   { id: "recepcao-fila", path: "/recepcao", role: "RECEPCIONISTA" },
-  { id: "recepcao-senhas", path: "/recepcao/senhas", role: "RECEPCIONISTA" },
   { id: "recepcao-entradas", path: "/recepcao/entradas", role: "RECEPCIONISTA" },
   { id: "recepcao-detalhes", path: "/recepcao", role: "RECEPCIONISTA", state: "details" },
   { id: "recepcao-usuarios-restrito", path: "/recepcao/usuarios", role: "RECEPCIONISTA" },
@@ -72,11 +71,13 @@ async function navigateTo(page: Page, route: string) {
 async function prepareState(page: Page, screen: Screen) {
   switch (screen.state) {
     case "details":
-      await page.getByRole("button", { name: "Ver detalhes" }).first().click();
-      await expect(page.getByRole("region", { name: "Detalhes da entrada" })).toContainText("Paciente de Demonstração");
+      await page.getByRole("link", { name: "Ver detalhes" }).first().click();
+      await expect(page).toHaveURL("/recepcao/entradas/" + entryId);
+      await expect(page.getByRole("region", { name: "Detalhes do atendimento" })).toContainText("Paciente de Demonstração");
       break;
     case "search-patient":
       await page.getByLabel("Buscar paciente por nome ou CPF").fill("Paciente");
+      await page.getByRole("button", { name: "Buscar", exact: true }).click();
       await expect(page.getByRole("link", { name: /Paciente de Demonstração/ })).toBeVisible();
       break;
     case "select-patient":

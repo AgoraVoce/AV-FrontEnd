@@ -47,7 +47,7 @@ test("login usa Bearer real e a recepção exibe a fila do backend",async({page}
   await expect(page.getByRole("cell", { name: "Paciente da API" })).toBeVisible();
   await expect(page.locator("tbody tr").first().locator("td").first()).toBeVisible();
   await expect(page.getByText("Carlos Eduardo da Silva")).toHaveCount(0);
-  await page.getByRole("button",{name:"Atualizar fila"}).click();
+  await expect(page.getByRole("button",{name:"Atualizar fila"})).toHaveCount(0);
   await expect(page.getByRole("cell", { name: "Paciente da API" })).toBeVisible();
 });
 test("recepção busca paciente existente por nome e registra entrada com médico",async({page})=>{
@@ -66,18 +66,20 @@ test("recepção busca paciente existente por nome e registra entrada com médic
   await page.getByRole("link",{name:"Pacientes cadastrados"}).first().click();
   await expect(page).toHaveURL("/pacientes");
   await page.getByLabel("Buscar paciente por nome ou CPF").fill("Pessoa");
+  await page.getByRole("button",{name:"Buscar",exact:true}).click();
   await page.getByRole("link",{name:/Pessoa Existente/}).click();
   await expect(page).toHaveURL(new RegExp("/novo-cadastro\\?patient="));
   await page.getByLabel("Classificação informada pela recepção").selectOption("AMARELO");
   await page.getByLabel("Médico de plantão").selectOption(doctorId);
   await page.getByLabel("Sintomas / queixa relatada").fill("Dor de cabeça");
-  await page.getByRole("button",{name:"Confirmar entrada no servidor"}).click();
+  await page.getByRole("button",{name:"Confirmar"}).click();
   await expect(page.getByRole("status").getByText("Entrada registrada com sucesso")).toBeVisible();
   expect(posted).toBe(true);
 });
 test("novo paciente exige duas requisições independentes de cadastro e entrada",async({page})=>{
   await mockQueue(page);await mockDoctors(page);
   let patientCreated=false,entryCreated=false;
+  await page.route("**/api/v1/patients?*",route=>route.fulfill({json:{items:[],total:0,page:1,pageSize:1}}));
   await page.route("**/api/v1/patients",async route=>{
     const data=route.request().postDataJSON();
     expect(data.fullName).toBe("Pessoa Teste");patientCreated=true;
@@ -91,12 +93,13 @@ test("novo paciente exige duas requisições independentes de cadastro e entrada
   await page.getByRole("link",{name:/Novo Cadastro/}).click();
   await expect(page.getByRole("heading",{name:"Novo paciente"})).toBeVisible();
   await expect(page.getByLabel("Buscar paciente por nome ou CPF")).toHaveCount(0);
-  await page.getByLabel("Nome completo").fill("Pessoa Teste");
   await page.getByLabel("CPF").fill("52998224725");
+  await page.getByRole("button",{name:"Continuar"}).click();
+  await page.getByLabel("Nome completo").fill("Pessoa Teste");
   await page.getByRole("button",{name:/Cadastrar e continuar/}).click();
   await expect(page.getByText(/Paciente:.*Pessoa Teste/)).toBeVisible();
   await page.getByLabel("Sintomas / queixa relatada").fill("Dor de cabeça");
-  await page.getByRole("button",{name:"Confirmar entrada no servidor"}).click();
+  await page.getByRole("button",{name:"Confirmar"}).click();
   await expect(page.getByText("Entrada registrada com sucesso")).toBeVisible();
   expect(patientCreated && entryCreated).toBe(true);
 });
@@ -111,7 +114,8 @@ test("recepção visualiza detalhe, atribui médico e preserva autoridade do mé
     assigned=true;await route.fulfill({json:{id:entryId,status:"AGUARDANDO"}});
   });
   await login(page,"RECEPCIONISTA");
-  await page.getByRole("button",{name:"Ver detalhes"}).click();
+  await page.getByRole("link",{name:"Ver detalhes"}).click();
+  await expect(page).toHaveURL("/recepcao/entradas/"+entryId);
   await expect(page.getByText("Classificação", { exact: true })).toBeVisible();
   await page.getByLabel("Médico disponível").selectOption(doctorId);
   // The mocked detail has this same doctor, so mimic an initially unassigned entry.
@@ -133,6 +137,7 @@ test("admin lista contas reais, filtra e cadastra funcionário sem expor senha",
   });
   await login(page,"ADMIN");
   await expect(page).toHaveURL("/admin");
+  await page.getByRole("link",{name:"Gestão de Usuários"}).click();
   await page.getByRole("link",{name:"Novo funcionário"}).click();
   await expect(page).toHaveURL("/admin/novo-funcionario");
   await expect(page.getByRole("heading",{name:"Equipe cadastrada"})).toHaveCount(0);
@@ -153,6 +158,7 @@ test("médico chama, inicia e finaliza com prescrição num único endpoint",asy
   }]}}));
   let call=0,started=0,finished=0;
   let status:"waiting"|"called"|"in_progress"|"completed"="waiting";
+  await page.route("**/api/v1/doctors/me/active",route=>route.fulfill({json:status==="called"||status==="in_progress" ? detail(status) : null}));
   await page.route("**/api/v1/entries/"+entryId,route=>route.fulfill({json:detail(status)}));
   await page.route("**/api/v1/queues/me/next",async route=>{
     expect(route.request().headers().authorization).toContain("Bearer ");
@@ -196,7 +202,7 @@ test("médico sem cadastro recebe erro de autorização, não dados fictícios",
   await page.route("**/api/v1/queues/me",route=>route.fulfill({status:403,json:{error:{code:"DOCTOR_PROFILE_UNAVAILABLE",message:"Doctor profile unavailable"}}}));
   await login(page,"MEDICO");
   await expect(page).toHaveURL("/medico");
-  await expect(page.getByRole("alert")).toContainText("cadastro médico");
+  await expect(page.getByRole("alert").filter({hasText:"cadastro médico"}).first()).toBeVisible();
   await expect(page.getByText("Dr. Marcelo Arantes")).toHaveCount(0);
 });
 test("logout revoga o token no servidor e direciona ao login",async({page})=>{
@@ -221,6 +227,7 @@ test("401 encerra sessão e impede visualização de dados privados",async({page
 test("cadastro de funcionário abre rota exclusiva e botão voltar preserva listagem", async ({ page }) => {
   await page.route("**/api/v1/employees?*", route => route.fulfill({ json: { items: [], page: 1, pageSize: 10, total: 0 } }));
   await login(page, "ADMIN");
+  await page.getByRole("link", { name: "Gestão de Usuários" }).click();
   await page.getByRole("link", { name: "Novo funcionário" }).click();
   await expect(page).toHaveURL("/admin/novo-funcionario");
   await expect(page.getByRole("heading", { name: "Equipe cadastrada" })).toHaveCount(0);
@@ -252,10 +259,12 @@ test("médico inicia no dashboard, fila clicável mostra detalhe sem chamar fora
 test("falha no cadastro exibe toast e não mostra card de erro", async ({ page }) => {
   await mockQueue(page);
   await page.route("**/api/v1/patients", route => route.fulfill({ status: 500, json: { error: { code: "INTERNAL_ERROR", message: "Unavailable" } } }));
+  await page.route("**/api/v1/patients?*",route=>route.fulfill({json:{items:[],page:1,pageSize:1,total:0}}));
   await login(page, "RECEPCIONISTA");
   await page.getByRole("link", { name: /Novo Cadastro/ }).click();
-  await page.getByLabel("Nome completo").fill("Paciente Teste");
   await page.getByLabel("CPF").fill("52998224725");
+  await page.getByRole("button",{name:"Continuar"}).click();
+  await page.getByLabel("Nome completo").fill("Paciente Teste");
   await page.getByRole("button", { name: /Cadastrar e continuar/ }).click();
   await expect(page.getByRole("alert")).toContainText("Não foi possível cadastrar o paciente");
   await expect(page.locator(".local-message.is-error")).toHaveCount(0);

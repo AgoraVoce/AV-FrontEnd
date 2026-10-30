@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Pencil, ArrowUpDown, AlertTriangle, CheckCheck, Clock3, Filter, Search, ShieldCheck, Siren, Activity, ArrowRight, ChevronLeft, ClipboardList, RefreshCw, UserPlus, UsersRound, XCircle } from "lucide-react";
+import { Pencil, ArrowUpDown, AlertTriangle, CheckCheck, Clock3, Filter, Search, ArrowRight, ChevronLeft, ClipboardList, RefreshCw, UserPlus, UsersRound, XCircle } from "lucide-react";
 import { useAuth } from "../auth/context";
 import { QueuePriorityLed, type PrioritySavedFeedback } from "../components/QueuePriorityLed";
 import { ReassessmentHistory } from "../components/ReassessmentHistory";
@@ -9,7 +9,7 @@ import { priorityInfo } from "./priority-store";
 import { loadReceptionClinicalData } from "./reception-clinical-data";
 import { matchesAge, matchesWait, patientAge, waitingMinutes, type AgeFilter, type WaitFilter } from "./reception-filters";
 import { PatientRegistrationFields } from "../components/PatientRegistrationFields";
-import { patientRegistrationError, validatePatientRegistration, type PatientRegistrationErrors } from "./patient-registration";
+import { patientRegistrationError, validatePatientRegistration, validPatientCpf, type PatientRegistrationErrors } from "./patient-registration";
 import { AppShell } from "../components/AppShell";
 import { PatientRecords } from "./ClinicDataPages";
 import { usePageTitle } from "../components/usePageTitle";
@@ -53,7 +53,6 @@ export function ReceptionWorkspace() {
   const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [selected, setSelected] = useState<EntryDetail | null>(null);
@@ -70,7 +69,7 @@ export function ReceptionWorkspace() {
     ongoing.current?.abort();
     const controller = new AbortController();
     ongoing.current = controller;
-    if (initial) setLoading(true); else setRefreshing(true);
+    if (initial) setLoading(true);
     try {
       const result = await getReceptionWaitingQueue(controller.signal);
       if (!controller.signal.aborted) {
@@ -92,7 +91,7 @@ export function ReceptionWorkspace() {
         if (!queueErrorNotified.current) { queueErrorNotified.current = true; toast.error("Não foi possível atualizar a fila", errorText(cause)); }
       }
     } finally {
-      if (!controller.signal.aborted) { setLoading(false); setRefreshing(false); setClinicalLoading(false); }
+      if (!controller.signal.aborted) { setLoading(false); setClinicalLoading(false); }
     }
   }, [toast]);
   useEffect(() => {
@@ -169,15 +168,13 @@ export function ReceptionWorkspace() {
     </header>
     <div className="reception-summary">
       <section className="reception-panel reception-total"><UsersRound className="reception-info-icon" size={34}/><h2>TOTAL EM ESPERA</h2><div><strong>{loading && !updatedAt ? "—" : items.length}</strong> <span>pacientes no fluxo ativo</span></div><div className="reception-proportion" aria-label="Proporção dos pacientes com classificação conhecida">{(["urgent", "alert", "calm"] as const).map(tone => <span key={tone} className={tone} style={{width: `${classifiedTotal ? counts[tone] / classifiedTotal * 100 : 0}%`}}/>)}</div><small>{classifiedTotal ? `${classifiedTotal} de ${items.length} pacientes com classificação conhecida` : "Classificação da fila: —"}</small></section>
-      <section className="reception-panel"><div className="reception-risk-head"><h2>CLASSIFICAÇÃO DE RISCO (MANCHESTER MODIFICADO)</h2><button className="local-secondary-button" aria-controls="reception-clinical-filters" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(v=>!v)}><Filter size={14}/> Filtro de visualização</button></div>
+      <section className="reception-panel"><div className="reception-risk-head"><h2>CLASSIFICAÇÃO DE RISCO (MANCHESTER MODIFICADO)</h2></div>
         <div className="reception-risks">{[{name:"Urgentes",tone:"urgent" as const,goal:15,Icon:AlertTriangle},{name:"Alertas",tone:"alert" as const,goal:30,Icon:AlertTriangle},{name:"Tranquilos",tone:"calm" as const,goal:60,Icon:CheckCheck}].map(({name,tone,goal,Icon}) => <div className={tone} key={name}><strong><span>●</span> {classifiedTotal ? counts[tone] : "—"} {name}</strong><Icon size={16}/><small>Meta: &lt; {goal} min</small></div>)}</div>
       </section>
     </div>
     <div className="reception-toolbar reception-panel">
       <label className="reception-search"><Search size={17}/><input ref={searchInput} aria-label="Buscar por nome ou senha" value={filter} onChange={e=>{setFilter(e.target.value);setPriorityFeedback(null);setPage(1);}} type="search" placeholder="Filtrar por nome, senha ou queixa..." /></label>
-      <button className="local-secondary-button" type="button" disabled={refreshing || loading} onClick={()=>void load()}><RefreshCw size={16}/> {refreshing ? "Atualizando…" : "Atualizar fila"}</button>
       <button className="local-secondary-button" aria-controls="reception-clinical-filters" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(v=>!v)}><Filter size={16}/> Filtrar{activeFilterCount > 0 && <span className="reception-filter-count">{activeFilterCount}</span>}</button>
-      <Link className="local-secondary-button" to="/pacientes"><Search size={16}/> Buscar pacientes</Link>
       <Link className="local-primary" to="/novo-cadastro"><UserPlus size={16}/> Cadastrar Paciente</Link>
     </div>
     {filtersOpen && <section id="reception-clinical-filters" className="reception-panel reception-filter-panel" aria-label="Filtros da fila">
@@ -190,11 +187,11 @@ export function ReceptionWorkspace() {
       </div><p className="local-note">Filtros combinados e aplicados automaticamente. Dados ausentes aparecem como “—” e podem ser encontrados em “Não informado”.</p>
     </section>}
     {clinicalLoading && <p className="local-note" role="status">Atualizando dados clínicos dos pacientes…</p>}
-    {!clinicalLoading && !loading && !error && items.some(item=>!clinicalDetails[item.entryId]) && <p className="reception-clinical-warning" role="status">Não foi possível consultar os dados clínicos de {items.filter(item=>!clinicalDetails[item.entryId]).length} paciente(s). Eles permanecem na fila; dados indisponíveis ficam como “—”. Use Atualizar fila para tentar novamente.</p>}
+    {!clinicalLoading && !loading && !error && items.some(item=>!clinicalDetails[item.entryId]) && <p className="reception-clinical-warning" role="status">Não foi possível consultar os dados clínicos de {items.filter(item=>!clinicalDetails[item.entryId]).length} paciente(s). Eles permanecem na fila; dados indisponíveis ficam como “—”. A fila é atualizada automaticamente.</p>}
     {error && <button type="button" className="local-secondary-button" onClick={()=>void load()}>Tentar carregar a fila novamente</button>}
     {loading ? <p role="status">Carregando pacientes…</p> : !error && <section className="reception-table-panel">
       <div className="reception-table-scroll" ref={tableScroll}><table><thead><tr>{["SENHA","NOME DO PACIENTE","IDADE","QUEIXA PRINCIPAL","CLASSIFICAÇÃO / PRIORIDADE","TEMPO DE ESPERA","STATUS","AÇÃO"].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>
-        {pageItems.map(item=><tr key={item.entryId} data-priority-entry={item.entryId} className={`${priorityInfo(itemLevel(item.entryId))?.tone ?? "unclassified"}${reviewPatient?.entryId === item.entryId ? " is-reclassifying" : ""}`}><td><span className="reception-ticket">{item.queueCode ? <>{item.queueCode.slice(0, item.queueCode.lastIndexOf("-")+1)}<br/>{item.queueCode.slice(item.queueCode.lastIndexOf("-")+1)}</> : "—"}</span></td><td><div className="reception-name"><span className="reception-initials" aria-hidden="true">{item.fullName.split(" ").filter(Boolean).map(n=>n[0]).slice(0,2).join("")}</span><strong>{item.fullName}</strong></div></td><td>{patientAge(clinicalDetails[item.entryId]?.patient.birthDate, now) !== null ? `${patientAge(clinicalDetails[item.entryId]?.patient.birthDate, now)} anos` : "—"}</td><td>{(item.clinical?.complaint ?? clinicalDetails[item.entryId]?.otherSymptoms) || "—"}</td><td>{itemLevel(item.entryId) ? <span className="reception-priority-pill"><span>●</span> {priorityInfo(itemLevel(item.entryId))?.label}</span> : "—"}</td><td><span className="reception-wait"><Clock3 size={14}/> {waitingMinutes(item.clinical?.enteredAt ?? clinicalDetails[item.entryId]?.enteredAt, now) !== null ? `${waitingMinutes(item.clinical?.enteredAt ?? clinicalDetails[item.entryId]?.enteredAt, now)} min` : "—"}</span></td><td>{(item.clinical?.status ?? clinicalDetails[item.entryId]?.status) ? <StatePill status={(item.clinical?.status ?? clinicalDetails[item.entryId]?.status)!}/> : "—"}</td><td><div className="reception-row-actions"><button className="local-secondary-button reception-review-button" data-review-entry={item.entryId} disabled={reviewPatient?.entryId === item.entryId} onClick={event=>{setPriorityFeedback(null);setReviewTrigger(event.currentTarget);setReviewPatient({...item});}}>{reviewPatient?.entryId === item.entryId ? <><Pencil size={14}/> Alterando...</> : <><ArrowUpDown size={14}/> Alterar prioridade</>}</button><button className="local-secondary-button" onClick={()=>void openDetails(item.entryId)}>Ver detalhes</button></div></td></tr>)}
+        {pageItems.map(item=><tr key={item.entryId} data-priority-entry={item.entryId} className={`${priorityInfo(itemLevel(item.entryId))?.tone ?? "unclassified"}${reviewPatient?.entryId === item.entryId ? " is-reclassifying" : ""}`}><td><span className="reception-ticket">{item.queueCode ? <>{item.queueCode.slice(0, item.queueCode.lastIndexOf("-")+1)}<br/>{item.queueCode.slice(item.queueCode.lastIndexOf("-")+1)}</> : "—"}</span></td><td><div className="reception-name"><span className="reception-initials" aria-hidden="true">{item.fullName.split(" ").filter(Boolean).map(n=>n[0]).slice(0,2).join("")}</span><strong>{item.fullName}</strong></div></td><td>{patientAge(clinicalDetails[item.entryId]?.patient.birthDate, now) !== null ? `${patientAge(clinicalDetails[item.entryId]?.patient.birthDate, now)} anos` : "—"}</td><td>{(item.clinical?.complaint ?? clinicalDetails[item.entryId]?.otherSymptoms) || "—"}</td><td>{itemLevel(item.entryId) ? <span className="reception-priority-pill"><span>●</span> {priorityInfo(itemLevel(item.entryId))?.label}</span> : "—"}</td><td><span className="reception-wait"><Clock3 size={14}/> {waitingMinutes(item.clinical?.enteredAt ?? clinicalDetails[item.entryId]?.enteredAt, now) !== null ? `${waitingMinutes(item.clinical?.enteredAt ?? clinicalDetails[item.entryId]?.enteredAt, now)} min` : "—"}</span></td><td>{(item.clinical?.status ?? clinicalDetails[item.entryId]?.status) ? <StatePill status={(item.clinical?.status ?? clinicalDetails[item.entryId]?.status)!}/> : "—"}</td><td><div className="reception-row-actions"><button className="local-secondary-button reception-review-button" data-review-entry={item.entryId} disabled={reviewPatient?.entryId === item.entryId} onClick={event=>{setPriorityFeedback(null);setReviewTrigger(event.currentTarget);setReviewPatient({...item});}}>{reviewPatient?.entryId === item.entryId ? <><Pencil size={14}/> Alterando...</> : <><ArrowUpDown size={14}/> Alterar prioridade</>}</button><Link className="local-secondary-button" to={"/recepcao/entradas/"+encodeURIComponent(item.entryId)}>Ver detalhes</Link></div></td></tr>)}
         {!visible.length && <tr><td colSpan={8}>{clinicalLoading ? "Consultando dados para os filtros…" : filter || activeFilterCount ? "Nenhum paciente encontrado com os filtros selecionados" : "Nenhum paciente aguardando"}</td></tr>}
       </tbody></table>
       {priorityFeedback && !reviewPatient && pageItems.some(item=>item.entryId === priorityFeedback.entryId) && <QueuePriorityLed key={priorityFeedback.id} feedback={priorityFeedback} containerRef={tableScroll} layoutKey={pageItems.map(item=>item.entryId).join(",")} onComplete={finishPriorityFeedback}/>}
@@ -235,9 +232,6 @@ export function ReceptionWorkspace() {
       <ReassessmentHistory key={selected.id} entryId={selected.id} user={user} revision={selected.updatedAt}/>
       </>}
     </section>}
-    <div className="local-bottom"><Link to="/pacientes" className="local-secondary-button">Pacientes cadastrados</Link><Link to="/novo-cadastro" className="local-secondary-button"><UserPlus size={16}/> Novo atendimento</Link>
-      <p className="local-note">O painel mostra somente os pacientes aguardando. Estados clínicos completos aparecem no detalhe individual.</p></div>
-    <div className="reception-info-grid">{[{Icon:ShieldCheck,title:"Protocolo Institucional",text:"Alterações manuais de prioridade ficam registradas com carimbo de CRM/COREN e justificativa clínica obrigatória."},{Icon:Activity,title:"Sincronização com Painel TV",text:"A mudança de categoria reordena imediatamente a exibição no monitor de chamadas do saguão."},{Icon:Siren,title:"Alerta ao Corpo Clínico",text:"Pacientes reclassificados para Vermelho emitem aviso sonoro no posto médico de plantão."}].map(({Icon,title,text})=><article className="reception-panel" key={title}><Icon className="reception-info-icon" size={32}/><div><h3>{title}</h3><p>{text}</p></div></article>)}</div>
     {reviewPatient && <ReclassificationModal key={reviewPatient.entryId} patient={reviewPatient} contract={reviewPatient.clinical ? "expanded" : "legacy"} responsible={user} available={items.some(item=>item.entryId === reviewPatient.entryId)} returnFocus={reviewTrigger} onClose={closeReview} onSaved={(entry, complaint)=>{setItems(current=>current.map(item=>item.entryId === entry.id && item.clinical ? {...item,clinical:{severity:entry.severity,status:entry.status,enteredAt:entry.enteredAt,complaint}} : item));setClinicalDetails(details=>({...details,[entry.id]:entry}));if(selected?.id === entry.id)setSelected(entry);showReviewRow(entry.id, entry.severity);setPriorityFeedback({id:crypto.randomUUID(),entryId:entry.id,level:entry.severity});closeReview();void load();}} onDetail={entry=>{setClinicalDetails(details=>({...details,[entry.id]:entry}));showReviewRow(entry.id, entry.severity);}}/>}
   </div></AppShell>;
 }
@@ -249,6 +243,7 @@ export function PatientSearchWorkspace() {
   usePageTitle("Pacientes cadastrados");
   const toast = useToast();
   const [search, setSearch] = useState("");
+  const [searchDraft,setSearchDraft] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
   const [listing, setListing] = useState<import("./operational-api").Page<Patient> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -278,9 +273,9 @@ export function PatientSearchWorkspace() {
     <section className="local-form">
       <div className="operational-row"><h2><UsersRound size={19} aria-hidden="true" /> Buscar pacientes</h2>
         <button type="button" className="local-secondary-button operational-small-button" disabled={loading} onClick={() => setRevision(n => n + 1)}><RefreshCw size={15} aria-hidden="true" /> Atualizar</button></div>
-      <label className="local-search">Buscar paciente por nome ou CPF
-        <input type="search" value={search} onChange={e => { setSearch(e.target.value); setPageNumber(1); }} placeholder="Digite o nome ou CPF" autoComplete="off" />
-      </label>
+      <form className="reception-patient-search-form" role="search" onSubmit={e=>{e.preventDefault();setSearch(searchDraft);setPageNumber(1);}}><label className="local-search">Buscar paciente por nome ou CPF
+        <input type="search" value={searchDraft} onChange={e=>setSearchDraft(e.target.value)} placeholder="Digite o nome ou CPF" autoComplete="off" />
+      </label><button className="local-primary" type="submit"><Search size={16} aria-hidden="true"/> Buscar</button></form>
       {loading && <p className="local-note" role="status">Buscando pacientes…</p>}
       {!loading && failed && <button type="button" className="local-secondary-button" onClick={() => setRevision(n => n + 1)}>Tentar novamente</button>}
       {!loading && !failed && listing?.items.length === 0 && <div className="local-empty">
@@ -308,6 +303,10 @@ export function PatientWorkspace() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const patientId = params.get("patient");
+  const [cpfLookup,setCpfLookup]=useState("");
+  const [cpfVerified,setCpfVerified]=useState(Boolean(patientId));
+  const [lookupBusy,setLookupBusy]=useState(false);
+  const [lookupError,setLookupError]=useState("");
   const [patient, setPatient] = useState<NewPatient>({ ...EMPTY });
   const [patientErrors, setPatientErrors] = useState<PatientRegistrationErrors>({});
   const [patientFormError, setPatientFormError] = useState("");
@@ -342,6 +341,21 @@ export function PatientWorkspace() {
     return () => controller.abort();
   }, [chosen, toast]);
 
+  async function searchCpf(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const cpf=cpfLookup.replace(/\D/g,"");
+    if(!validPatientCpf(cpf)){setLookupError("Informe um CPF válido.");return;}
+    if(lookupBusy)return;
+    setLookupBusy(true);setLookupError("");
+    try {
+      const result=await operations.patients({cpf,page:1,pageSize:1});
+      const found=result.items[0];
+      if(found)setChosen({id:found.id,name:found.fullName});
+      else setPatient(p=>({...p,cpf}));
+      setCpfVerified(true);
+    } catch(error){setLookupError(errorText(error));}
+    finally{setLookupBusy(false);}
+  }
   async function savePatient(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (lock.current) return;
@@ -393,25 +407,28 @@ export function PatientWorkspace() {
   return <AppShell><div className="local-page operational-page">
     <header className="local-page-head"><div><span className="local-eyebrow">Recepção · Pronto-socorro</span>
       <h1>{chosen ? "Registrar entrada" : "Novo paciente"}</h1>
-      <p>{chosen ? "Registre os sintomas, a classificação e o médico de plantão." : "Cadastre o paciente diretamente. Para consultar fichas existentes, utilize Pacientes cadastrados."}</p></div>
-      <Link className="local-secondary-button" to={chosen ? "/pacientes" : "/recepcao"}><ChevronLeft size={16} aria-hidden="true" /> {chosen ? "Voltar aos pacientes" : "Voltar à fila"}</Link>
+      <p>{chosen ? "Registre os sintomas, a classificação e o médico de plantão." : "Identifique o paciente pelo CPF para iniciar."}</p></div>
     </header>
     {loadingExisting && <p className="local-note" role="status">Carregando dados do paciente…</p>}
-    {!chosen && !loadingExisting && <form className="local-form operational-single-form" autoComplete="off" noValidate onSubmit={e => void savePatient(e)}>
-      <div className="operational-row"><div><h2>Dados do paciente</h2><p className="local-note">Preencha as informações para iniciar um novo cadastro.</p></div>
-        <Link className="local-secondary-button operational-small-button" to="/pacientes">Buscar paciente existente</Link></div>
+    {!cpfVerified && !loadingExisting && <form className="local-form operational-single-form" noValidate onSubmit={e=>void searchCpf(e)}>
+      <h2>Identificar paciente</h2><p className="local-note">Informe o CPF para verificar se o paciente já possui cadastro.</p>
+      <label className="local-search">CPF *<input type="text" autoFocus inputMode="numeric" maxLength={14} value={cpfLookup} placeholder="000.000.000-00" onChange={e=>{setCpfLookup(e.target.value);setLookupError("");}} aria-invalid={Boolean(lookupError)} /></label>
+      {lookupError && <p role="alert" className="local-message is-error">{lookupError}</p>}
+      <button className="local-primary" type="submit" disabled={lookupBusy}>{lookupBusy?"Buscando…":"Continuar"} <ArrowRight size={16}/></button>
+    </form>}
+    {!chosen && cpfVerified && !loadingExisting && <form className="local-form operational-single-form" autoComplete="off" noValidate onSubmit={e => void savePatient(e)}>
+      <div className="operational-row"><div><h2>Novo paciente</h2><p className="local-note">CPF não encontrado. Complete os dados do cadastro.</p></div></div>
       {patientFormError && <p className="local-message is-error" role="alert">{patientFormError}</p>}
-      <PatientRegistrationFields patient={patient} errors={patientErrors} busy={busy} onChange={(field,value)=>{setPatient(current=>({...current,[field]:value}));setPatientErrors(current=>({...current,[field]:undefined}));setPatientFormError("");}}/>
+      <PatientRegistrationFields patient={patient} errors={patientErrors} busy={busy} onChange={(field,value)=>{if(field==="cpf"&&value.replace(/\D/g,"")!==cpfLookup.replace(/\D/g,"")){setCpfLookup(value);setCpfVerified(false);}setPatient(current=>({...current,[field]:value}));setPatientErrors(current=>({...current,[field]:undefined}));setPatientFormError("");}}/>
       <div className="local-actions"><button type="submit" disabled={busy} className="local-primary">
         {busy ? "Salvando…" : "Cadastrar e continuar"} <ArrowRight size={16} aria-hidden="true" /></button>
-        <Link className="local-secondary-button" to="/pacientes">Consultar pacientes</Link>
       </div>
     </form>}
     {chosen && !loadingExisting && <PatientRecords patientId={chosen.id} />}
     {chosen && !loadingExisting && <form className="local-form operational-single-form" onSubmit={e => void saveEntry(e)}>
       {entryError && <p className="local-message is-error" role="alert">{entryError}</p>}
       <div className="operational-row"><div><h2>Informações da entrada</h2><p className="local-note">Paciente: <strong>{chosen.name}</strong></p></div>
-        <Link className="local-secondary-button operational-small-button" to="/pacientes">Trocar paciente</Link></div>
+        <button className="local-secondary-button operational-small-button" type="button" onClick={()=>{setChosen(null);setCpfVerified(false);setCpfLookup("");setPatient({...EMPTY});}}>Nova pesquisa</button></div>
       <div className="local-fields">
         <label>Classificação informada pela recepção *<select value={severity} onChange={e => setSeverity(e.target.value as Severity)}>
           <option value="VERDE">Verde · Baixa prioridade</option><option value="AMARELO">Amarelo · Atenção</option><option value="VERMELHO">Vermelho · Urgente</option>
