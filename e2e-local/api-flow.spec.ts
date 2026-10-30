@@ -137,6 +137,7 @@ test("admin lista contas reais, filtra e cadastra funcionário sem expor senha",
   });
   await login(page,"ADMIN");
   await expect(page).toHaveURL("/admin");
+  await page.getByRole("link",{name:"Gestão de Usuários"}).click();
   await page.getByRole("link",{name:"Novo funcionário"}).click();
   await expect(page).toHaveURL("/admin/novo-funcionario");
   await expect(page.getByRole("heading",{name:"Equipe cadastrada"})).toHaveCount(0);
@@ -157,6 +158,7 @@ test("médico chama, inicia e finaliza com prescrição num único endpoint",asy
   }]}}));
   let call=0,started=0,finished=0;
   let status:"waiting"|"called"|"in_progress"|"completed"="waiting";
+  await page.route("**/api/v1/doctors/me/active",route=>route.fulfill({json:status==="called"||status==="in_progress" ? detail(status) : null}));
   await page.route("**/api/v1/entries/"+entryId,route=>route.fulfill({json:detail(status)}));
   await page.route("**/api/v1/queues/me/next",async route=>{
     expect(route.request().headers().authorization).toContain("Bearer ");
@@ -200,7 +202,7 @@ test("médico sem cadastro recebe erro de autorização, não dados fictícios",
   await page.route("**/api/v1/queues/me",route=>route.fulfill({status:403,json:{error:{code:"DOCTOR_PROFILE_UNAVAILABLE",message:"Doctor profile unavailable"}}}));
   await login(page,"MEDICO");
   await expect(page).toHaveURL("/medico");
-  await expect(page.getByRole("alert")).toContainText("cadastro médico");
+  await expect(page.getByRole("alert").filter({hasText:"cadastro médico"}).first()).toBeVisible();
   await expect(page.getByText("Dr. Marcelo Arantes")).toHaveCount(0);
 });
 test("logout revoga o token no servidor e direciona ao login",async({page})=>{
@@ -225,6 +227,7 @@ test("401 encerra sessão e impede visualização de dados privados",async({page
 test("cadastro de funcionário abre rota exclusiva e botão voltar preserva listagem", async ({ page }) => {
   await page.route("**/api/v1/employees?*", route => route.fulfill({ json: { items: [], page: 1, pageSize: 10, total: 0 } }));
   await login(page, "ADMIN");
+  await page.getByRole("link", { name: "Gestão de Usuários" }).click();
   await page.getByRole("link", { name: "Novo funcionário" }).click();
   await expect(page).toHaveURL("/admin/novo-funcionario");
   await expect(page.getByRole("heading", { name: "Equipe cadastrada" })).toHaveCount(0);
