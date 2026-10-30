@@ -120,7 +120,7 @@ export function AppShell({
           <div className="header-brand-wrap">
             <Brand />
           </div>
-          <div className="header-context">{unitContext}</div>
+          {unitContext && <div className="header-context">{unitContext}</div>}
         </div>
 
         <div className="header-right">
@@ -170,7 +170,7 @@ export function AppShell({
                             : to
                   }
                   title={label}
-                  end={to === "/medico" || to === "/admin"}
+                  end={to === "/recepcao" || to === "/medico" || to === "/admin"}
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) =>
                     `nav-item${isActive ? " is-active" : ""}`
