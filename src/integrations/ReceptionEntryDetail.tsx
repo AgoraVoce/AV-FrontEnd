@@ -35,10 +35,12 @@ export function ReceptionEntryDetail() {
   },[entryId]);
   useEffect(()=>{
     const ctrl=new AbortController();
-    void refresh(ctrl.signal).then(()=>{if(!ctrl.signal.aborted)setError("");})
-      .catch(cause=>{if(!ctrl.signal.aborted)setError(errorText(cause));})
-      .finally(()=>{if(!ctrl.signal.aborted)setLoading(false);});
-    return ()=>ctrl.abort();
+    const initial=window.setTimeout(()=>{
+      void refresh(ctrl.signal).then(()=>{if(!ctrl.signal.aborted)setError("");})
+        .catch(cause=>{if(!ctrl.signal.aborted)setError(errorText(cause));})
+        .finally(()=>{if(!ctrl.signal.aborted)setLoading(false);});
+    },0);
+    return ()=>{window.clearTimeout(initial);ctrl.abort();};
   },[refresh,revision]);
   async function act(action:"assign"|"cancel") {
     if (!entry || busy) return;
