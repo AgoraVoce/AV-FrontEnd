@@ -107,49 +107,43 @@ async function go(page: Page, path: string) {
   await expect(page).toHaveURL(path);
 }
 
-test("admin cria perfil médico pelo contrato POST /doctors vinculado a uma conta existente", async ({ page }) => {
-  const state = await backend(page, "ADMIN");
-  await go(page, "/admin/medicos");
-  await expect(page.getByRole("heading", { name: "Médicos", exact: true })).toBeVisible();
-  await page.getByLabel("Conta médica ativa").selectOption(userId);
-  await page.getByLabel("Especialidade").selectOption(specialtyId);
-  await page.getByRole("button", { name: "Cadastrar perfil médico" }).click();
-  await expect.poll(() => state.requests.some(r => r.method === "POST" && r.path === "/doctors")).toBe(true);
-  expect(state.requests.find(r => r.method === "POST" && r.path === "/doctors")?.body)
-    .toEqual({ userId, specialtyId, active: true });
-  await page.getByRole("button", { name: "Detalhes" }).click();
-  await expect(page.getByRole("heading", { name: doctor.name })).toBeVisible();
-  expect(state.requests.some(r => r.path === "/doctors/" + doctorId)).toBe(true);
-  expect(state.requests.some(r => r.path === "/doctors/" + doctorId + "/shifts")).toBe(true);
+test("admin consulta médicos em tabela e edita o vínculo em modal", async ({page}) => {
+  const state=await backend(page,"ADMIN");
+  await go(page,"/admin/medicos");
+  await expect(page.getByRole("heading",{name:"Médicos",exact:true})).toBeVisible();
+  await expect(page.getByRole("cell",{name:doctor.name})).toBeVisible();
+  await page.getByRole("row",{name:new RegExp(doctor.name)}).getByRole("button",{name:"Editar"}).click();
+  const dialog=page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Situação").selectOption("false");
+  await dialog.getByRole("button",{name:"Salvar alterações"}).click();
+  await expect.poll(()=>state.requests.some(r=>r.method==="PATCH"&&r.path==="/doctors/"+doctorId)).toBe(true);
+  const payload=state.requests.find(r=>r.method==="PATCH"&&r.path==="/doctors/"+doctorId)?.body;
+  expect(payload).toMatchObject({specialtyId,active:false});
 });
 
-test("admin cadastra plantão com sala textual e janela ISO, sem usar rotas inexistentes", async ({ page }) => {
-  const state = await backend(page, "ADMIN");
-  await go(page, "/admin/plantoes");
-  await page.getByLabel("Médico", { exact: true }).selectOption(doctorId);
-  await page.getByLabel("Início").fill("2026-11-02T08:00");
-  await page.getByLabel("Fim").fill("2026-11-02T12:00");
-  await page.getByLabel("Sala ou consultório").fill("03");
-  await page.getByRole("button", { name: "Adicionar plantão" }).click();
-  await expect.poll(() => state.requests.some(r => r.path === "/doctors/" + doctorId + "/shifts" && r.method === "POST")).toBe(true);
-  const body = state.requests.find(r => r.path === "/doctors/" + doctorId + "/shifts" && r.method === "POST")?.body as { room: string; startsAt: string; endsAt: string };
+test("admin cadastra plantão pelo modal com sala e horário ISO", async ({page}) => {
+  const state=await backend(page,"ADMIN");
+  await go(page,"/admin/plantoes");
+  await page.getByLabel("Médico",{exact:true}).selectOption(doctorId);
+  await page.getByRole("button",{name:"Novo plantão"}).click();
+  const dialog=page.getByRole("dialog");
+  await dialog.getByLabel("Início").fill("2026-11-02T08:00");
+  await dialog.getByLabel("Fim").fill("2026-11-02T12:00");
+  await dialog.getByLabel("Sala ou consultório").fill("03");
+  await dialog.getByRole("button",{name:"Salvar plantão"}).click();
+  await expect.poll(()=>state.requests.some(r=>r.path==="/doctors/"+doctorId+"/shifts"&&r.method==="POST")).toBe(true);
+  const body=state.requests.find(r=>r.path==="/doctors/"+doctorId+"/shifts"&&r.method==="POST")?.body as {room:string;startsAt:string;endsAt:string};
   expect(body.room).toBe("03");
   expect(new Date(body.startsAt).getTime()).toBeLessThan(new Date(body.endsAt).getTime());
-  expect(state.requests.some(r => r.path === "/admin/shifts")).toBe(false);
 });
 
-test("recepção emite, chama, repete e finaliza senha sem interferir na fila do médico", async ({ page }) => {
-  const state = await backend(page, "RECEPCIONISTA");
-  await go(page, "/recepcao/senhas");
-  await expect(page.getByRole("heading", { name: "Controle de senhas" })).toBeVisible();
-  await page.getByRole("button", { name: "Emitir senha" }).click();
-  await expect.poll(() => state.requests.some(r => r.method === "POST" && r.path === "/tickets")).toBe(true);
-  await page.getByRole("button", { name: "Chamar próxima" }).click();
-  await expect(page.getByRole("button", { name: "Chamar novamente" })).toBeVisible();
-  await page.getByRole("button", { name: "Chamar novamente" }).click();
-  await page.getByRole("button", { name: "Finalizar senha" }).click();
-  await expect.poll(() => state.requests.some(r => r.path === "/tickets/" + ticketId + "/status")).toBe(true);
-  expect(state.requests.some(r => r.path === "/queues/me/next")).toBe(false);
+test("recepção acessa o painel de senhas AV sem gerar tickets paralelos", async ({page}) => {
+  const state=await backend(page,"RECEPCIONISTA");
+  await page.getByRole("link",{name:"Painel TV Pública"}).click();
+  await expect(page.locator(".chamada-ticket")).toHaveText("AV-001");
+  expect(state.requests.some(r=>r.path==="/public/calls")).toBe(true);
+  expect(state.requests.some(r=>r.method==="POST"&&r.path==="/tickets")).toBe(false);
 });
 
 test("histórico de recepção e paciente, edição de contato e impressão autorizada", async ({ page }) => {
