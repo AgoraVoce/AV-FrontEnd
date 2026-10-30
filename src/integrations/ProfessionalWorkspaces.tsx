@@ -162,6 +162,7 @@ export function DoctorsDirectory() {
   </div></AppShell>;
 }
 
+
 export function DoctorShiftsAdmin() {
   usePageTitle("Plantões médicos");
   const toast = useToast();
@@ -172,61 +173,84 @@ export function DoctorShiftsAdmin() {
   const [end, setEnd] = useState("");
   const [room, setRoom] = useState("");
   const [revision, setRevision] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     const ctrl = new AbortController();
     void request("/admin/doctors?page=1&pageSize=100", "GET", undefined, ctrl.signal).then(pageOf<DoctorProfile>)
-      .then(data => { if (!ctrl.signal.aborted) setDoctors(data.items); })
-      .catch(err => { if (!ctrl.signal.aborted) setError(errorText(err)); });
-    return () => ctrl.abort();
-  }, [revision]);
-  useEffect(() => {
-    if (!doctorId) { const timeout = window.setTimeout(() => setShifts([]), 0); return () => window.clearTimeout(timeout); }
-    const ctrl = new AbortController();
-    void extended.shifts(doctorId, ctrl.signal).then(data => { if (!ctrl.signal.aborted) { setShifts(data.items); setError(""); } }).catch(err => { if (!ctrl.signal.aborted) setError(errorText(err)); });
-    return () => ctrl.abort();
-  }, [doctorId, revision]);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!doctorId || busy || !start || !end) return;
-    if (new Date(start) >= new Date(end)) { setError("O término precisa ser posterior ao início."); return; }
-    setBusy(true); setError("");
+      .then(data => {if(!ctrl.signal.aborted)setDoctors(data.items);})
+      .catch(cause=>{if(!ctrl.signal.aborted)setError(errorText(cause));});
+    return ()=>ctrl.abort();
+  },[revision]);
+  useEffect(()=>{
+    if(!doctorId){setShifts([]);return;}
+    const ctrl=new AbortController();
+    setLoading(true);
+    void extended.shifts(doctorId,ctrl.signal).then(data=>{if(!ctrl.signal.aborted){setShifts(data.items);setError("");}})
+      .catch(cause=>{if(!ctrl.signal.aborted)setError(errorText(cause));})
+      .finally(()=>{if(!ctrl.signal.aborted)setLoading(false);});
+    return ()=>ctrl.abort();
+  },[doctorId,revision]);
+  async function submit(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if(!doctorId||busy||!start||!end)return;
+    if(new Date(start)>=new Date(end)){setError("O término precisa ser posterior ao início.");return;}
+    setBusy(true);setError("");
     try {
-      await request("/doctors/" + encodeURIComponent(doctorId) + "/shifts", "POST", {
-        startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(),
-        room: room.trim() || null, availabilityStatus: "DISPONIVEL",
+      await request("/doctors/"+encodeURIComponent(doctorId)+"/shifts","POST",{
+        startsAt:new Date(start).toISOString(),endsAt:new Date(end).toISOString(),
+        room:room.trim()||null,availabilityStatus:"DISPONIVEL"
       });
-      toast.success("Plantão criado"); setStart(""); setEnd(""); setRoom(""); setRevision(n => n + 1);
-    } catch (err) { toast.error("Não foi possível criar plantão", errorText(err)); }
-    finally { setBusy(false); }
+      toast.success("Plantão cadastrado");setCreateOpen(false);setStart("");setEnd("");setRoom("");setRevision(v=>v+1);
+    } catch(cause){setError(errorText(cause));toast.error("Não foi possível cadastrar o plantão",errorText(cause));}
+    finally{setBusy(false);}
   }
-  async function setAvailability(shift: DoctorShift) {
-    if (busy || !window.confirm("Alterar disponibilidade deste plantão?")) return;
+  async function setAvailability(shift:DoctorShift) {
+    if(busy||!window.confirm("Alterar disponibilidade deste plantão?"))return;
     setBusy(true);
     try {
-      await request("/doctors/" + encodeURIComponent(doctorId) + "/shifts/" + encodeURIComponent(shift.id), "PATCH", {
-        availabilityStatus: shift.availabilityStatus === "DISPONIVEL" ? "INDISPONIVEL" : "DISPONIVEL",
+      await request("/doctors/"+encodeURIComponent(doctorId)+"/shifts/"+encodeURIComponent(shift.id),"PATCH",{
+        availabilityStatus:shift.availabilityStatus==="DISPONIVEL"?"INDISPONIVEL":"DISPONIVEL"
       });
-      toast.success("Disponibilidade atualizada"); setRevision(n => n + 1);
-    } catch (err) { toast.error("Não foi possível atualizar plantão", errorText(err)); }
-    finally { setBusy(false); }
+      toast.success("Disponibilidade atualizada");setRevision(v=>v+1);
+    } catch(cause){toast.error("Não foi possível atualizar o plantão",errorText(cause));}
+    finally{setBusy(false);}
   }
-  return <AppShell><div className="local-page operational-page"><header className="local-page-head"><div><span className="local-eyebrow">Administração · Escalas</span>
-    <h1>Plantões médicos</h1><p>Configure turnos reais e salas de atendimento. Plantões sobrepostos são rejeitados pelo servidor.</p></div>
-    <Link to="/admin/medicos" className="local-secondary-button">Médicos</Link></header>
-    <section className="local-form"><h2>Escala por profissional</h2><div className="local-fields"><label>Médico<select value={doctorId} onChange={e => setDoctorId(e.target.value)}><option value="">Escolha o profissional</option>{doctors.map(d => <option key={d.id} value={d.id}>{d.name} · {d.specialty.name}</option>)}</select></label></div>
-      {error && <p className="local-message is-error" role="alert">{error}</p>}
-      {!doctorId && !error && <p className="local-note">Selecione um médico para consultar seus plantões e cadastrar novos horários.</p>}
-      {doctorId && <><form onSubmit={e => void submit(e)} className="local-fields">
-        <label>Início<input type="datetime-local" required value={start} onChange={e => setStart(e.target.value)} /></label>
-        <label>Fim<input type="datetime-local" required value={end} onChange={e => setEnd(e.target.value)} /></label>
-        <label>Sala ou consultório<input type="text" maxLength={50} placeholder="Ex.: Consultório 02" value={room} onChange={e => setRoom(e.target.value)} /></label>
-        <div className="local-actions"><button type="submit" className="local-primary" disabled={busy}>{busy ? "Salvando…" : "Adicionar plantão"}</button></div>
+  return <AppShell><div className="local-page operational-page">
+    <header className="local-page-head"><div><span className="local-eyebrow">Administração · Escalas</span>
+      <h1>Plantões médicos</h1><p>Consulte os horários dos profissionais e configure a escala de atendimento.</p></div>
+      <button type="button" className="local-primary" disabled={!doctorId} onClick={()=>{setError("");setCreateOpen(true);}}>Novo plantão</button>
+    </header>
+    <section className="local-form">
+      <div className="operational-filters"><label>Médico<select value={doctorId} onChange={e=>setDoctorId(e.target.value)}>
+        <option value="">Escolha o profissional</option>{doctors.map(d=><option key={d.id} value={d.id}>{d.name} · {d.specialty.name}</option>)}
+      </select></label></div>
+      {error && <p role="alert" className="local-message is-error">{error}</p>}
+      <div className="operational-row"><h2>Plantões cadastrados</h2></div>
+      {loading && <p role="status">Carregando plantões…</p>}
+      {!doctorId && <div className="local-empty"><p>Selecione um médico para consultar seus plantões.</p></div>}
+      {!!doctorId && !loading && shifts.length===0 && !error && <div className="local-empty"><p>Nenhum plantão cadastrado para este médico.</p></div>}
+      {!!doctorId && shifts.length>0 && <div className="local-table-wrap"><table className="local-table">
+        <thead><tr><th scope="col">Início</th><th scope="col">Fim</th><th scope="col">Sala</th><th scope="col">Situação</th><th scope="col">Ação</th></tr></thead>
+        <tbody>{shifts.map(shift=><tr key={shift.id}><td>{shiftTime(shift.startsAt)}</td><td>{shiftTime(shift.endsAt)}</td><td>{shift.room||"Não informada"}</td>
+          <td><span className={"operational-state "+(shift.availabilityStatus==="DISPONIVEL"?"is-completed":"is-cancelled")}>{shift.availabilityStatus==="DISPONIVEL"?"Disponível":"Indisponível"}</span></td>
+          <td><button className="local-secondary-button" type="button" disabled={busy} onClick={()=>void setAvailability(shift)}>{shift.availabilityStatus==="DISPONIVEL"?"Indisponibilizar":"Reativar"}</button></td></tr>)}</tbody>
+      </table></div>}
+    </section>
+    {createOpen && <EditorDialog title="Novo plantão" busy={busy} onClose={()=>setCreateOpen(false)}>
+      <form className="local-form" onSubmit={event=>void submit(event)}><h2>Novo plantão</h2>
+        <p className="local-note">Médico: {doctors.find(item=>item.id===doctorId)?.name}</p>
+        <fieldset disabled={busy} className="clinic-fieldset"><div className="local-fields">
+          <label>Início *<input type="datetime-local" required value={start} onChange={e=>setStart(e.target.value)}/></label>
+          <label>Fim *<input type="datetime-local" required value={end} onChange={e=>setEnd(e.target.value)}/></label>
+          <label className="local-wide">Sala ou consultório<input type="text" maxLength={50} placeholder="Ex.: Consultório 02" value={room} onChange={e=>setRoom(e.target.value)}/></label>
+        </div></fieldset>
+        {error && <p role="alert" className="local-message is-error">{error}</p>}
+        <div className="local-actions"><button className="local-primary" type="submit" disabled={busy||!start||!end}>{busy?"Salvando…":"Salvar plantão"}</button>
+          <button className="local-secondary-button" type="button" disabled={busy} onClick={()=>setCreateOpen(false)}>Cancelar</button></div>
       </form>
-      {shifts.length === 0 && <p className="local-note">Nenhum plantão cadastrado para este médico.</p>}
-      {shifts.length > 0 && <div className="local-table-wrap"><table className="local-table"><thead><tr><th scope="col">Início</th><th scope="col">Fim</th><th scope="col">Sala</th><th scope="col">Status</th><th scope="col">Ação</th></tr></thead><tbody>
-        {shifts.map(s => <tr key={s.id}><td>{shiftTime(s.startsAt)}</td><td>{shiftTime(s.endsAt)}</td><td>{s.room || "Não informada"}</td>
-          <td>{s.availabilityStatus === "DISPONIVEL" ? "Disponível" : "Indisponível"}</td><td><button type="button" className="local-secondary-button" disabled={busy} onClick={() => void setAvailability(s)}>{s.availabilityStatus === "DISPONIVEL" ? "Indisponibilizar" : "Reativar"}</button></td></tr>)}
-      </tbody></table></div>}</>}
-    </section></div></AppShell>;
+    </EditorDialog>}
+  </div></AppShell>;
 }
