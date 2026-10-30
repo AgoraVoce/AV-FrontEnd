@@ -1,7 +1,4 @@
 /* Reception-only adaptation of reception branch surfaces and design tokens. */
-.reception-center-brand .brand {font-size:11px;gap:6px;}
-.reception-center-brand .brand-mark {width:18px;height:18px;background:var(--color-brand-surface);color:var(--color-primary);}
-.reception-center-brand svg {width:13px;height:13px;}
 .reception-live.local-page {width:100%;max-width:none;margin:0;padding:0;gap:20px;}
 .reception-live, .reception-live * {letter-spacing:0;}
 .reception-live .local-eyebrow {font-size:11px;color:var(--color-muted);}
@@ -44,24 +41,10 @@
 .reception-row-actions {display:flex;gap:8px;}
 .reception-pagination {display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;background:#f2f5f7;padding:12px;font-size:13px;color:var(--color-muted);}
 .reception-pagination > div {display:flex;align-items:center;gap:10px;font-family:monospace;}
-.reception-info-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:16px;}
-.reception-info-grid article {display:flex;align-items:flex-start;gap:12px;}
-.reception-info-grid p {font-size:13px;color:var(--color-muted);margin:8px 0 0;}
 .reception-live .local-bottom {flex-wrap:wrap;}
 .reception-live .local-note {font-size:13px;}
-@media (min-width:768px) and (max-width:1279px) {
- .sidebar {width:76px;padding-inline:8px;}
- .nav-item,.sidebar-signout-button {justify-content:center;}
- .nav-item span,.nav-group-title,.sidebar-signout-button span,.sidebar-footer span:nth-child(2),.sidebar-footer strong {display:none;}
- .sidebar-footer {justify-content:center;}
- .header-context {display:none;}
-}
 @media (max-width:1279px) {.reception-summary {grid-template-columns:1fr;}.reception-live .local-page-head {flex-wrap:wrap;}}
 @media (max-width:767px) {
- .reception-shell .site-header {display:flex;justify-content:space-between;padding-inline:14px;}
- .header-context,.reception-center-brand {display:none;}
- .workspace-content {padding:20px 14px;}
- .sidebar {width:220px;}
  .reception-risks {grid-template-columns:1fr;}
  .reception-search {flex-basis:100%;}
  .reception-toolbar .local-primary {width:auto;}
