@@ -224,9 +224,9 @@ export function DoctorShiftsAdmin() {
       <button type="button" className="local-primary" disabled={!doctorId} onClick={()=>{setError("");setCreateOpen(true);}}>Novo plantão</button>
     </header>
     <section className="local-form">
-      <div className="operational-filters"><label>Médico<select value={doctorId} onChange={e=>setDoctorId(e.target.value)}>
+      <div className="operational-filters"><label htmlFor="shifts-doctor-select">Médico</label><select id="shifts-doctor-select" aria-label="Médico" value={doctorId} onChange={e=>setDoctorId(e.target.value)}>
         <option value="">Escolha o profissional</option>{doctors.map(d=><option key={d.id} value={d.id}>{d.name} · {d.specialty.name}</option>)}
-      </select></label></div>
+      </select></div>
       {error && <p role="alert" className="local-message is-error">{error}</p>}
       <div className="operational-row"><h2>Plantões cadastrados</h2></div>
       {loading && <p role="status">Carregando plantões…</p>}
