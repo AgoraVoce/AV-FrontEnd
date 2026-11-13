@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "createdAt": "2026-11-13T01:21:09.801Z",
+        "reason": "User specified Plus Jakarta Sans as the canonical font in the Semana 08 design direction; the print document inherits the existing --font-body token."
+      }
+    ]
+  }
+}

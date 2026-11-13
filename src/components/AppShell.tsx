@@ -1,4 +1,9 @@
-import { useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
@@ -36,10 +41,14 @@ export function AppShell({
   children,
   headerContext,
   headerTools,
+  navigationGuard,
+  navigationPending = false,
 }: {
   children: ReactNode;
   headerContext?: ReactNode;
   headerTools?: ReactNode;
+  navigationGuard?: (target: string) => boolean;
+  navigationPending?: boolean;
 }) {
   const { state, signOut, invalidateSession } = useAuth();
   const navigate = useNavigate();
@@ -47,25 +56,30 @@ export function AppShell({
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const activeRole = state.status === "authenticated"
-    ? state.user.role
-    : location.pathname.startsWith("/medico")
-      ? "MEDICO"
-      : location.pathname.startsWith("/admin")
-        ? "ADMIN"
-        : "RECEPCIONISTA";
-  const userName = state.status === "authenticated"
-    ? state.user.name
-    : activeRole === "MEDICO"
-      ? "Dr. Marcelo Arantes"
+  const blockedLink = useRef<HTMLAnchorElement | null>(null);
+  const wasNavigationPending = useRef(false);
+  const activeRole =
+    state.status === "authenticated"
+      ? state.user.role
+      : location.pathname.startsWith("/medico")
+        ? "MEDICO"
+        : location.pathname.startsWith("/admin")
+          ? "ADMIN"
+          : "RECEPCIONISTA";
+  const userName =
+    state.status === "authenticated"
+      ? state.user.name
+      : activeRole === "MEDICO"
+        ? "Dr. Marcelo Arantes"
+        : activeRole === "ADMIN"
+          ? "Lucas Vasconcelos"
+          : "Dra. Mariana Rios";
+  const profile =
+    activeRole === "MEDICO"
+      ? "Corpo Clínico"
       : activeRole === "ADMIN"
-        ? "Lucas Vasconcelos"
-        : "Dra. Mariana Rios";
-  const profile = activeRole === "MEDICO"
-    ? "Corpo Clínico"
-    : activeRole === "ADMIN"
-      ? "Administração"
-      : "Triagem & Recepção";
+        ? "Administração"
+        : "Triagem & Recepção";
   const receptionPath =
     import.meta.env.DEV && state.status !== "authenticated"
       ? "/recepcao?dev=recepcionista"
@@ -82,15 +96,61 @@ export function AppShell({
     import.meta.env.DEV && state.status !== "authenticated"
       ? "/admin?dev=admin"
       : "/admin";
-  const managementPath = activeRole === "ADMIN"
-    ? (import.meta.env.DEV && state.status !== "authenticated"
-        ? "/admin/usuarios?dev=admin" : "/admin/usuarios")
-    : (import.meta.env.DEV && state.status !== "authenticated"
-        ? "/recepcao/usuarios?dev=recepcionista" : "/recepcao/usuarios");
-  const unitContext = headerContext ?? (API_MODE ? null : <span className="app-unit-chip"><Building2 size={14} aria-hidden="true" />PRONTO-SOCORRO CENTRAL</span>);
+  const managementPath =
+    activeRole === "ADMIN"
+      ? import.meta.env.DEV && state.status !== "authenticated"
+        ? "/admin/usuarios?dev=admin"
+        : "/admin/usuarios"
+      : import.meta.env.DEV && state.status !== "authenticated"
+        ? "/recepcao/usuarios?dev=recepcionista"
+        : "/recepcao/usuarios";
+  const unitContext =
+    headerContext ??
+    (API_MODE ? null : (
+      <span className="app-unit-chip">
+        <Building2 size={14} aria-hidden="true" />
+        PRONTO-SOCORRO CENTRAL
+      </span>
+    ));
+
+  useEffect(() => {
+    if (wasNavigationPending.current && !navigationPending) {
+      blockedLink.current?.focus();
+      blockedLink.current = null;
+    }
+    wasNavigationPending.current = navigationPending;
+  }, [navigationPending]);
+
+  function guardInternalNavigation(event: ReactMouseEvent<HTMLDivElement>) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      !navigationGuard
+    )
+      return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const anchor = target.closest<HTMLAnchorElement>("a[href]");
+    if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
+    const destination = new URL(anchor.href, window.location.href);
+    if (destination.origin !== window.location.origin) return;
+    if (
+      !navigationGuard(
+        destination.pathname + destination.search + destination.hash,
+      )
+    ) {
+      event.preventDefault();
+      blockedLink.current = anchor;
+    }
+  }
 
   async function handleSignOut() {
     if (isSigningOut) return;
+    if (navigationGuard && !navigationGuard("/__sign-out")) return;
     setIsSigningOut(true);
     if (state.status !== "authenticated") {
       invalidateSession();
@@ -103,10 +163,11 @@ export function AppShell({
       await signOut(controller.signal);
       navigate("/login", { replace: true });
     } catch (error) {
-      toast.error("Não foi possível encerrar sua sessão.",
+      toast.error(
+        "Não foi possível encerrar sua sessão.",
         error instanceof AuthError && error.kind === "invalid"
           ? "O serviço não confirmou o encerramento. Tente novamente."
-          : ERROR_COPY[error instanceof AuthError ? error.kind : "unavailable"]
+          : ERROR_COPY[error instanceof AuthError ? error.kind : "unavailable"],
       );
     } finally {
       setIsSigningOut(false);
@@ -114,7 +175,7 @@ export function AppShell({
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" onClickCapture={guardInternalNavigation}>
       <header className="site-header">
         <div className="header-left">
           <div className="header-brand-wrap">
@@ -135,7 +196,14 @@ export function AppShell({
             {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
 
-          <div className="header-user" aria-label={state.status === "authenticated" ? "Usuário autenticado" : "Perfil de demonstração"}>
+          <div
+            className="header-user"
+            aria-label={
+              state.status === "authenticated"
+                ? "Usuário autenticado"
+                : "Perfil de demonstração"
+            }
+          >
             <div className="header-user-info">
               <strong>{userName}</strong>
               <small>{profile}</small>
@@ -155,7 +223,13 @@ export function AppShell({
           <nav className="sidebar-nav" aria-label="Módulos de atendimento">
             <div className="nav-group">
               <p className="nav-group-title">MÓDULOS DE ATENDIMENTO</p>
-              {MAIN_MENU.filter(({ to }) => !API_MODE || (activeRole === "RECEPCIONISTA" && ["/recepcao", "/novo-cadastro"].includes(to)) || (activeRole === "ADMIN" && to === "/admin")).map(({ to, label, icon: Icon }) => (
+              {MAIN_MENU.filter(
+                ({ to }) =>
+                  !API_MODE ||
+                  (activeRole === "RECEPCIONISTA" &&
+                    ["/recepcao", "/novo-cadastro"].includes(to)) ||
+                  (activeRole === "ADMIN" && to === "/admin"),
+              ).map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={
@@ -170,7 +244,9 @@ export function AppShell({
                             : to
                   }
                   title={label}
-                  end={to === "/recepcao" || to === "/medico" || to === "/admin"}
+                  end={
+                    to === "/recepcao" || to === "/medico" || to === "/admin"
+                  }
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) =>
                     `nav-item${isActive ? " is-active" : ""}`
@@ -180,16 +256,77 @@ export function AppShell({
                   <span>{label}</span>
                 </NavLink>
               ))}
-              {API_MODE && activeRole === "RECEPCIONISTA" && <>
-                <NavLink to="/recepcao/entradas" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Search size={18} aria-hidden="true" /><span>Histórico de entradas</span></NavLink>
-              </>}
-              {API_MODE && activeRole === "RECEPCIONISTA" && <NavLink to="/pacientes" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Search size={18} aria-hidden="true" /><span>Pacientes cadastrados</span></NavLink>}
-              {API_MODE && activeRole === "MEDICO" && <>
-                <NavLink end to="/medico" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><LayoutDashboard size={18} aria-hidden="true" /><span>Consultório Médico</span></NavLink>
-                <NavLink to="/medico/historico" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Search size={18} aria-hidden="true" /><span>Meus atendimentos</span></NavLink>
-                <NavLink to="/medico/fila" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><ListChecks size={18} aria-hidden="true" /><span>Minha fila</span></NavLink>
-                <NavLink to="/medico/atendimento" onClick={() => setSidebarOpen(false)} className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}><Stethoscope size={18} aria-hidden="true" /><span>Paciente atual</span></NavLink>
-              </>}
+              {API_MODE && activeRole === "RECEPCIONISTA" && (
+                <>
+                  <NavLink
+                    to="/recepcao/entradas"
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      `nav-item${isActive ? " is-active" : ""}`
+                    }
+                  >
+                    <Search size={18} aria-hidden="true" />
+                    <span>Histórico de entradas</span>
+                  </NavLink>
+                </>
+              )}
+              {API_MODE && activeRole === "RECEPCIONISTA" && (
+                <NavLink
+                  to="/pacientes"
+                  onClick={() => setSidebarOpen(false)}
+                  className={({ isActive }) =>
+                    `nav-item${isActive ? " is-active" : ""}`
+                  }
+                >
+                  <Search size={18} aria-hidden="true" />
+                  <span>Pacientes cadastrados</span>
+                </NavLink>
+              )}
+              {API_MODE && activeRole === "MEDICO" && (
+                <>
+                  <NavLink
+                    end
+                    to="/medico"
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      `nav-item${isActive ? " is-active" : ""}`
+                    }
+                  >
+                    <LayoutDashboard size={18} aria-hidden="true" />
+                    <span>Consultório Médico</span>
+                  </NavLink>
+                  <NavLink
+                    to="/medico/historico"
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      `nav-item${isActive ? " is-active" : ""}`
+                    }
+                  >
+                    <Search size={18} aria-hidden="true" />
+                    <span>Meus atendimentos</span>
+                  </NavLink>
+                  <NavLink
+                    to="/medico/fila"
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      `nav-item${isActive ? " is-active" : ""}`
+                    }
+                  >
+                    <ListChecks size={18} aria-hidden="true" />
+                    <span>Minha fila</span>
+                  </NavLink>
+                  <NavLink
+                    to="/medico/atendimento"
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      `nav-item${isActive ? " is-active" : ""}`
+                    }
+                  >
+                    <Stethoscope size={18} aria-hidden="true" />
+                    <span>Paciente atual</span>
+                  </NavLink>
+                </>
+              )}
               {API_MODE &&
                 (activeRole === "ADMIN" || activeRole === "MEDICO") &&
                 (activeRole === "ADMIN"
@@ -205,7 +342,11 @@ export function AppShell({
                         icon: Building2,
                       },
                       { to: "/admin/medicos", label: "Médicos", icon: Users },
-                      { to: "/admin/relatorios", label: "Relatórios", icon: BarChart3 },
+                      {
+                        to: "/admin/relatorios",
+                        label: "Relatórios",
+                        icon: BarChart3,
+                      },
                       {
                         to: "/admin/plantoes",
                         label: "Plantões",
@@ -237,25 +378,28 @@ export function AppShell({
                     <span>{label}</span>
                   </NavLink>
                 ))}
-              {activeRole !== "MEDICO" && (!API_MODE || activeRole === "ADMIN") && (
-                <NavLink
-                  to={managementPath}
-                  title="Gestão de Usuários"
-                  end
-                  onClick={() => setSidebarOpen(false)}
-                  className={({ isActive }) =>
-                    `nav-item${isActive || (API_MODE && activeRole === "ADMIN" && location.pathname === "/admin/novo-funcionario") ? " is-active" : ""}`
-                  }
-                >
-                  <Users size={18} aria-hidden="true" />
-                  <span>Gestão de Usuários</span>
-                </NavLink>
-              )}
+              {activeRole !== "MEDICO" &&
+                (!API_MODE || activeRole === "ADMIN") && (
+                  <NavLink
+                    to={managementPath}
+                    title="Gestão de Usuários"
+                    end
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      `nav-item${isActive || (API_MODE && activeRole === "ADMIN" && location.pathname === "/admin/novo-funcionario") ? " is-active" : ""}`
+                    }
+                  >
+                    <Users size={18} aria-hidden="true" />
+                    <span>Gestão de Usuários</span>
+                  </NavLink>
+                )}
             </div>
 
             <div className="nav-group">
               <p className="nav-group-title">TRANSMISSÃO</p>
-              {TRANSMISSION_MENU.filter(() => !API_MODE || activeRole === "RECEPCIONISTA").map(({ to, label, icon: Icon }) => (
+              {TRANSMISSION_MENU.filter(
+                () => !API_MODE || activeRole === "RECEPCIONISTA",
+              ).map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -281,7 +425,12 @@ export function AppShell({
             <span>{isSigningOut ? "Saindo..." : "Sair"}</span>
           </button>
 
-          {!API_MODE && <div className="sidebar-footer"><span className="service-status-dot" aria-hidden="true" /><span>Serviço Ativo</span></div>}
+          {!API_MODE && (
+            <div className="sidebar-footer">
+              <span className="service-status-dot" aria-hidden="true" />
+              <span>Serviço Ativo</span>
+            </div>
+          )}
         </aside>
 
         <main className="workspace-content">{children}</main>

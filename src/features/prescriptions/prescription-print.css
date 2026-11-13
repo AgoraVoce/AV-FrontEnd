@@ -1,0 +1,136 @@
+@media print {
+  @page prescription {
+    size: A4 portrait;
+    margin: 14mm;
+  }
+
+  html[data-prescription-print="true"] .prescription-document {
+    page: prescription;
+  }
+
+  html[data-prescription-print="true"],
+  html[data-prescription-print="true"] body {
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #111 !important;
+    scrollbar-gutter: auto !important;
+  }
+
+  html[data-prescription-print="true"] .site-header,
+  html[data-prescription-print="true"] .sidebar,
+  html[data-prescription-print="true"] .prescription-preview-screen-header,
+  html[data-prescription-print="true"] .prescription-preview-actions,
+  html[data-prescription-print="true"] .av-toast-stack,
+  html[data-prescription-print="true"] .prescription-preview-status,
+  html[data-prescription-print="true"] button,
+  html[data-prescription-print="true"] a {
+    display: none !important;
+  }
+
+  html[data-prescription-print="true"] .route-transition,
+  html[data-prescription-print="true"] .app-shell,
+  html[data-prescription-print="true"] .app-body,
+  html[data-prescription-print="true"] .workspace-content,
+  html[data-prescription-print="true"] .prescription-preview-page {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    transform: none !important;
+    animation: none !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  html[data-prescription-print="true"] .prescription-document {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: #111 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    font-family: var(--font-body) !important;
+    font-size: 11pt !important;
+    line-height: 1.45 !important;
+    overflow: visible !important;
+  }
+
+  html[data-prescription-print="true"] .prescription-document-header {
+    padding-bottom: 8mm !important;
+    border-color: #777 !important;
+  }
+
+  html[data-prescription-print="true"] .prescription-document-header h1 {
+    font-size: 19pt !important;
+  }
+
+  html[data-prescription-print="true"] .prescription-document-kicker,
+  html[data-prescription-print="true"] .prescription-document-field dt {
+    color: #333 !important;
+  }
+
+  html[data-prescription-print="true"] .prescription-document-status {
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: #111 !important;
+    background: transparent !important;
+    font-size: 10pt !important;
+  }
+
+  html[data-prescription-print="true"] .prescription-document-section {
+    padding-top: 7mm !important;
+    break-inside: auto;
+  }
+
+  html[data-prescription-print="true"] .prescription-document-section h2 {
+    border-color: #999 !important;
+    color: #111 !important;
+    font-size: 12pt !important;
+    orphans: 3;
+    widows: 3;
+  }
+
+  html[data-prescription-print="true"] .prescription-document-fields {
+    column-gap: 8mm !important;
+    row-gap: 4mm !important;
+  }
+
+  html[data-prescription-print="true"] .prescription-document-field,
+  html[data-prescription-print="true"] .prescription-document-field dd,
+  html[data-prescription-print="true"] .prescription-document-text,
+  html[data-prescription-print="true"] .prescription-document-medication p {
+    color: #111 !important;
+    font-size: 10.5pt !important;
+    line-height: 1.45 !important;
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    orphans: 3;
+    widows: 3;
+  }
+
+  html[data-prescription-print="true"] .prescription-document-medications {
+    gap: 3mm !important;
+  }
+
+  html[data-prescription-print="true"] .prescription-document-medication {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

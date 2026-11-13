@@ -13,11 +13,16 @@ import { ReceptionEntryDetail } from "./integrations/ReceptionEntryDetail";
 import { EntryHistoryPage, ReportsPage } from "./integrations/ClinicDataPages";
 import { API_MODE } from "./auth/api";
 import { LocalUnavailablePage } from "./integrations/LocalPages";
-import { ReceptionWorkspace, PatientWorkspace, PatientSearchWorkspace } from "./integrations/ReceptionWorkspace";
+import {
+  ReceptionWorkspace,
+  PatientWorkspace,
+  PatientSearchWorkspace,
+} from "./integrations/ReceptionWorkspace";
 import { DoctorWorkspace } from "./integrations/DoctorWorkspace";
 import { StaffWorkspace } from "./integrations/StaffWorkspace";
 import { LoginPage } from "./auth/LoginPage";
 import { ProtectedArea } from "./auth/ProtectedArea";
+import { PrescriptionPreviewPage } from "./features/prescriptions/PrescriptionPreviewPage";
 import { QueuePage } from "./auth/reception/QueuePage";
 import { PainelPublicoPage } from "./painel-publico/PainelPublicoPage";
 import MedicoPage from "./pages/Medico";
@@ -55,15 +60,30 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/recuperar-senha" element={API_MODE ? <ApiPasswordResetPage /> : <RecoveryPage />} />
+        <Route
+          path="/recuperar-senha"
+          element={API_MODE ? <ApiPasswordResetPage /> : <RecoveryPage />}
+        />
         <Route path="/reset-password" element={<ApiPasswordResetPage />} />
         <Route
           path="/transmissao/tv"
-          element={API_MODE ? <PublicCallsScreen presentation="tv" /> : <PainelPublicoPage presentation="tv" />}
+          element={
+            API_MODE ? (
+              <PublicCallsScreen presentation="tv" />
+            ) : (
+              <PainelPublicoPage presentation="tv" />
+            )
+          }
         />
         <Route
           path="/transmissao"
-          element={API_MODE ? <PublicCallsScreen presentation="admin" /> : <PainelPublicoPage presentation="admin" />}
+          element={
+            API_MODE ? (
+              <PublicCallsScreen presentation="admin" />
+            ) : (
+              <PainelPublicoPage presentation="admin" />
+            )
+          }
         />
         <Route
           path="/recepcao"
@@ -73,13 +93,35 @@ export default function App() {
             </ProtectedArea>
           }
         />
-        {API_MODE && <Route path="/recepcao/entradas/:entryId" element={<ProtectedArea role="RECEPCIONISTA"><ReceptionEntryDetail /></ProtectedArea>} />}
-        {API_MODE && <Route path="/recepcao/entradas" element={<ProtectedArea role="RECEPCIONISTA"><EntryHistoryPage kind="reception" /></ProtectedArea>} />}
+        {API_MODE && (
+          <Route
+            path="/recepcao/entradas/:entryId"
+            element={
+              <ProtectedArea role="RECEPCIONISTA">
+                <ReceptionEntryDetail />
+              </ProtectedArea>
+            }
+          />
+        )}
+        {API_MODE && (
+          <Route
+            path="/recepcao/entradas"
+            element={
+              <ProtectedArea role="RECEPCIONISTA">
+                <EntryHistoryPage kind="reception" />
+              </ProtectedArea>
+            }
+          />
+        )}
         <Route
           path="/recepcao/usuarios"
           element={
             <ProtectedArea role="RECEPCIONISTA">
-              {API_MODE ? <StaffWorkspace actor="RECEPCIONISTA" /> : <ReceptionUsersPage />}
+              {API_MODE ? (
+                <StaffWorkspace actor="RECEPCIONISTA" />
+              ) : (
+                <ReceptionUsersPage />
+              )}
             </ProtectedArea>
           }
         />
@@ -93,19 +135,80 @@ export default function App() {
         />
         <Route
           path="/pacientes"
-          element={<ProtectedArea role="RECEPCIONISTA">{API_MODE ? <PatientSearchWorkspace /> : <Navigate to="/recepcao" replace />}</ProtectedArea>}
+          element={
+            <ProtectedArea role="RECEPCIONISTA">
+              {API_MODE ? (
+                <PatientSearchWorkspace />
+              ) : (
+                <Navigate to="/recepcao" replace />
+              )}
+            </ProtectedArea>
+          }
         />
         <Route
           path="/medico"
-          element={<ProtectedArea role="MEDICO">{API_MODE ? <DoctorWorkspace view="dashboard" /> : <MedicoPage />}</ProtectedArea>}
+          element={
+            <ProtectedArea role="MEDICO">
+              {API_MODE ? <DoctorWorkspace view="dashboard" /> : <MedicoPage />}
+            </ProtectedArea>
+          }
         />
-        {API_MODE && <>
-          <Route path="/medico/historico" element={<ProtectedArea role="MEDICO"><EntryHistoryPage kind="doctor" /></ProtectedArea>} />
-          <Route path="/medico/fila" element={<ProtectedArea role="MEDICO"><DoctorWorkspace view="queue" /></ProtectedArea>} />
-          <Route path="/medico/fila/:entryId" element={<ProtectedArea role="MEDICO"><DoctorWorkspace view="detail" /></ProtectedArea>} />
-          <Route path="/medico/atendimento" element={<ProtectedArea role="MEDICO"><DoctorWorkspace view="current" /></ProtectedArea>} />
-        </>}
-        <Route path="/admin/novo-funcionario" element={<ProtectedArea role="ADMIN">{API_MODE ? <StaffWorkspace actor="ADMIN" view="create" /> : <Navigate to="/admin" replace />}</ProtectedArea>} />
+        {API_MODE && (
+          <>
+            <Route
+              path="/medico/historico"
+              element={
+                <ProtectedArea role="MEDICO">
+                  <EntryHistoryPage kind="doctor" />
+                </ProtectedArea>
+              }
+            />
+            <Route
+              path="/medico/fila"
+              element={
+                <ProtectedArea role="MEDICO">
+                  <DoctorWorkspace view="queue" />
+                </ProtectedArea>
+              }
+            />
+            <Route
+              path="/medico/fila/:entryId"
+              element={
+                <ProtectedArea role="MEDICO">
+                  <DoctorWorkspace view="detail" />
+                </ProtectedArea>
+              }
+            />
+            <Route
+              path="/medico/atendimento"
+              element={
+                <ProtectedArea role="MEDICO">
+                  <DoctorWorkspace view="current" />
+                </ProtectedArea>
+              }
+            />
+            <Route
+              path="/medico/prescricoes/:entryId"
+              element={
+                <ProtectedArea role="MEDICO">
+                  <PrescriptionPreviewPage />
+                </ProtectedArea>
+              }
+            />
+          </>
+        )}
+        <Route
+          path="/admin/novo-funcionario"
+          element={
+            <ProtectedArea role="ADMIN">
+              {API_MODE ? (
+                <StaffWorkspace actor="ADMIN" view="create" />
+              ) : (
+                <Navigate to="/admin" replace />
+              )}
+            </ProtectedArea>
+          }
+        />
         <Route
           path="/admin"
           element={
@@ -120,7 +223,20 @@ export default function App() {
             path={`/admin/${section}`}
             element={
               <ProtectedArea role="ADMIN">
-                {API_MODE ? (section === "usuarios" ? <StaffWorkspace actor="ADMIN" /> : section === "relatorios" ? <ReportsPage /> : <LocalUnavailablePage title="Fila administrativa sem permissão na API" description="A consulta geral de entradas exige perfil de recepção. Não exibimos dados não autorizados." />) : <AdminPage />}
+                {API_MODE ? (
+                  section === "usuarios" ? (
+                    <StaffWorkspace actor="ADMIN" />
+                  ) : section === "relatorios" ? (
+                    <ReportsPage />
+                  ) : (
+                    <LocalUnavailablePage
+                      title="Fila administrativa sem permissão na API"
+                      description="A consulta geral de entradas exige perfil de recepção. Não exibimos dados não autorizados."
+                    />
+                  )
+                ) : (
+                  <AdminPage />
+                )}
               </ProtectedArea>
             }
           />
