@@ -3,6 +3,11 @@ import type { ReactNode } from "react";
 import { AuthContext } from "./context";
 import type { SessionState } from "./context";
 import { authApi, AuthError, clearLocalSession } from "./api";
+
+function notifyAuthContextChanged() {
+  window.dispatchEvent(new Event("av:auth-context-changed"));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SessionState>({
     status: "checking",
@@ -22,7 +27,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!controller.signal.aborted && stamp === version.current)
         setState({ status: "authenticated", user });
     } catch (error) {
-      if (!controller.signal.aborted && stamp === version.current)
+      if (!controller.signal.aborted && stamp === version.current) {
+        if (error instanceof AuthError && error.kind === "invalid") {
+          clearLocalSession();
+          notifyAuthContextChanged();
+        }
         setState({
           status:
             error instanceof AuthError && error.kind === "invalid"
@@ -30,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               : "error",
           user: null,
         });
+      }
     }
   }, []);
   const restore = useCallback(async () => {
@@ -54,6 +64,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       channel.current = new BroadcastChannel("av-auth");
       channel.current.onmessage = (event) => {
         if (event.data === "signed-out") clearLocalSession();
+        if (event.data === "signed-out" || event.data === "session-changed")
+          notifyAuthContextChanged();
         void restore();
       };
     }
@@ -67,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const stamp = ++version.current;
       current.current?.abort();
       mutation.current = true;
+      notifyAuthContextChanged();
       // A new login supersedes session restoration, including an unavailable API.
       setState({ status: "anonymous", user: null });
       try {
@@ -93,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!(error instanceof AuthError && error.status === 401)) throw error;
       }
       if (!signal.aborted && stamp === version.current) {
+        notifyAuthContextChanged();
         setState({ status: "anonymous", user: null });
         channel.current?.postMessage("signed-out");
       }
@@ -101,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
   const invalidateSession = useCallback(() => {
+    notifyAuthContextChanged();
     clearLocalSession();
     ++version.current;
     current.current?.abort();

@@ -18,6 +18,7 @@ npm run dev
 ```
 
 `.env` do frontend:
+
 ```dotenv
 API_PROXY_TARGET=http://127.0.0.1:3000
 VITE_AV_LOCAL_API=true
@@ -39,6 +40,7 @@ Após o ajuste, um cadastro fictício realizado pela própria interface na porta
 ## Fluxos integrados
 
 ### Recepção
+
 - Consulta a fila real, com atualização a cada 30 segundos, busca e detalhamento de cada entrada.
 - Busca pacientes existentes por **nome ou CPF**, seleciona a ficha, ou cadastra novos pacientes.
 - Registra sintomas/gravidade manual e escolhe o médico disponível de plantão. Pacientes sem médico podem ficar em espera até a atribuição.
@@ -46,6 +48,7 @@ Após o ajuste, um cadastro fictício realizado pela própria interface na porta
 - **Nunca chama o paciente**: a chamada é responsabilidade do médico.
 
 ### Médico
+
 - Consulta somente a sua própria fila. O botão `Chamar próximo paciente` usa `POST /queues/me/next`, respeitando prioridade e exclusão de chamadas concorrentes no servidor.
 - Confirma entrada em atendimento com `PATCH /entries/:id/status` (`in_progress`).
 - Formulário estruturado de prescrição (descrição + medicamentos com nome, dosagem e instruções + orientações opcionais), revisão e **finalização atômica** em `POST /entries/:id/complete`.
@@ -53,13 +56,16 @@ Após o ajuste, um cadastro fictício realizado pela própria interface na porta
 - Salva **apenas o UUID da entrada ativa** no `sessionStorage` por usuário para tentar retomar no mesmo navegador. Nunca armazena dados clínicos ou JWT ali.
 
 ### Administração
+
 - `GET /employees` para listar, pesquisar e filtrar funcionários com paginação real; `POST /employees` para criar contas quando autorizado. A recepção não recebe funcionalidades exclusivas do ADMIN.
 
 ### Sessões
+
 - `GET /auth/me` verifica a identidade com o Bearer ativo; `POST /auth/logout` revoga o token no servidor antes de atualizar a UI.
 - O accessToken permanece **somente em memória** e expira no máximo em 15 minutos; atualizar a página ainda exige login, pois não há refresh token. Resposta 401 invalida a sessão; falhas 503 não são apresentadas como logout confirmado.
 
 ## Novos fluxos integrados (PR #19)
+
 - Recepção: controle de senhas administrativas, histórico geral de entradas, histórico por paciente, edição de contato e PDF das prescrições concluídas.
 - Médico: dashboard do servidor, restauração do atendimento ativo, histórico paginado e download de prescrição.
 - Administração: listagem, cadastro completo e edição de médicos com CRM/UF, telefone, especialidade e sala padrão; busca por nome/CRM e filtros; salas cadastradas e plantões com reserva de sala, edição e cancelamento.
@@ -68,8 +74,9 @@ Após o ajuste, um cadastro fictício realizado pela própria interface na porta
 - Não usar os módulos `tickets` e `queues` como se fossem a mesma fila; o painel público exibe chamadas clínicas, não as senhas administrativas.
 
 ## Limitações e dependências do backend
+
 - O atendimento ativo agora pode ser recuperado com `GET /doctors/me/active`, inclusive em outro navegador após novo login.
-- O contrato de `/entries/:id/complete` exige **ao menos um medicamento**. Precisamos discutir atendimentos encerrados sem medicação.
+- O contrato de `/entries/:id/complete` aceita `medications: []` quando o atendimento não exige medicação; cada medicamento informado precisa ter nome, dosagem e instruções completos.
 - O backend disponibiliza `GET /public/calls` (sem identificação de pacientes), recuperação por link/token via `/auth/password-reset/*` e relatório administrativo `GET /admin/reports`. A recuperação só envia links se o backend possuir provedor de e-mail configurado.
 - O módulo `/tickets` é uma fila administrativa independente da fila clínica `/queues`; os estados não podem ser confundidos.
 - Gestão médica integrada ao AV-Backend `9a8725b`: `GET/POST /admin/doctors`, `PATCH /doctors/:id`, `GET/POST/PATCH /rooms` e `GET /admin/shifts`. Plantões enviam `roomId`. Consulte [o checklist, os contratos e a validação local real](docs/gestao-medicos-validacao.md). No ambiente publicado, confirmar deploy e migration `20261030010000_doctor_profiles_rooms`.
@@ -103,30 +110,28 @@ npm run visual:report
 
 Abra `artifacts/visual-review/index.html`. O procedimento, a lista de telas e os critérios de inspeção estão em [docs/revisao-visual.md](docs/revisao-visual.md). **Testes verdes não substituem a revisão humana das capturas.**
 
-
 ## Navegação operacional por perfil
 
 O modo integrado (`VITE_AV_LOCAL_API=true`) separa listagem, cadastro e atendimento em páginas independentes:
 
-| Perfil | Rota | Conteúdo |
-| --- | --- | --- |
-| ADMIN | `/admin` ou `/admin/usuarios` | Listagem, pesquisa, filtros e paginação dos funcionários |
-| ADMIN | `/admin/novo-funcionario` | Somente o formulário de novo funcionário, com voltar/cancelar |
-| RECEPCIONISTA | `/recepcao` | Triagem, fila de espera e detalhes da entrada |
-| RECEPCIONISTA | `/pacientes` | Lista de pacientes cadastrados, pesquisa por nome/CPF, paginação |
-| RECEPCIONISTA | `/novo-cadastro` | Cadastro direto de um paciente novo, sem etapa de busca |
-| RECEPCIONISTA | `/novo-cadastro?patient=<UUID>` | Entrada na fila para um paciente escolhido no diretório |
-| MEDICO | `/medico` | Dashboard com resumo da fila, status atual e próxima chamada |
-| MEDICO | `/medico/fila` | Fila individual, cada paciente clicável |
-| MEDICO | `/medico/fila/<UUID>` | Detalhes de uma entrada aguardando, somente leitura |
-| MEDICO | `/medico/atendimento` | Paciente atual, início, prescrição e finalização, sem a lista da fila |
+| Perfil        | Rota                            | Conteúdo                                                              |
+| ------------- | ------------------------------- | --------------------------------------------------------------------- |
+| ADMIN         | `/admin` ou `/admin/usuarios`   | Listagem, pesquisa, filtros e paginação dos funcionários              |
+| ADMIN         | `/admin/novo-funcionario`       | Somente o formulário de novo funcionário, com voltar/cancelar         |
+| RECEPCIONISTA | `/recepcao`                     | Triagem, fila de espera e detalhes da entrada                         |
+| RECEPCIONISTA | `/pacientes`                    | Lista de pacientes cadastrados, pesquisa por nome/CPF, paginação      |
+| RECEPCIONISTA | `/novo-cadastro`                | Cadastro direto de um paciente novo, sem etapa de busca               |
+| RECEPCIONISTA | `/novo-cadastro?patient=<UUID>` | Entrada na fila para um paciente escolhido no diretório               |
+| MEDICO        | `/medico`                       | Dashboard com resumo da fila, status atual e próxima chamada          |
+| MEDICO        | `/medico/fila`                  | Fila individual, cada paciente clicável                               |
+| MEDICO        | `/medico/fila/<UUID>`           | Detalhes de uma entrada aguardando, somente leitura                   |
+| MEDICO        | `/medico/atendimento`           | Paciente atual, início, prescrição e finalização, sem a lista da fila |
 
 O médico **não pode escolher manualmente o paciente a chamar**: o botão Chamar próximo paciente utiliza o endpoint transacional `POST /queues/me/next`, que respeita a ordem clínica no backend. Os detalhes da fila são consultivos.
 
 Cadastros de pacientes e registros de entrada são duas operações independentes; se o cadastro já existe, comece pelo diretório `/pacientes`. Os estados de sucesso/erro operacionais usam **toasts acessíveis** em vez de banners persistentes. Na área do médico, somente o UUID da entrada ativa pode ser armazenado temporariamente; o detalhe clínico é recuperado da API.
 
 No celular, a fila da recepção e o catálogo de funcionários utilizam cards com informações e ações visíveis, sem exigir deslocamento lateral na tabela.
-
 
 ## API de produção — desenvolvimento local e Vercel
 
