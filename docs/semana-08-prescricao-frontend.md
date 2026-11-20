@@ -1,83 +1,60 @@
-# Semana 08 — prescrição no frontend
+# Semana 08 — integração da prescrição
 
-Escopo: somente a interface React/Vite do AgoraVocê para as issues [#47](https://github.com/AgoraVoce/AV-Documents/issues/47), [#48](https://github.com/AgoraVoce/AV-Documents/issues/48), [#49](https://github.com/AgoraVoce/AV-Documents/issues/49), [#50](https://github.com/AgoraVoce/AV-Documents/issues/50) e [#51](https://github.com/AgoraVoce/AV-Documents/issues/51). Nenhuma issue foi fechada. Não houve alteração no backend, OpenAPI, banco, infraestrutura ou integração Resend.
+Escopo desta entrega: integração do frontend AgoraVocê com as APIs presentes no `main` do AV-Backend, preservando os fluxos de fila clínica e documento já existentes. Issues de origem no AV-Documents: [#47](https://github.com/AgoraVoce/AV-Documents/issues/47), [#48](https://github.com/AgoraVoce/AV-Documents/issues/48), [#49](https://github.com/AgoraVoce/AV-Documents/issues/49) e [#50](https://github.com/AgoraVoce/AV-Documents/issues/50), [#51](https://github.com/AgoraVoce/AV-Documents/issues/51). Nenhuma issue foi fechada.
 
-## Fluxo implementado
+## Implementado no frontend
 
-Em `/medico/atendimento`, uma entrada `in_progress` abre **Prescrição e finalização**. O formulário identifica a entrada em modo somente leitura e mantém o conteúdo clínico em memória, associado ao par usuário médico + `entryId`. A interface marca o rascunho como **não salvo no servidor**; recarregar a página ou encerrar a sessão perde o conteúdo. O `sessionStorage` existente continua guardando apenas o UUID da entrada ativa.
+- Cliente HTTP compatível com os consumidores atuais e capaz de enviar `PUT`, cabeçalhos condicionais e sinal de cancelamento; lê status/ETag, trata JSON/204, timeout, erro estruturado e `Retry-After`. Todas as chamadas clínicas usam `cache: no-store`, credenciais omitidas e Bearer mantido só em memória.
+- Rascunho remoto restaurado por médico e `entryId`, incluindo após reload e novo login. Autosave com debounce de 700 ms, fila serial, ETag (`If-None-Match: *` para criar; `If-Match` para substituir), estado de salvamento real e recuperação de resultado incerto via GET. Texto permanece em memória durante falhas; não é persistido em `localStorage` ou `sessionStorage`.
+- Edição feita enquanto um PUT está em andamento permanece pendente e só aparece como salva após sua própria gravação confirmada. Um GET atrasado não substitui uma edição iniciada durante a consulta. `412` preserva o conteúdo local e bloqueia escrita/finalização até o médico carregar a versão do servidor; `428` é exibido como erro de precondição. Navegar não apaga draft remoto. O descarte remoto exige ação explícita com confirmação e `If-Match`.
+- Revisão/finalização só é habilitada para o conteúdo integralmente salvo. `POST /complete` recebe o ETag atual. Em conflito, o conteúdo é mantido; em timeout, o estado de `/entries/{id}` é consultado e não ocorre retry cego. Após conclusão confirmada, o estado local daquela entrada é removido.
+- `entry.symptoms` do detalhe autorizado é a fonte prioritária em atendimento, revisão e documento final; o cache transitório da fila é fallback somente quando o campo não veio. Queixa livre (`otherSymptoms`) e observação (`shortNote`) continuam visíveis. O documento é construído para a entrada exata, sem cruzar visitas do mesmo paciente.
+- GET de capacidade/status e POST de solicitação de e-mail integrados. A ação só é habilitada com `supported` e `eligible`; o diálogo nativo exige confirmação explícita de consentimento. Cada operação recebe `Idempotency-Key`, `X-Patient-Consent: confirmed` e body `{}`. Timeout/resultado incerto bloqueia novo envio automático, mantém a mesma chave em memória e oferece consulta de status. `accepted` não é apresentado como entregue; status consulta-se sob demanda, ao voltar à aba e a cada 60 s enquanto pendente. Destinatário nunca vem do frontend.
+- PDF autenticado, pré-visualização, impressão A4 multipágina, confirmação de conclusão e proteção de impressão sem prescrição persistida foram preservados. O diálogo usa foco modal do navegador, pode ser operado por teclado e respeita `prefers-reduced-motion`.
 
-Descrição/conduta é obrigatória (1–5.000 caracteres após trim). Medicamentos são opcionais (0–50); cada medicamento preenchido exige nome, dosagem e instruções. Orientações adicionais são opcionais (até 4.000 caracteres). A tela valida campos, informa erros junto aos controles e foca o primeiro campo inválido. A prévia de revisão usa os mesmos dados de apresentação do documento e é marcada como conteúdo ainda não salvo. Qualquer edição invalida a revisão.
+## Endpoints consumidos
 
-Antes de sair por link interno ou encerrar a sessão com conteúdo alterado, a interface oferece **Continuar editando** e **Sair sem salvar**. O navegador não oferece o mesmo modal interno para os botões Voltar/Avançar; o rascunho continua apenas na memória da aba e pode ser retomado se o médico voltar sem encerrar a sessão. `beforeunload` é uma proteção complementar; reload, fechamento da aba ou fim da sessão não têm recuperação. Nenhum conteúdo clínico é colocado em `history.state`. A finalização chama uma única vez a operação existente `POST /entries/:id/complete`. Depois de sucesso ou de uma falha ambígua, consulta `GET /entries/:id`; não permite repetição cega quando não consegue reconciliar o estado. Uma entrada confirmada abre `/medico/prescricoes/:entryId`, rota protegida para `MEDICO`, com **Imprimir prescrição**, **Baixar PDF** autenticado já existente e e-mail indisponível. Notificações operacionais anteriores são limpas nessa transição para que não cubram os controles; o cabeçalho/documento confirmado dá o feedback de sucesso. A impressão usa `window.print()` e CSS A4; não registra se houve impressão física.
+| Método e caminho                                 | Uso                                                                    |
+| ------------------------------------------------ | ---------------------------------------------------------------------- |
+| `GET /api/v1/entries/{id}`                       | Detalhe, sintomas estruturados e reconciliação da finalização          |
+| `GET /api/v1/entries/{id}/prescription-draft`    | Recuperar draft/ETag                                                   |
+| `PUT /api/v1/entries/{id}/prescription-draft`    | Criar/atualizar com precondição e payload estrito                      |
+| `DELETE /api/v1/entries/{id}/prescription-draft` | Descarte explícito, com `If-Match` quando há draft                     |
+| `POST /api/v1/entries/{id}/complete`             | Finalizar atomicamente com o ETag salvo                                |
+| `GET /api/v1/entries/{id}/prescription-email`    | Capacidade, elegibilidade e status real                                |
+| `POST /api/v1/entries/{id}/prescription-email`   | Solicitar envio consentido/idempotente; HTTP 202 não significa entrega |
+| `GET /api/v1/entries/{id}/prescription.pdf`      | PDF autenticado existente, sem alteração                               |
 
-O documento deriva exclusivamente do detalhe confirmado daquela entrada. Exibe paciente, médico, data, sala, queixa, observação, medicamentos e orientações quando fornecidos. UUIDs de sintomas não são apresentados como nomes. Nomes da fila podem ser mantidos temporariamente em memória quando a resposta autoritativa da mesma entrada os trouxe; sem essa informação, a tela declara a limitação. Datas são formatadas para `pt-BR` em `America/Sao_Paulo`.
+O webhook `/api/v1/webhooks/resend` é backend-only e não é chamado pelo browser. Nenhum código, migration, worker, credencial ou configuração de Resend foi alterado.
 
-## Reuso e mudanças
+## Segurança e regras clínicas
 
-- Preservados `operations.complete`, `operations.entry`, a chamada autoritativa `POST /queues/me/next`, a atualização de início de atendimento, a restauração da entrada ativa e `openPrescriptionPdf`.
-- A conclusão existente já persistia prescrição e finalização atomicamente; o formulário passou a aceitar `medications: []`, revisar antes da gravação, preservar draft em memória e reconciliar timeout/conflito.
-- Adicionada rota de documento protegida, componente semântico compartilhado pela revisão e pela prévia final, folha A4 multipágina e ligação do histórico médico à entrada exata. O histórico adapta-se a cartões no mobile para deixar as ações visíveis sem rolagem horizontal. O PDF autenticado foi mantido.
-- Nenhum endpoint ou cliente de envio de e-mail foi adicionado. A ação de e-mail está desabilitada com explicação acessível.
+- A ordem da fila e a chamada permanecem no endpoint transacional do servidor. Abrir detalhes não chama paciente; recepção não chama fila clínica; gravidade continua sendo triagem externa.
+- Finalização e prescrição permanecem atômicas no backend. PDF/print só aparecem após prescrição autorizada e atendimento concluído. E-mail não desfaz conclusão.
+- Não foi criado papel PACIENTE nem qualquer confusão entre fila clínica e tickets administrativos. Não há dados clínicos em storage persistente, URL ou logs do frontend.
+- **Histórico de segredo:** a branch histórica `feat/semana-08-prescricoes` teve arquivos `.env.local.backup.*` removidos por commit posterior. Essa remoção não elimina blobs do histórico Git. Não usamos essa branch, não copiamos nem inspecionamos conteúdo dos backups, não reescrevemos histórico e não fizemos force push. Se uma revisão controlada identificar credenciais nesses blobs, rotacioná-las e tratar saneamento do histórico em tarefa separada.
 
-## Rastreabilidade das issues
+## Verificação do contrato e deploy
 
-| Issue                          | Estado frontend        | Evidência                                                                                                                                                                              | Critérios fora desta entrega                                                                                                                                            |
-| ------------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| #47 — formulário               | **parcial**            | Formulário, validação, revisão, medicamentos opcionais, proteção contra duplicidade e preservação em falha; E2E cobre finalização sem medicamentos, texto literal e reconciliação 409. | O contrato atual não salva rascunho antes da finalização; o rascunho não sobrevive a reload. Persistência/reabertura remota depende de API autorizada.                  |
-| #48 — dados do atendimento     | **parcial**            | Documento da entrada correspondente usa campos reais disponíveis, autoria, horário, queixa e observações; campos ausentes são explícitos/omitidos.                                     | O detalhe não fornece nomes de sintomas estruturados e o médico não deve consultar a rota de perfil da recepção. Handoff de DTO para nomes estáveis depende do backend. |
-| #49 — relatório para impressão | **implementado-front** | Template semântico, CSS A4, texto longo, quebras de página, conteúdo escopado e documento de entrada concluída. Teste Chromium produz PDF sintético multipágina.                       | Não há assinatura digital, CRM/carimbo inventado ou PDF juridicamente assinado.                                                                                         |
-| #50 — ação imprimir            | **implementado-front** | Ação nativa só aparece para prescrição confirmada; cancelamento do diálogo não chama mutação; CSS oculta shell e controles.                                                            | O browser não confirma impressão física, conforme limite da API de impressão; o status não é alterado por imprimir/cancelar.                                            |
-| #51 — e-mail                   | **depende-backend**    | Botão desabilitado mesmo no documento concluído, com razão acessível; nenhum status de envio é inventado.                                                                              | Destinatário autorizado, envio, status persistido, timeout, retry e idempotência não existem no contrato frontend disponível. Não homologável integralmente.            |
+`AV-Backend` `main` foi reconfirmado no commit `4eb62865e26aad49af2046086f14197be64e354e`; `src/docs/openapi.yaml` e as rotas/controllers locais declaram os contratos descritos acima. Em 20/11/2026, uma consulta GET somente leitura ao OpenAPI publicado pelo serviço (`/api-docs/openapi.json`, versão 0.1.0) também listou detalhe, finalização, draft `GET/PUT/DELETE` e e-mail `GET/POST`. Isso confirma os caminhos anunciados pelo serviço, **não** confirma a migration `20261119120000_prescription_drafts` no banco, o estado operacional do worker nem habilitação do envio. Esta tarefa não alterou banco compartilhado, não executou migrations e não enviou e-mail real. O envio depende da homologação do worker/provedor e de `PRESCRIPTION_EMAIL_ENABLED` permanecer desligado até autorização operacional.
 
-As issues #47 e #48 também dependem de extensão contratual caso o produto exija, respectivamente, draft persistido e nomes estruturados de sintomas no detalhe. #49/#50 entregam o comportamento web; impressão em papel depende do navegador e do dispositivo.
+## Testes e limitações
 
-## Contratos, autorização e privacidade
+Testes da interface usam interceptação explícita para toda requisição da API, fixture sintética, bloqueio de origem externa e nenhuma chamada a Render, Aiven ou Resend. A configuração local usa Vite em `127.0.0.1:5182`, `VITE_AV_LOCAL_API=true`; `vite.config.ts` define fallback de proxy em `127.0.0.1:3000`, mas a suíte intercepta as requisições `/api/v1/*`. Não há `.env.local` na cópia de execução. `npm ci` foi feito com scripts de instalação desativados.
 
-Operações usadas (todos os caminhos sob `/api/v1`):
+Resultados executados nesta branch:
 
-| Uso                                              | Método e caminho existente          |
-| ------------------------------------------------ | ----------------------------------- |
-| Consultar fila do médico                         | GET `/queues/me`                    |
-| Consultar histórico médico                       | GET `/doctors/me/entries`           |
-| Chamar próximo pela ordem do servidor            | POST `/queues/me/next`              |
-| Iniciar atendimento                              | PATCH `/entries/:id/status`         |
-| Finalizar atomicamente com prescrição            | POST `/entries/:id/complete`        |
-| Ler estado/documento autorizado para conciliação | GET `/entries/:id`                  |
-| Baixar PDF existente                             | GET `/entries/:id/prescription.pdf` |
+- `npm test -- --workers=1`: 134 testes passaram.
+- `npm run test:local-api -- --workers=1`: 95 testes passaram usando mocks explícitos da API.
+- `npm run test:visual:demo -- --workers=1`: 29 passaram e 1 cenário de TV em viewport móvel foi ignorado conforme previsto.
+- `npm run test:visual:api -- --workers=1`: 60 verificações passaram; as telas de atendimento, revisão e prescrição não tiveram overflow externo nem erros de página em desktop/mobile.
+- `npm run lint`, `npm run build`, `npm run tokens:check`, `npm run design:lint` e a verificação Prettier dos arquivos alterados passaram. Design lint reportou zero erros, zero avisos e uma nota informativa.
+- `npm run visual:report`: 89 capturas geradas, com 9 alertas de rolagem horizontal interna em módulos do modo demo e na fila de recepção API mobile. A rolagem da recepção API é intencional para a tabela; os fluxos clínicos desta entrega tiveram overflow externo igual a zero. Esses avisos não foram tratados como falhas de renderização nem alterados fora do escopo.
 
-Nenhum endpoint novo foi criado ou presumido. O backend continua autoridade para associação da entrada ao médico; a rota de documento exige papel `MEDICO`, e a consulta continua validando o escopo no servidor. A recepção não recebeu acesso de edição clínica. O JWT permanece em memória. Descrição, medicamentos e orientações não vão para `localStorage`, `sessionStorage`, URL, logs ou analytics. O React renderiza texto literal; não usa HTML bruto. Os fixtures E2E são inteiramente sintéticos.
+As suítes usaram Chromium e dados sintéticos. Os testes locais interceptaram explicitamente as chamadas da API e bloquearam tráfego externo; não chamaram Render, Aiven ou Resend. Durante a suíte geral, o proxy de autenticação demo registrou avisos não fatais de `ECONNREFUSED 127.0.0.1:3001` para `/auth/me`; os testes terminaram com sucesso. Os checks do GitHub Actions serão consultados depois do push. Não se deve interpretar estes testes como homologação de implantação, migration, worker, provedor ou impressão física.
 
-## Handoff de e-mail — CONTRATO A DEFINIR
+## Pendências reais para homologação
 
-O frontend permanece sem envio. Antes de habilitar a ação, o backend precisa definir autorização do médico responsável pela entrada; identificação do destinatário pelo servidor; existência de e-mail cadastrado e política/consentimento institucional; domínio remetente verificado; uso exclusivo de `RESEND_API_KEY` no servidor; conteúdo derivado da prescrição persistida; estados auditáveis de envio; resposta para sucesso/falha; idempotência contra duplicidade; tratamento de timeout e retry; logs sem PII clínica. O envio deve ser independente da finalização: falha de e-mail não desfaz atendimento concluído. Nenhuma rota ou payload de envio é contrato vigente neste frontend.
-
-## QA e validação manual
-
-1. Entre com perfil `MEDICO` em ambiente de desenvolvimento autorizado e abra **Paciente atual**. Use dados de teste sem informação clínica real.
-2. Inicie atendimento, preencha conduta e, opcionalmente, medicamentos/orientações. Confirme que nenhum dado é salvo antes de revisar e finalizar e que sair/encerrar sessão pede descarte do rascunho.
-3. Revise, finalize e confira o documento sob `/medico/prescricoes/:entryId`. O documento deve exibir apenas os dados da entrada retornada pelo servidor; falha de leitura bloqueia impressão.
-4. Para validar a impressão no Chromium, clique **Imprimir prescrição** ou use a impressão de página; selecione A4/retrato. Texto longo pode ocupar mais de uma folha. Não é necessário conectar impressora; cancelar não atualiza o atendimento.
-5. **Baixar PDF** usa o endpoint autenticado já existente. A opção de e-mail deve continuar desabilitada.
-
-Os testes E2E desta entrega interceptam as chamadas da API, bloqueiam origens externas e usam apenas fixtures sintéticas. Eles não validam banco real, provedor de e-mail, acesso físico a impressora nem integração de assinatura.
-
-## Verificações desta execução
-
-- `npm run build` — aprovado (`tsc -b` e Vite); `npm run lint` — aprovado, sem erros ou avisos.
-- `npm run tokens:check` — aprovado; `npm run design:lint` — aprovado, 0 erros e 0 avisos.
-- `npx prettier --check` nos arquivos alterados da entrega — aprovado. `npm run format:check` do repositório ainda reporta divergências distribuídas em arquivos fora do escopo; não foi aplicado reformat geral.
-- `npm run test:local-api` — 79/79 aprovados com fixtures sintéticas e requests interceptados. O E2E dedicado à Semana 08 cobre 17 casos, incluindo 0 medicamentos, texto literal/XSS, reentrada, Back/Forward, sessão expirada, 409, rede, 500/503, histórico, erro de leitura e PDF multipágina.
-- `npm test` — 134/134 aprovados na execução paralela padrão. O LED serpente e os testes de recuperação que haviam oscilado em execução anterior passaram nessa rodada; nenhuma alteração foi feita nesses módulos. Os testes de modo demonstrativo ainda registram tentativas de `/auth/me` recusadas pelo proxy legado local `127.0.0.1:3001`; isso é esperado neste ambiente e não causou falhas.
-- `npm run test:visual:api` — 60/60 aprovados. As rotas médicas passaram em desktop e mobile com 0 overflow global e 0 erros de página; a galeria confirma as ações no histórico e a tela pós-finalização sem notificações sobrepostas.
-- `npm run test:visual:demo` — 29 aprovados; 1 cenário Full HD foi pulado pela configuração da suíte.
-- `npm run visual:report` — galeria com 89 capturas e 9 alertas de rolagem interna em telas mobile de recepção/demonstração; as telas de prescrição, histórico e finalização do modo API não tiveram alertas automáticos. Capturas em `artifacts/visual-review`.
-- Chromium gerou PDF sintético A4 de 6 páginas (594,96 × 841,92 pt). Foram inspecionadas visualmente a primeira, segunda, quinta e última páginas, sem corte ou sobreposição; o E2E também verifica impressão nativa sem mutação e reflow em 320, 390, 768, 1024 e 1440 px.
-
-Nenhum teste chamou a API pública, banco real ou Resend. Os resultados não cobrem provedor de e-mail, impressora física, assinatura digital nem persistência de rascunho no servidor.
-
-## Pendências reais
-
-- Contrato autorizado para salvar/reabrir draft médico sem enviar dados clínicos ao browser storage.
-- Inclusão de nomes estruturados de sintomas da mesma entrada no detalhe autorizado ou contrato equivalente.
-- Método autorizado para identificar e validar destinatário de e-mail.
-- Contrato backend de envio seguro com `RESEND_API_KEY` privada, status, auditoria, timeout, retry e idempotência.
+1. Confirmar no ambiente-alvo a versão implantada da API/OpenAPI e as migrations exigidas pelo backend, sem aplicar migration compartilhada como parte deste PR.
+2. Homologar o worker/outbox, webhook assinado e estados do Resend em ambiente seguro; manter a integração desabilitada até aprovação. Nenhum envio real foi feito.
+3. Revisar o artifact visual do GitHub Actions após CI; impressão física depende do navegador/dispositivo.

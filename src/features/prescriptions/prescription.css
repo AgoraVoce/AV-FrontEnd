@@ -388,3 +388,59 @@
     border: 2px solid Mark;
   }
 }
+.prescription-consent-dialog {
+  width: min(100%, 540px);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  margin: auto;
+  padding: 26px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 22px 70px rgb(10 24 32 / 24%);
+}
+.prescription-consent-dialog::backdrop {
+  background: rgb(10 24 32 / 58%);
+}
+.prescription-consent-dialog h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+.prescription-consent-dialog p {
+  line-height: 1.6;
+}
+.prescription-consent-dialog label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 20px 0;
+  line-height: 1.5;
+}
+.prescription-consent-dialog input {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-primary);
+}
+.prescription-consent-dialog :focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 3px;
+}
+@media (max-width: 560px) {
+  .prescription-consent-dialog {
+    padding: 20px;
+  }
+  .prescription-consent-dialog .local-actions {
+    flex-direction: column-reverse;
+  }
+  .prescription-consent-dialog .local-actions > button {
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prescription-consent-dialog {
+    animation: none !important;
+    transition: none !important;
+  }
+}

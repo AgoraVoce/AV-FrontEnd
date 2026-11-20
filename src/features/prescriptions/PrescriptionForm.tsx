@@ -23,6 +23,13 @@ type Props = {
   busy: boolean;
   finalizationError: string;
   finalizationUncertain: boolean;
+  syncStatus: "loading" | "saved" | "dirty" | "saving" | "error" | "conflict";
+  syncMessage: string;
+  canReview: boolean;
+  canDiscard: boolean;
+  onRetrySave: () => void;
+  onReloadServer: () => void;
+  onDiscardDraft: () => void;
   symptomNames: string[];
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onChange: (field: "description" | "notes", value: string) => void;
@@ -58,6 +65,13 @@ export function PrescriptionForm({
   busy,
   finalizationError,
   finalizationUncertain,
+  syncStatus,
+  syncMessage,
+  canReview,
+  canDiscard,
+  onRetrySave,
+  onReloadServer,
+  onDiscardDraft,
   symptomNames,
   onSubmit,
   onChange,
@@ -151,10 +165,53 @@ export function PrescriptionForm({
         </dl>
       </div>
 
-      <p className="prescription-draft-note" role="status">
-        Rascunho não salvo no servidor. Ele fica somente em memória nesta aba e
-        será perdido ao recarregar a página ou encerrar a sessão.
-      </p>
+      <div
+        className="prescription-draft-note"
+        role={
+          syncStatus === "error" || syncStatus === "conflict"
+            ? "alert"
+            : "status"
+        }
+        aria-live="polite"
+      >
+        {syncStatus === "loading" && "Recuperando rascunho salvo…"}
+        {syncStatus === "saving" && "Salvando rascunho…"}
+        {syncStatus === "saved" &&
+          (syncMessage || "Rascunho salvo no servidor.")}
+        {syncStatus === "dirty" && "Alterações aguardando salvamento."}
+        {syncStatus === "error" &&
+          (syncMessage || "Falha ao salvar. O conteúdo continua em memória.")}
+        {syncStatus === "conflict" &&
+          (syncMessage ||
+            "Conflito de versão. Seus dados em edição foram preservados.")}
+        {syncStatus === "error" && draft.changed && (
+          <button
+            type="button"
+            className="local-secondary-button"
+            onClick={onRetrySave}
+          >
+            Tentar salvar novamente
+          </button>
+        )}
+        {syncStatus === "error" && !draft.changed && (
+          <button
+            type="button"
+            className="local-secondary-button"
+            onClick={onReloadServer}
+          >
+            Tentar recuperar rascunho
+          </button>
+        )}
+        {syncStatus === "conflict" && (
+          <button
+            type="button"
+            className="local-secondary-button"
+            onClick={onReloadServer}
+          >
+            Carregar versão do servidor
+          </button>
+        )}
+      </div>
 
       {finalizationError && (
         <div className="prescription-form-error" role="alert">
@@ -434,7 +491,7 @@ export function PrescriptionForm({
             <button
               className="local-primary"
               type="submit"
-              disabled={busy || finalizationUncertain}
+              disabled={busy || finalizationUncertain || !canReview}
             >
               <ClipboardCheck size={17} aria-hidden="true" />{" "}
               {busy ? "Finalizando atendimento…" : "Confirmar finalização"}
@@ -453,7 +510,7 @@ export function PrescriptionForm({
             <button
               className="local-primary"
               type="submit"
-              disabled={busy || finalizationUncertain}
+              disabled={busy || finalizationUncertain || !canReview}
             >
               {busy ? "Aguarde…" : "Revisar antes de finalizar"}
             </button>
@@ -466,6 +523,16 @@ export function PrescriptionForm({
               <ArrowLeft size={16} aria-hidden="true" /> Voltar ao atendimento
             </button>
           </>
+        )}
+        {canDiscard && !review && (
+          <button
+            type="button"
+            className="operational-inline operational-danger"
+            onClick={onDiscardDraft}
+            disabled={busy}
+          >
+            Descartar rascunho salvo
+          </button>
         )}
       </div>
     </form>

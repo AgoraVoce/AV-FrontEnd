@@ -9,6 +9,7 @@ export type PrescriptionDraft = {
 };
 
 const drafts = new Map<string, PrescriptionDraft>();
+const draftEtags = new Map<string, string>();
 const availableSymptoms = new Map<string, string[]>();
 let nextDraftId = 0;
 
@@ -47,6 +48,21 @@ export function setPrescriptionDraft(
 
 export function clearPrescriptionDraft(userId: string, entryId: string) {
   drafts.delete(contextKey(userId, entryId));
+  draftEtags.delete(contextKey(userId, entryId));
+}
+
+export function getPrescriptionDraftEtag(userId: string, entryId: string) {
+  return draftEtags.get(contextKey(userId, entryId)) ?? null;
+}
+
+export function setPrescriptionDraftEtag(
+  userId: string,
+  entryId: string,
+  etag: string | null,
+) {
+  const key = contextKey(userId, entryId);
+  if (etag) draftEtags.set(key, etag);
+  else draftEtags.delete(key);
 }
 
 export function setEntrySymptomNames(
@@ -63,6 +79,7 @@ export function getEntrySymptomNames(userId: string, entryId: string) {
 
 export function clearPrescriptionMemory() {
   drafts.clear();
+  draftEtags.clear();
   availableSymptoms.clear();
 }
 
