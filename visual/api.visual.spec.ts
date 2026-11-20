@@ -205,6 +205,9 @@ async function prepareState(page: Page, screen: Screen) {
       await page
         .getByLabel("Instruções")
         .fill("Orientações fictícias para teste de interface.");
+      await expect(
+        page.getByRole("button", { name: "Revisar antes de finalizar" }),
+      ).toBeEnabled();
       if (screen.state === "prescribing") break;
       await page
         .getByRole("button", { name: "Revisar antes de finalizar" })

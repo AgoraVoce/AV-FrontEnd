@@ -399,6 +399,55 @@ test("médico chama, inicia e finaliza com prescrição num único endpoint", as
   await page.route("**/api/v1/entries/" + entryId, (route) =>
     route.fulfill({ json: detail(status, savedPrescription) }),
   );
+  let draft: {
+    description: string;
+    medications: unknown[];
+    notes: string | null;
+  } | null = null;
+  let draftVersion = 0;
+  await page.route(
+    "**/api/v1/entries/" + entryId + "/prescription-draft",
+    async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          headers: draft ? { ETag: `"draft-v${draftVersion}"` } : {},
+          json: {
+            entryId,
+            draft: draft
+              ? {
+                  ...draft,
+                  version: draftVersion,
+                  createdAt: "2026-10-19T09:00:00Z",
+                  updatedAt: "2026-10-19T09:00:00Z",
+                }
+              : null,
+          },
+        });
+        return;
+      }
+      expect(route.request().method()).toBe("PUT");
+      const headers = route.request().headers();
+      expect(draft ? headers["if-match"] : headers["if-none-match"]).toBe(
+        draft ? `"draft-v${draftVersion}"` : "*",
+      );
+      draft = route.request().postDataJSON();
+      draftVersion += 1;
+      await route.fulfill({
+        status: draftVersion === 1 ? 201 : 200,
+        headers: { ETag: `"draft-v${draftVersion}"` },
+        json: {
+          entryId,
+          draft: {
+            ...draft,
+            version: draftVersion,
+            createdAt: "2026-10-19T09:00:00Z",
+            updatedAt: "2026-10-19T09:00:00Z",
+          },
+        },
+      });
+    },
+  );
   await page.route("**/api/v1/queues/me/next", async (route) => {
     expect(route.request().headers().authorization).toContain("Bearer ");
     call++;
@@ -455,6 +504,9 @@ test("médico chama, inicia e finaliza com prescrição num único endpoint", as
   await page.getByLabel(/^Nome/).fill("Medicamento fictício");
   await page.getByLabel("Dosagem").fill("1 comprimido");
   await page.getByLabel("Instruções").fill("Após refeição");
+  await expect(
+    page.getByText("Rascunho salvo no servidor.", { exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Revisar antes de finalizar" })
     .click();

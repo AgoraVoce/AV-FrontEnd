@@ -51,9 +51,9 @@ Após o ajuste, um cadastro fictício realizado pela própria interface na porta
 
 - Consulta somente a sua própria fila. O botão `Chamar próximo paciente` usa `POST /queues/me/next`, respeitando prioridade e exclusão de chamadas concorrentes no servidor.
 - Confirma entrada em atendimento com `PATCH /entries/:id/status` (`in_progress`).
-- Formulário estruturado de prescrição (descrição + medicamentos com nome, dosagem e instruções + orientações opcionais), revisão e **finalização atômica** em `POST /entries/:id/complete`.
+- Formulário estruturado de prescrição (descrição + medicamentos com nome, dosagem e instruções + orientações opcionais), autosave remoto versionado, revisão e **finalização atômica** em `POST /entries/:id/complete`.
 - Em caso de timeout ou conflito ao finalizar, verifica `GET /entries/:id` antes de permitir qualquer tentativa: evita duplicar prescrições.
-- Salva **apenas o UUID da entrada ativa** no `sessionStorage` por usuário para tentar retomar no mesmo navegador. Nunca armazena dados clínicos ou JWT ali.
+- Salva **apenas o UUID da entrada ativa** no `sessionStorage` por usuário. Rascunhos clínicos são recuperados de `GET /entries/:id/prescription-draft` e persistidos por `PUT` com ETag; nunca são gravados no storage do navegador. Nunca armazena JWT ali.
 
 ### Administração
 
@@ -80,7 +80,7 @@ Após o ajuste, um cadastro fictício realizado pela própria interface na porta
 - O backend disponibiliza `GET /public/calls` (sem identificação de pacientes), recuperação por link/token via `/auth/password-reset/*` e relatório administrativo `GET /admin/reports`. A recuperação só envia links se o backend possuir provedor de e-mail configurado.
 - O módulo `/tickets` é uma fila administrativa independente da fila clínica `/queues`; os estados não podem ser confundidos.
 - Gestão médica integrada ao AV-Backend `9a8725b`: `GET/POST /admin/doctors`, `PATCH /doctors/:id`, `GET/POST/PATCH /rooms` e `GET /admin/shifts`. Plantões enviam `roomId`. Consulte [o checklist, os contratos e a validação local real](docs/gestao-medicos-validacao.md). No ambiente publicado, confirmar deploy e migration `20261030010000_doctor_profiles_rooms`.
-- **Prescrições dependem da migration `20261018191000_add_prescriptions`** no banco usado. A equipe informou que não estava aplicada ao Aiven em 18/10/2026. Não execute migrations de produção sem autorização.
+- **Semana 08:** o frontend integra GET/PUT/DELETE de draft versionado, sintomas estruturados do detalhe, finalização com `If-Match` e capacidade/solicitação/status do envio de e-mail. Consulte [handoff de implementação e homologação](docs/semana-08-prescricao-frontend.md). A presença das rotas no `main` do backend não comprova deploy nem migrations no ambiente usado; confirme antes de homologar.
 - O histórico do backend contém credenciais antigas que precisam ser rotacionadas conforme aviso da PR #3.
 
 ## Testes

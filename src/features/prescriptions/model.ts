@@ -39,10 +39,12 @@ export function buildPrescriptionDocument(
   prescription: Prescription,
   options: { draft?: boolean; symptomNames?: string[] } = {},
 ): PrescriptionDocumentViewModel {
-  const symptomNames = (options.symptomNames ?? [])
+  const namesFromEntry = entry.symptoms?.map((symptom) => symptom.name);
+  const symptomNames = (namesFromEntry ?? options.symptomNames ?? [])
     .map((name) => name.trim())
     .filter(Boolean);
-  const hasStructuredSymptoms = (entry.symptomIds?.length ?? 0) > 0;
+  const hasStructuredSymptoms =
+    (entry.symptomIds?.length ?? 0) > 0 || (entry.symptoms?.length ?? 0) > 0;
   const visitDate = usableText(entry.timestamps?.startedAt);
   const prescriptionDate = usableText(entry.prescription?.createdAt);
   const dateSource = visitDate ?? prescriptionDate ?? entry.enteredAt;

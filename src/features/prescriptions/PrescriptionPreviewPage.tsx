@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Download, Printer, RefreshCw } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "../../components/AppShell";
 import { usePageTitle } from "../../components/usePageTitle";
 import { useToast } from "../../components/useToast";
-import type { EntryDetail } from "../../integrations/operational-api";
+import type {
+  EntryDetail,
+  PrescriptionEmailResult,
+  PrescriptionEmailStatus,
+} from "../../integrations/operational-api";
 import { operations } from "../../integrations/operational-api";
 import { openPrescriptionPdf } from "../../integrations/extended-api";
 import { errorText } from "../../integrations/shared-helpers";
@@ -14,6 +18,16 @@ import { buildPrescriptionDocument, isRenderablePrescription } from "./model";
 import { PrescriptionDocument } from "./PrescriptionDocument";
 import "./prescription.css";
 import "./prescription-print.css";
+
+const emailStatusLabel: Record<PrescriptionEmailStatus, string> = {
+  queued: "Solicitação na fila",
+  processing: "Envio em processamento",
+  accepted: "E-mail aceito pelo provedor; entrega ainda não confirmada",
+  delivery_delayed: "Entrega atrasada; aguardando atualização do provedor",
+  delivered: "E-mail entregue",
+  failed: "Envio falhou",
+  unknown: "Estado do envio desconhecido",
+};
 
 type PageState = {
   key: string;
@@ -38,6 +52,23 @@ export function PrescriptionPreviewPage() {
     retry: 0,
   });
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [emailCapability, setEmailCapability] =
+    useState<PrescriptionEmailResult | null>(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailUncertain, setEmailUncertain] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [showEmailConsent, setShowEmailConsent] = useState(false);
+  const [emailConsent, setEmailConsent] = useState(false);
+  const [emailIdempotencyKey, setEmailIdempotencyKey] = useState("");
+  const emailAttemptAt = useRef<string | null>(null);
+  const expectedDeliveryId = useRef<string | null>(null);
+  const emailTrigger = useRef<HTMLButtonElement>(null);
+  const consentInput = useRef<HTMLInputElement>(null);
+  const consentDialog = useRef<HTMLDialogElement>(null);
+  const verifyEmailButton = useRef<HTMLButtonElement>(null);
+  const emailStatusMessage = useRef<HTMLParagraphElement>(null);
+  const hadEmailConsentOpen = useRef(false);
   const finalizationConfirmed =
     (location.state as { finalizationConfirmed?: boolean } | null)
       ?.finalizationConfirmed === true;
@@ -102,6 +133,7 @@ export function PrescriptionPreviewPage() {
   const printable =
     entry?.status === "completed" &&
     isRenderablePrescription(entry.prescription);
+  const emailStatus = emailCapability?.latestDelivery?.status ?? null;
   const documentModel =
     printable && entry
       ? buildPrescriptionDocument(entry, entry.prescription!, {
@@ -121,6 +153,113 @@ export function PrescriptionPreviewPage() {
     };
   }, [printable]);
 
+  const refreshEmailStatus = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!entryId || !printable) return null;
+      setEmailLoading(true);
+      try {
+        const status = await operations.prescriptionEmail(entryId, signal);
+        if (!signal?.aborted) {
+          setEmailCapability((current) => {
+            if (
+              expectedDeliveryId.current &&
+              current?.latestDelivery?.deliveryId ===
+                expectedDeliveryId.current &&
+              status.latestDelivery?.deliveryId !== expectedDeliveryId.current
+            )
+              return { ...status, latestDelivery: current.latestDelivery };
+            return status;
+          });
+          if (
+            expectedDeliveryId.current &&
+            status.latestDelivery?.deliveryId === expectedDeliveryId.current
+          ) {
+            setEmailUncertain(false);
+            if (status.latestDelivery.status === "failed") {
+              setEmailIdempotencyKey("");
+              emailAttemptAt.current = null;
+              expectedDeliveryId.current = null;
+            }
+          } else if (
+            !expectedDeliveryId.current &&
+            emailAttemptAt.current &&
+            status.latestDelivery &&
+            new Date(status.latestDelivery.requestedAt).getTime() >=
+              new Date(emailAttemptAt.current).getTime()
+          ) {
+            setEmailUncertain(false);
+            if (status.latestDelivery.status === "failed") {
+              setEmailIdempotencyKey("");
+              emailAttemptAt.current = null;
+            }
+          }
+        }
+        return status;
+      } catch (cause) {
+        if (!signal?.aborted) setEmailError(errorText(cause));
+        return null;
+      } finally {
+        if (!signal?.aborted) setEmailLoading(false);
+      }
+    },
+    [entryId, printable],
+  );
+
+  useEffect(() => {
+    if (!printable) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(
+      () => void refreshEmailStatus(controller.signal),
+      0,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [printable, refreshEmailStatus]);
+
+  useEffect(() => {
+    if (
+      !printable ||
+      !emailStatus ||
+      ![
+        "queued",
+        "processing",
+        "accepted",
+        "delivery_delayed",
+        "unknown",
+      ].includes(emailStatus)
+    )
+      return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshEmailStatus();
+    }, 60000);
+    const onFocus = () => void refreshEmailStatus();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [emailStatus, printable, refreshEmailStatus]);
+
+  useEffect(() => {
+    if (showEmailConsent) {
+      hadEmailConsentOpen.current = true;
+      if (consentDialog.current && !consentDialog.current.open)
+        consentDialog.current.showModal();
+      consentInput.current?.focus();
+    } else {
+      if (consentDialog.current?.open) consentDialog.current.close();
+      if (hadEmailConsentOpen.current) {
+        hadEmailConsentOpen.current = false;
+        if (emailUncertain) verifyEmailButton.current?.focus();
+        else if (emailStatus && emailStatus !== "failed")
+          emailStatusMessage.current?.focus();
+        else emailTrigger.current?.focus();
+      }
+    }
+  }, [showEmailConsent, emailStatus, emailUncertain]);
+
   async function downloadPdf() {
     if (!entry || !printable || pdfBusy) return;
     setPdfBusy(true);
@@ -130,6 +269,85 @@ export function PrescriptionPreviewPage() {
       toast.error("PDF indisponível", errorText(cause));
     } finally {
       setPdfBusy(false);
+    }
+  }
+
+  async function requestEmail() {
+    if (
+      !entry ||
+      !printable ||
+      !emailCapability?.supported ||
+      !emailCapability.eligible ||
+      !emailConsent ||
+      emailBusy
+    )
+      return;
+    const key = emailIdempotencyKey || crypto.randomUUID();
+    setEmailIdempotencyKey(key);
+    emailAttemptAt.current = new Date().toISOString();
+    setEmailBusy(true);
+    setEmailError("");
+    try {
+      const requested = await operations.requestPrescriptionEmail(
+        entry.id,
+        key,
+      );
+      setEmailUncertain(false);
+      emailAttemptAt.current = requested.requestedAt;
+      expectedDeliveryId.current = requested.deliveryId;
+      setEmailCapability((current) =>
+        current
+          ? {
+              ...current,
+              latestDelivery: {
+                deliveryId: requested.deliveryId,
+                status: requested.status,
+                requestedAt: requested.requestedAt,
+                updatedAt: requested.requestedAt,
+                acceptedAt:
+                  requested.status === "accepted"
+                    ? requested.requestedAt
+                    : null,
+                deliveredAt:
+                  requested.status === "delivered"
+                    ? requested.requestedAt
+                    : null,
+                failureCode: null,
+              },
+            }
+          : current,
+      );
+      setShowEmailConsent(false);
+      setEmailConsent(false);
+      await refreshEmailStatus();
+      toast.info(
+        "Solicitação registrada",
+        "O HTTP 202 confirma que o pedido foi aceito para processamento, não que o e-mail foi entregue.",
+      );
+    } catch (cause) {
+      const status =
+        cause instanceof Error
+          ? (cause as { status?: number }).status
+          : undefined;
+      const code =
+        cause instanceof Error ? (cause as { code?: string }).code : undefined;
+      const uncertain =
+        code === "TIMEOUT" ||
+        code === "NETWORK_ERROR" ||
+        status === 409 ||
+        status === 429 ||
+        status === 503;
+      setEmailUncertain(uncertain);
+      setEmailError(
+        uncertain
+          ? "Não foi possível confirmar o resultado. O envio não será repetido automaticamente; consulte o estado antes de qualquer outra ação."
+          : errorText(cause),
+      );
+      setShowEmailConsent(false);
+      setEmailConsent(false);
+      await refreshEmailStatus();
+    } finally {
+      setEmailBusy(false);
     }
   }
 
@@ -262,16 +480,130 @@ export function PrescriptionPreviewPage() {
                 {pdfBusy ? "Preparando PDF…" : "Baixar PDF"}
               </button>
               <button
+                ref={emailTrigger}
                 type="button"
-                className="prescription-email-unavailable"
-                disabled
+                className="local-secondary-button"
+                disabled={
+                  emailLoading ||
+                  !emailCapability?.supported ||
+                  !emailCapability?.eligible ||
+                  emailBusy ||
+                  emailUncertain ||
+                  Boolean(emailStatus && emailStatus !== "failed")
+                }
                 aria-describedby="prescription-email-help"
+                onClick={() => {
+                  setEmailConsent(false);
+                  setEmailError("");
+                  setShowEmailConsent(true);
+                }}
               >
-                Enviar prescrição por e-mail
+                {emailBusy
+                  ? "Solicitando envio…"
+                  : "Enviar prescrição por e-mail"}
               </button>
-              <p id="prescription-email-help">
-                O envio depende de integração segura no servidor.
+              <p
+                id="prescription-email-help"
+                ref={emailStatusMessage}
+                role="status"
+                tabIndex={-1}
+              >
+                {emailLoading
+                  ? "Consultando disponibilidade do serviço…"
+                  : !emailCapability?.supported
+                    ? "O serviço de envio não está habilitado no servidor."
+                    : !emailCapability.eligible
+                      ? "Este atendimento não está elegível para envio por e-mail."
+                      : emailStatus
+                        ? emailStatusLabel[emailStatus]
+                        : "O envio exige consentimento explícito do paciente."}
               </p>
+              {emailCapability?.reasonCode && (
+                <p className="local-note">
+                  Motivo informado pelo servidor:{" "}
+                  {emailCapability.reasonCode === "SERVICE_UNAVAILABLE"
+                    ? "serviço indisponível"
+                    : emailCapability.reasonCode === "RECIPIENT_NOT_ELIGIBLE"
+                      ? "destinatário não elegível"
+                      : "indisponível"}
+                  .
+                </p>
+              )}
+              {emailError && (
+                <p className="prescription-form-error" role="alert">
+                  {emailError}
+                </p>
+              )}
+              {emailUncertain && (
+                <button
+                  ref={verifyEmailButton}
+                  type="button"
+                  className="local-secondary-button"
+                  onClick={() => void refreshEmailStatus()}
+                  disabled={emailLoading}
+                >
+                  Verificar estado do envio
+                </button>
+              )}
+              {emailStatus && (
+                <p className="local-note" role="status">
+                  Estado atual: {emailStatusLabel[emailStatus]}
+                  {emailCapability?.latestDelivery?.failureCode
+                    ? ". O servidor registrou uma falha; consulte a equipe responsável."
+                    : ""}
+                </p>
+              )}
+              {showEmailConsent && (
+                <dialog
+                  ref={consentDialog}
+                  aria-labelledby="prescription-consent-title"
+                  className="prescription-consent-dialog"
+                  onCancel={(event) => {
+                    event.preventDefault();
+                    setShowEmailConsent(false);
+                  }}
+                >
+                  <h2 id="prescription-consent-title">
+                    Confirmar envio da prescrição
+                  </h2>
+                  <p>
+                    O servidor usará o endereço cadastrado para este paciente. A
+                    solicitação não confirma entrega.
+                  </p>
+                  <label>
+                    <input
+                      ref={consentInput}
+                      type="checkbox"
+                      checked={emailConsent}
+                      onChange={(event) =>
+                        setEmailConsent(event.target.checked)
+                      }
+                    />{" "}
+                    Confirmo que o paciente consentiu com o envio desta
+                    prescrição por e-mail.
+                  </label>
+                  <div className="local-actions">
+                    <button
+                      type="button"
+                      className="local-secondary-button"
+                      onClick={() => {
+                        setShowEmailConsent(false);
+                        setEmailConsent(false);
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="local-primary"
+                      disabled={!emailConsent || emailBusy}
+                      onClick={() => void requestEmail()}
+                    >
+                      {emailBusy ? "Solicitando…" : "Confirmar e solicitar"}
+                    </button>
+                  </div>
+                </dialog>
+              )}
             </div>
             <PrescriptionDocument document={documentModel} />
           </>

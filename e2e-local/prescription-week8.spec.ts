@@ -54,6 +54,9 @@ function entry(
     otherSymptoms: "Queixa sintética para teste",
     shortNote: "Observação fictícia de entrada",
     symptomIds: ["e04723dc-96e6-48dc-8cb8-462c6811c203"],
+    symptoms: [
+      { id: "e04723dc-96e6-48dc-8cb8-462c6811c203", name: "Sintoma sintético" },
+    ],
     queuePosition: null,
     patient: { id: patientId, fullName: "Paciente Sintético", birthDate: null },
     doctor: { id: doctorId, name: "Dra. Helena Teste" },
@@ -68,7 +71,17 @@ function entry(
   };
 }
 
-async function login(page: Page) {
+async function login(
+  page: Page,
+  initialDraft: {
+    description: string;
+    medications: unknown[];
+    notes: string | null;
+  } | null = null,
+  waitForDraftRead?: Promise<void>,
+) {
+  let serverDraft = initialDraft;
+  let draftVersion = initialDraft ? 7 : 0;
   await page.route("**/api/v1/auth/login", async (route) => {
     expect(route.request().postDataJSON()).toEqual({
       email: account.email,
@@ -102,12 +115,792 @@ async function login(page: Page) {
       },
     }),
   );
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-draft`,
+    async (route) => {
+      const method = route.request().method();
+      const headers = route.request().headers();
+      if (method === "GET") {
+        await waitForDraftRead;
+        await route.fulfill({
+          status: 200,
+          headers: serverDraft ? { ETag: `"draft-v${draftVersion}"` } : {},
+          json: {
+            entryId,
+            draft: serverDraft
+              ? {
+                  ...serverDraft,
+                  version: draftVersion,
+                  createdAt: "2026-11-12T09:15:00.000Z",
+                  updatedAt: "2026-11-12T09:15:00.000Z",
+                }
+              : null,
+          },
+        });
+        return;
+      }
+      if (method === "PUT") {
+        if (
+          (serverDraft && headers["if-match"] !== `"draft-v${draftVersion}"`) ||
+          (!serverDraft && headers["if-none-match"] !== "*")
+        ) {
+          await route.fulfill({
+            status: 412,
+            json: { error: { code: "PRESCRIPTION_DRAFT_STALE" } },
+          });
+          return;
+        }
+        serverDraft = route.request().postDataJSON();
+        draftVersion += 1;
+        await route.fulfill({
+          status: draftVersion === 1 ? 201 : 200,
+          headers: { ETag: `"draft-v${draftVersion}"` },
+          json: {
+            entryId,
+            draft: {
+              ...serverDraft,
+              version: draftVersion,
+              createdAt: "2026-11-12T09:15:00.000Z",
+              updatedAt: "2026-11-12T09:15:00.000Z",
+            },
+          },
+        });
+        return;
+      }
+      if (method === "DELETE") {
+        if (serverDraft && headers["if-match"] !== `"draft-v${draftVersion}"`) {
+          await route.fulfill({
+            status: 412,
+            json: { error: { code: "PRESCRIPTION_DRAFT_STALE" } },
+          });
+          return;
+        }
+        serverDraft = null;
+        await route.fulfill({ status: 204, body: "" });
+      }
+    },
+  );
+  await page.route(`**/api/v1/entries/${entryId}/prescription-email`, (route) =>
+    route.fulfill({
+      json: {
+        supported: false,
+        eligible: false,
+        reasonCode: "SERVICE_UNAVAILABLE",
+        latestDelivery: null,
+      },
+    }),
+  );
   await page.goto("/login");
   await page.getByLabel("E-mail", { exact: true }).fill(account.email);
   await page.getByLabel("Senha", { exact: true }).fill("senha-de-teste");
   await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page).toHaveURL("/medico");
 }
+
+async function waitForDraftSave(page: Page) {
+  await expect(
+    page.getByRole("status").filter({
+      hasText:
+        /^(Rascunho salvo no servidor\.|Versão do servidor carregada\.)$/,
+    }),
+  ).toBeVisible();
+}
+
+test("restaura rascunho remoto versionado e recupera após recarregar e entrar novamente", async ({
+  page,
+}) => {
+  await openCurrentAppointment(page);
+  const description = "Conduta fictícia persistida no servidor.";
+  await page.getByLabel(/Descrição \/ conduta clínica/).fill(description);
+  await waitForDraftSave(page);
+  await page.reload();
+  await expect(page).toHaveURL("/login");
+  await page.getByLabel("E-mail", { exact: true }).fill(account.email);
+  await page.getByLabel("Senha", { exact: true }).fill("senha-de-teste");
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page).toHaveURL("/medico");
+  await page.getByRole("link", { name: "Paciente atual", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar rascunho" }).click();
+  await expect(page.getByLabel(/Descrição \/ conduta clínica/)).toHaveValue(
+    description,
+  );
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("recupera um draft existente com ETag e mantém sintomas da entrada após novo login", async ({
+  page,
+}) => {
+  await login(page, {
+    description: "Conduta remota sintética",
+    medications: [{ name: "Medicação parcial", dosage: "", instructions: "" }],
+    notes: null,
+  });
+  await page.getByRole("link", { name: "Paciente atual", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar rascunho" }).click();
+  await expect(page.getByLabel(/Descrição \/ conduta clínica/)).toHaveValue(
+    "Conduta remota sintética",
+  );
+  await expect(page.getByLabel("Nome *").first()).toHaveValue(
+    "Medicação parcial",
+  );
+  await expect(page.getByText("Sintoma sintético").first()).toBeVisible();
+  await expect(
+    page.getByText("Rascunho salvo no servidor.", { exact: true }),
+  ).toBeVisible();
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("GET do rascunho que chega depois da edição não substitui o texto digitado", async ({
+  page,
+}) => {
+  let releaseDraftRead: (() => void) | undefined;
+  const delayedDraftRead = new Promise<void>((resolve) => {
+    releaseDraftRead = resolve;
+  });
+  await login(page, null, delayedDraftRead);
+  await page.getByRole("link", { name: "Paciente atual", exact: true }).click();
+  await page.getByRole("button", { name: "Prescrever e finalizar" }).click();
+  await expect(
+    page.getByText("Recuperando rascunho salvo…", { exact: true }),
+  ).toBeVisible();
+  const field = page.getByLabel(/Descrição \/ conduta clínica/);
+  const latestEdit = "Edição local antes da resposta do GET";
+  await field.fill(latestEdit);
+  releaseDraftRead?.();
+  await expect(field).toHaveValue(latestEdit);
+  await expect(
+    page.getByRole("button", { name: "Revisar antes de finalizar" }),
+  ).toBeEnabled();
+  await waitForDraftSave(page);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("descarta explicitamente o rascunho remoto com If-Match e confirmação", async ({
+  page,
+}) => {
+  const initialDraft = {
+    description: "Conduta remota que será descartada",
+    medications: [],
+    notes: null,
+  };
+  await login(page, initialDraft);
+  let serverDraft: typeof initialDraft | null = initialDraft;
+  const version = 7;
+  let deleteCount = 0;
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-draft`,
+    async (route) => {
+      const method = route.request().method();
+      if (method === "GET") {
+        await route.fulfill({
+          status: 200,
+          headers: serverDraft ? { ETag: `"draft-v${version}"` } : {},
+          json: {
+            entryId,
+            draft: serverDraft
+              ? {
+                  ...serverDraft,
+                  version,
+                  createdAt: "2026-11-12T09:15:00.000Z",
+                  updatedAt: "2026-11-12T09:15:00.000Z",
+                }
+              : null,
+          },
+        });
+        return;
+      }
+      if (method === "DELETE") {
+        expect(route.request().headers()["if-match"]).toBe(
+          `"draft-v${version}"`,
+        );
+        deleteCount += 1;
+        serverDraft = null;
+        await route.fulfill({ status: 204, body: "" });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+  await page.getByRole("link", { name: "Paciente atual", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar rascunho" }).click();
+  await expect(page.getByLabel(/Descrição \/ conduta clínica/)).toHaveValue(
+    initialDraft.description,
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Descartar rascunho salvo" }).click();
+  await expect(
+    page.getByText("Rascunho descartado.", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel(/Descrição \/ conduta clínica/)).toHaveValue("");
+  expect(deleteCount).toBe(1);
+  expect(serverDraft).toBeNull();
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("confirma o DELETE após timeout consultando o servidor antes de limpar a edição", async ({
+  page,
+}) => {
+  const initialDraft = {
+    description: "Conduta remota removida apesar do timeout",
+    medications: [],
+    notes: null,
+  };
+  await login(page, initialDraft);
+  let serverDraft: typeof initialDraft | null = initialDraft;
+  let version = 7;
+  let deleteCount = 0;
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-draft`,
+    async (route) => {
+      const method = route.request().method();
+      if (method === "GET") {
+        await route.fulfill({
+          status: 200,
+          headers: serverDraft ? { ETag: `"draft-v${version}"` } : {},
+          json: {
+            entryId,
+            draft: serverDraft
+              ? {
+                  ...serverDraft,
+                  version,
+                  createdAt: "2026-11-12T09:15:00.000Z",
+                  updatedAt: "2026-11-12T09:15:00.000Z",
+                }
+              : null,
+          },
+        });
+        return;
+      }
+      if (method === "DELETE") {
+        expect(route.request().headers()["if-match"]).toBe(
+          `"draft-v${version}"`,
+        );
+        deleteCount += 1;
+        serverDraft = null;
+        version += 1;
+        await route.abort("failed");
+        return;
+      }
+      await route.fallback();
+    },
+  );
+  await page.getByRole("link", { name: "Paciente atual", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar rascunho" }).click();
+  await expect(page.getByLabel(/Descrição \/ conduta clínica/)).toHaveValue(
+    initialDraft.description,
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Descartar rascunho salvo" }).click();
+  await expect(
+    page.getByText("Descarte confirmado no servidor.", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel(/Descrição \/ conduta clínica/)).toHaveValue("");
+  expect(deleteCount).toBe(1);
+  expect(serverDraft).toBeNull();
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("envia apenas após consentimento, usa idempotência e separa accepted de delivered", async ({
+  page,
+}) => {
+  await login(page);
+  const completed = entry(
+    "completed",
+    persistedPrescription("Conduta confirmada sintética."),
+  );
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({ json: completed }),
+  );
+  let latestDelivery: Record<string, unknown> | null = null;
+  let requestCount = 0;
+  let staleStatusRead = true;
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-email`,
+    async (route) => {
+      if (route.request().method() === "GET") {
+        const visibleDelivery =
+          requestCount > 0 && staleStatusRead
+            ? ((staleStatusRead = false), null)
+            : latestDelivery;
+        await route.fulfill({
+          json: {
+            supported: true,
+            eligible: true,
+            reasonCode: null,
+            latestDelivery: visibleDelivery,
+          },
+        });
+        return;
+      }
+      requestCount += 1;
+      expect(route.request().postDataJSON()).toEqual({});
+      const headers = route.request().headers();
+      expect(headers["x-patient-consent"]).toBe("confirmed");
+      expect(headers["idempotency-key"]).toMatch(/^[0-9a-f-]{36}$/i);
+      latestDelivery = {
+        deliveryId: "4c3b7dd5-a88d-4bd4-b6cd-dd16bc0d3573",
+        status: "accepted",
+        requestedAt: "2026-11-12T09:36:00.000Z",
+        updatedAt: "2026-11-12T09:36:00.000Z",
+        acceptedAt: "2026-11-12T09:36:00.000Z",
+        deliveredAt: null,
+        failureCode: null,
+      };
+      await route.fulfill({
+        status: 202,
+        json: {
+          deliveryId: latestDelivery.deliveryId,
+          entryId,
+          status: "accepted",
+          requestedAt: "2026-11-12T09:36:00.000Z",
+        },
+      });
+    },
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  await expect(
+    page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Enviar prescrição por e-mail" })
+    .click();
+  const confirm = page.getByRole("button", { name: "Confirmar e solicitar" });
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel(/Confirmo que o paciente consentiu/).check();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(
+    page.getByText(
+      "E-mail aceito pelo provedor; entrega ainda não confirmada",
+      {
+        exact: true,
+      },
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(/E-mail entregue/)).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+  ).toBeDisabled();
+  latestDelivery = {
+    ...latestDelivery,
+    status: "delivered",
+    deliveredAt: "2026-11-12T09:40:00.000Z",
+    updatedAt: "2026-11-12T09:40:00.000Z",
+  };
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(
+    page.getByText("E-mail entregue", { exact: true }),
+  ).toBeVisible();
+  expect(requestCount).toBe(1);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("resultado incerto do envio não permite repetir nem troca a chave automaticamente", async ({
+  page,
+}) => {
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta sintética.")),
+    }),
+  );
+  let postCount = 0;
+  let issuedKey = "";
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-email`,
+    async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          json: {
+            supported: true,
+            eligible: true,
+            reasonCode: null,
+            latestDelivery: null,
+          },
+        });
+        return;
+      }
+      postCount += 1;
+      issuedKey = route.request().headers()["idempotency-key"];
+      await route.abort("failed");
+    },
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  await page
+    .getByRole("button", { name: "Enviar prescrição por e-mail" })
+    .click();
+  await page.getByLabel(/Confirmo que o paciente consentiu/).check();
+  await page.getByRole("button", { name: "Confirmar e solicitar" }).click();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: /não será repetido automaticamente/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Verificar estado do envio" }).click();
+  expect(postCount).toBe(1);
+  expect(issuedKey).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+for (const status of [409, 429, 503]) {
+  test(`resultado HTTP ${status} do envio exige reconciliação e não repete POST`, async ({
+    page,
+  }) => {
+    await login(page);
+    await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+      route.fulfill({
+        json: entry("completed", persistedPrescription("Conduta sintética.")),
+      }),
+    );
+    let postCount = 0;
+    let issuedKey = "";
+    await page.route(
+      `**/api/v1/entries/${entryId}/prescription-email`,
+      async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            json: {
+              supported: true,
+              eligible: true,
+              reasonCode: null,
+              latestDelivery: null,
+            },
+          });
+          return;
+        }
+        postCount += 1;
+        issuedKey = route.request().headers()["idempotency-key"];
+        expect(issuedKey).toMatch(/^[0-9a-f-]{36}$/i);
+        expect(route.request().headers()["x-patient-consent"]).toBe(
+          "confirmed",
+        );
+        expect(route.request().postDataJSON()).toEqual({});
+        await route.fulfill({
+          status,
+          json: { error: { code: "DELIVERY_RESULT_UNCERTAIN" } },
+        });
+      },
+    );
+    await page.evaluate((path) => {
+      history.pushState(null, "", path);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }, `/medico/prescricoes/${entryId}`);
+    await page
+      .getByRole("button", { name: "Enviar prescrição por e-mail" })
+      .click();
+    await page.getByLabel(/Confirmo que o paciente consentiu/).check();
+    await page.getByRole("button", { name: "Confirmar e solicitar" }).click();
+    await expect(
+      page
+        .getByRole("alert")
+        .filter({ hasText: /não será repetido automaticamente/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+    ).toBeDisabled();
+    await page
+      .getByRole("button", { name: "Verificar estado do envio" })
+      .click();
+    expect(postCount).toBe(1);
+    expect(issuedKey).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(unexpectedRequests).toEqual([]);
+  });
+}
+
+test("acompanha os estados reais do envio sem permitir novo POST enquanto não falhou", async ({
+  page,
+}) => {
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta sintética.")),
+    }),
+  );
+  const latestDelivery: Record<string, unknown> = {
+    deliveryId: "438b4653-7d02-457c-a219-ec1ab9989688",
+    status: "queued",
+    requestedAt: "2026-11-12T09:36:00.000Z",
+    updatedAt: "2026-11-12T09:36:00.000Z",
+    acceptedAt: null,
+    deliveredAt: null,
+    failureCode: null,
+  };
+  await page.route(`**/api/v1/entries/${entryId}/prescription-email`, (route) =>
+    route.fulfill({
+      json: {
+        supported: true,
+        eligible: true,
+        reasonCode: null,
+        latestDelivery,
+      },
+    }),
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  const help = page.locator("#prescription-email-help");
+  const send = page.getByRole("button", {
+    name: "Enviar prescrição por e-mail",
+  });
+  await expect(help).toHaveText("Solicitação na fila");
+  const states = [
+    ["processing", "Envio em processamento", false],
+    [
+      "delivery_delayed",
+      "Entrega atrasada; aguardando atualização do provedor",
+      false,
+    ],
+    ["unknown", "Estado do envio desconhecido", false],
+    ["failed", "Envio falhou", true],
+  ] as const;
+  for (const [status, label, enabled] of states) {
+    latestDelivery.status = status;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(help).toHaveText(label);
+    if (enabled) await expect(send).toBeEnabled();
+    else await expect(send).toBeDisabled();
+  }
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("serializa autosaves e persiste a edição feita enquanto outra gravação está pendente", async ({
+  page,
+}) => {
+  await openCurrentAppointment(page);
+  let releaseFirst: (() => void) | undefined;
+  let startedFirst: (() => void) | undefined;
+  const firstStarted = new Promise<void>((resolve) => {
+    startedFirst = resolve;
+  });
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const bodies: unknown[] = [];
+  const conditions: string[] = [];
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-draft`,
+    async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      bodies.push(route.request().postDataJSON());
+      const headers = route.request().headers();
+      conditions.push(headers["if-match"] ?? headers["if-none-match"] ?? "");
+      if (bodies.length === 1) {
+        startedFirst?.();
+        await firstGate;
+        await route.fulfill({
+          status: 201,
+          headers: { ETag: '"draft-v1"' },
+          json: {
+            entryId,
+            draft: {
+              ...(bodies[0] as object),
+              version: 1,
+              createdAt: "2026-11-12T09:00:00.000Z",
+              updatedAt: "2026-11-12T09:00:00.000Z",
+            },
+          },
+        });
+      } else
+        await route.fulfill({
+          status: 200,
+          headers: { ETag: '"draft-v2"' },
+          json: {
+            entryId,
+            draft: {
+              ...(bodies[bodies.length - 1] as object),
+              version: 2,
+              createdAt: "2026-11-12T09:00:00.000Z",
+              updatedAt: "2026-11-12T09:01:00.000Z",
+            },
+          },
+        });
+    },
+  );
+  const field = page.getByLabel(/Descrição \/ conduta clínica/);
+  await field.fill("Primeira gravação sintética");
+  await firstStarted;
+  await field.fill("Edição posterior durante o primeiro save");
+  releaseFirst?.();
+  await waitForDraftSave(page);
+  expect(bodies).toHaveLength(2);
+  expect(conditions).toEqual(["*", '"draft-v1"']);
+  expect((bodies[1] as { description: string }).description).toBe(
+    "Edição posterior durante o primeiro save",
+  );
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("reconcilia timeout do PUT pelo GET quando o draft foi persistido", async ({
+  page,
+}) => {
+  await openCurrentAppointment(page);
+  let saved: {
+    description: string;
+    medications: unknown[];
+    notes: string | null;
+  } | null = null;
+  let version = 0;
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-draft`,
+    async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          headers: saved ? { ETag: `"draft-v${version}"` } : {},
+          json: {
+            entryId,
+            draft: saved
+              ? {
+                  ...saved,
+                  version,
+                  createdAt: "2026-11-12T09:00:00.000Z",
+                  updatedAt: "2026-11-12T09:00:00.000Z",
+                }
+              : null,
+          },
+        });
+        return;
+      }
+      if (route.request().method() === "PUT") {
+        saved = route.request().postDataJSON();
+        version += 1;
+        await route.abort("failed");
+      } else await route.fallback();
+    },
+  );
+  await page
+    .getByLabel(/Descrição \/ conduta clínica/)
+    .fill("Conduta persistida apesar do timeout");
+  await waitForDraftSave(page);
+  expect(saved?.description).toBe("Conduta persistida apesar do timeout");
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("conflito 412 mantém a edição e exige carregar explicitamente a versão do servidor", async ({
+  page,
+}) => {
+  await login(page, {
+    description: "Versão remota inicial",
+    medications: [],
+    notes: null,
+  });
+  await page.getByRole("link", { name: "Paciente atual", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar rascunho" }).click();
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-draft`,
+    async (route) => {
+      if (route.request().method() === "PUT") {
+        expect(route.request().headers()["if-match"]).toBe('"draft-v7"');
+        await route.fulfill({
+          status: 412,
+          json: { error: { code: "PRESCRIPTION_DRAFT_STALE" } },
+        });
+      } else await route.fallback();
+    },
+  );
+  const field = page.getByLabel(/Descrição \/ conduta clínica/);
+  await field.fill("Edição local preservada após conflito");
+  await expect(
+    page.getByRole("alert").filter({ hasText: /alterado em outra sessão/ }),
+  ).toBeVisible();
+  await expect(field).toHaveValue("Edição local preservada após conflito");
+  await page
+    .getByRole("button", { name: "Carregar versão do servidor" })
+    .click();
+  await expect(field).toHaveValue("Versão remota inicial");
+  await waitForDraftSave(page);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("finalização com ETag antigo é bloqueada e mantém a prescrição para resolução", async ({
+  page,
+}) => {
+  await login(page, {
+    description: "Conduta remota validada",
+    medications: [],
+    notes: null,
+  });
+  await page.getByRole("link", { name: "Paciente atual", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar rascunho" }).click();
+  await page
+    .getByRole("button", { name: "Revisar antes de finalizar" })
+    .click();
+  let completionCount = 0;
+  await page.route(`**/api/v1/entries/${entryId}/complete`, async (route) => {
+    completionCount += 1;
+    expect(route.request().headers()["if-match"]).toBe('"draft-v7"');
+    await route.fulfill({
+      status: 412,
+      json: { error: { code: "PRESCRIPTION_DRAFT_STALE" } },
+    });
+  });
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({ json: entry("in_progress") }),
+  );
+  await page.getByRole("button", { name: "Confirmar finalização" }).click();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: /A finalização não foi confirmada/ }),
+  ).toBeVisible();
+  await expect(page.getByLabel(/Descrição \/ conduta clínica/)).toHaveValue(
+    "Conduta remota validada",
+  );
+  await expect(
+    page.getByRole("button", { name: "Carregar versão do servidor" }),
+  ).toBeVisible();
+  expect(completionCount).toBe(1);
+  await page
+    .getByRole("button", { name: "Carregar versão do servidor" })
+    .click();
+  await expect(page.getByLabel(/Descrição \/ conduta clínica/)).toHaveValue(
+    "Conduta remota validada",
+  );
+  await waitForDraftSave(page);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("precondição 428 preserva o texto e informa falha de salvamento sem criar rascunho local persistente", async ({
+  page,
+}) => {
+  await openCurrentAppointment(page);
+  let writes = 0;
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-draft`,
+    async (route) => {
+      if (route.request().method() === "PUT") {
+        writes += 1;
+        expect(route.request().headers()["if-none-match"]).toBe("*");
+        await route.fulfill({
+          status: 428,
+          json: { error: { code: "PRECONDITION_REQUIRED" } },
+        });
+      } else await route.fallback();
+    },
+  );
+  const field = page.getByLabel(/Descrição \/ conduta clínica/);
+  await field.fill("Conduta mantida após precondição ausente");
+  await expect(
+    page.getByRole("alert").filter({ hasText: /Atualize o rascunho/i }),
+  ).toBeVisible();
+  await expect(field).toHaveValue("Conduta mantida após precondição ausente");
+  expect(writes).toBe(1);
+  const storage = await page.evaluate(() =>
+    Object.values(localStorage).concat(Object.values(sessionStorage)).join(" "),
+  );
+  expect(storage).not.toContain("Conduta mantida após precondição ausente");
+  expect(unexpectedRequests).toEqual([]);
+});
 
 async function openCurrentAppointment(page: Page) {
   await login(page);
@@ -179,11 +972,19 @@ test("finaliza sem medicamentos, mantém texto literal e abre impressão, PDF e 
     'Conduta fictícia: <script>window.__xss = true</script> & aspas " ação \nsegunda linha';
   await expect(page.getByText("Nenhum medicamento adicionado.")).toBeVisible();
   await page.getByLabel(/Descrição \/ conduta clínica/).fill(description);
+  await waitForDraftSave(page);
   await page
     .getByRole("button", { name: "Revisar antes de finalizar" })
     .click();
   await expect(
     page.getByText("Pré-visualização — conteúdo não salvo"),
+  ).toBeVisible();
+  await expect(page.getByText("Sintoma sintético").first()).toBeVisible();
+  await expect(
+    page.getByText("Queixa sintética para teste").first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Observação fictícia de entrada").first(),
   ).toBeVisible();
   await expect(page.locator(".prescription-document-text").first()).toHaveText(
     description,
@@ -203,10 +1004,12 @@ test("finaliza sem medicamentos, mantém texto literal e abre impressão, PDF e 
 
   let completionCount = 0;
   let completionBody: unknown;
+  let completionEtag = "";
   const confirmed = entry("completed", persistedPrescription(description));
   await page.route(`**/api/v1/entries/${entryId}/complete`, async (route) => {
     completionCount += 1;
     completionBody = route.request().postDataJSON();
+    completionEtag = route.request().headers()["if-match"];
     await route.fulfill({ status: 200, json: confirmed });
   });
   await page.route(`**/api/v1/entries/${entryId}`, (route) =>
@@ -217,8 +1020,16 @@ test("finaliza sem medicamentos, mantém texto literal e abre impressão, PDF e 
   await expect(
     page.getByText("Prescrição registrada", { exact: true }).first(),
   ).toBeVisible();
+  await expect(page.getByText("Sintoma sintético").first()).toBeVisible();
+  await expect(
+    page.getByText("Queixa sintética para teste").first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Observação fictícia de entrada").first(),
+  ).toBeVisible();
   await expect(page.locator(".av-toast-stack .av-toast")).toHaveCount(0);
   expect(completionCount).toBe(1);
+  expect(completionEtag).toBe('"draft-v1"');
   expect(completionBody).toEqual({
     prescription: { description, medications: [] },
   });
@@ -231,7 +1042,7 @@ test("finaliza sem medicamentos, mantém texto literal e abre impressão, PDF e 
   });
   await expect(emailButton).toBeDisabled();
   await expect(
-    page.getByText("O envio depende de integração segura no servidor."),
+    page.getByText("O serviço de envio não está habilitado no servidor."),
   ).toBeVisible();
   await expect(page.getByText(/enviado/i)).toHaveCount(0);
   await expect(page.getByText("Sem medicamentos prescritos.")).toBeVisible();
@@ -297,6 +1108,7 @@ test("valida campos em sequência e preserva rascunho ao voltar ao atendimento",
   await expect(description).toHaveAttribute("aria-invalid", "true");
 
   await description.fill("   ");
+  await waitForDraftSave(page);
   await page
     .getByRole("button", { name: "Revisar antes de finalizar" })
     .click();
@@ -304,6 +1116,7 @@ test("valida campos em sequência e preserva rascunho ao voltar ao atendimento",
   const maximumDescription = "a".repeat(5000);
   await description.fill("a".repeat(5001));
   await expect(description).toHaveValue(maximumDescription);
+  await waitForDraftSave(page);
   await page
     .getByRole("button", { name: "Revisar antes de finalizar" })
     .click();
@@ -313,6 +1126,7 @@ test("valida campos em sequência e preserva rascunho ao voltar ao atendimento",
   await page.getByRole("button", { name: "Voltar para edição" }).click();
   await description.fill("");
   await description.fill("Conduta sintética com medicação opcional.");
+  await waitForDraftSave(page);
   await page.getByRole("button", { name: "Adicionar medicamento" }).click();
   await page
     .getByRole("button", { name: "Revisar antes de finalizar" })
@@ -327,6 +1141,7 @@ test("valida campos em sequência e preserva rascunho ao voltar ao atendimento",
     .getByLabel("Instruções *")
     .nth(0)
     .fill("Usar conforme indicação fictícia.");
+  await waitForDraftSave(page);
   await page.getByRole("button", { name: "Adicionar medicamento" }).click();
   await page.getByLabel("Nome *").nth(1).fill("Segunda medicação fictícia");
   await page.getByLabel("Dosagem *").nth(1).fill("2 unidades");
@@ -334,6 +1149,7 @@ test("valida campos em sequência e preserva rascunho ao voltar ao atendimento",
     .getByLabel("Instruções *")
     .nth(1)
     .fill("Segunda orientação de teste.");
+  await waitForDraftSave(page);
   await page
     .getByRole("button", { name: "Revisar antes de finalizar" })
     .click();
@@ -342,15 +1158,11 @@ test("valida campos em sequência e preserva rascunho ao voltar ao atendimento",
   ).toBeVisible();
   await page.getByRole("button", { name: "Voltar para edição" }).click();
   await page.getByLabel("Orientações adicionais").fill("Orientação de teste.");
+  await waitForDraftSave(page);
   await page.getByRole("link", { name: "Dashboard", exact: true }).click();
-  await expect(
-    page.getByRole("heading", {
-      name: "Este rascunho não foi salvo no servidor",
-    }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Continuar editando" }).click();
+  await expect(page).toHaveURL("/medico");
+  await page.getByRole("link", { name: "Paciente atual", exact: true }).click();
   await expect(page).toHaveURL("/medico/atendimento");
-  await page.getByRole("button", { name: "Voltar ao atendimento" }).click();
   await page.getByRole("button", { name: "Continuar rascunho" }).click();
   await expect(page.getByLabel(/Descrição \/ conduta clínica/)).toHaveValue(
     "Conduta sintética com medicação opcional.",
@@ -382,6 +1194,7 @@ test("Back do navegador durante a finalização não redireciona nem restaura ra
   await page
     .getByLabel(/Descrição \/ conduta clínica/)
     .fill("Conduta sintética com resposta tardia.");
+  await waitForDraftSave(page);
   await page
     .getByRole("button", { name: "Revisar antes de finalizar" })
     .click();
@@ -421,6 +1234,10 @@ test("Back do navegador durante a finalização não redireciona nem restaura ra
 
   await page.getByRole("button", { name: "Confirmar finalização" }).click();
   await expect.poll(() => completionCount).toBe(1);
+  await page
+    .locator('form[aria-label="Prescrição e finalização"]')
+    .evaluate((form) => (form as HTMLFormElement).requestSubmit());
+  expect(completionCount).toBe(1);
   await page.goBack();
   await expect(page).toHaveURL("/medico");
   releaseResponse?.();
@@ -451,6 +1268,7 @@ test("finalização 204 consulta a prescrição persistida antes de abrir o docu
   await page
     .getByLabel(/Descrição \/ conduta clínica/)
     .fill("Conduta sintética confirmada por 204.");
+  await waitForDraftSave(page);
   await page
     .getByRole("button", { name: "Revisar antes de finalizar" })
     .click();
@@ -585,6 +1403,7 @@ test("falha 409 consulta o atendimento, preserva rascunho e bloqueia repetição
   await openCurrentAppointment(page);
   const description = "Conduta preservada após conflito fictício.";
   await page.getByLabel(/Descrição \/ conduta clínica/).fill(description);
+  await waitForDraftSave(page);
   await page
     .getByRole("button", { name: "Revisar antes de finalizar" })
     .click();
@@ -918,6 +1737,7 @@ for (const status of [500, 503]) {
     await openCurrentAppointment(page);
     const description = `Conduta sintética preservada após HTTP ${status}.`;
     await page.getByLabel(/Descrição \/ conduta clínica/).fill(description);
+    await waitForDraftSave(page);
     await page
       .getByRole("button", { name: "Revisar antes de finalizar" })
       .click();
@@ -958,6 +1778,7 @@ test("falha de rede ao finalizar consulta estado do servidor e preserva o rascun
   await openCurrentAppointment(page);
   const description = "Conduta sintética preservada após falha de rede.";
   await page.getByLabel(/Descrição \/ conduta clínica/).fill(description);
+  await waitForDraftSave(page);
   await page
     .getByRole("button", { name: "Revisar antes de finalizar" })
     .click();

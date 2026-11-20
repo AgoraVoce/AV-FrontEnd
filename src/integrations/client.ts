@@ -2,7 +2,13 @@ import { clearLocalSession, getAccessToken } from "../auth/api";
 import { apiEndpoint } from "./api-endpoint";
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, public readonly code: string, message: string, public readonly fields: Record<string, string> = {}) {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+    public readonly fields: Record<string, string> = {},
+    public readonly retryAfter: string | null = null,
+  ) {
     super(message);
   }
 }
@@ -10,7 +16,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function contract(value: unknown): Record<string, unknown> {
-  if (!isRecord(value)) throw new ApiError(502, "BAD_RESPONSE", "A API retornou dados inesperados.");
+  if (!isRecord(value))
+    throw new ApiError(
+      502,
+      "BAD_RESPONSE",
+      "A API retornou dados inesperados.",
+    );
   return value;
 }
 const ERRORS: Record<string, string> = {
@@ -18,9 +29,12 @@ const ERRORS: Record<string, string> = {
   SPECIALTY_NAME_CONFLICT: "Já existe uma especialidade com esse nome.",
   ROOM_NAME_EXISTS: "Já existe uma sala com esse nome.",
   SPECIALTY_IN_USE: "Especialidade vinculada a médicos. Você pode inativá-la.",
-  ROOM_IN_USE: "Esta sala possui plantões ativos. Altere os plantões antes de renomeá-la.",
-  ROOM_NOT_FOUND: "Sala não encontrada. Atualize os dados e selecione novamente.",
-  SCHEDULE_STATE_CONFLICT: "A agenda foi alterada por outra pessoa. Atualize e tente novamente.",
+  ROOM_IN_USE:
+    "Esta sala possui plantões ativos. Altere os plantões antes de renomeá-la.",
+  ROOM_NOT_FOUND:
+    "Sala não encontrada. Atualize os dados e selecione novamente.",
+  SCHEDULE_STATE_CONFLICT:
+    "A agenda foi alterada por outra pessoa. Atualize e tente novamente.",
   CRM_EXISTS: "Este CRM e UF já estão cadastrados.",
   EMAIL_EXISTS: "Este e-mail já está cadastrado.",
   ROOM_UNAVAILABLE: "Selecione uma sala ativa e disponível.",
@@ -44,10 +58,19 @@ const ERRORS: Record<string, string> = {
   INVALID_SYMPTOMS: "Alguns sintomas informados não são válidos.",
   TOO_MANY_ATTEMPTS: "Muitas tentativas. Tente novamente mais tarde.",
   VALIDATION_ERROR: "Há campos inválidos. Confira as informações preenchidas.",
-  DOCTOR_BUSY: "Você já tem um paciente chamado ou em atendimento. Conclua esse atendimento antes de chamar outro.",
-  ENTRY_STATE_CONFLICT: "O estado deste atendimento mudou. Atualize os dados antes de tentar novamente.",
+  DOCTOR_BUSY:
+    "Você já tem um paciente chamado ou em atendimento. Conclua esse atendimento antes de chamar outro.",
+  ENTRY_STATE_CONFLICT:
+    "O estado deste atendimento mudou. Atualize os dados antes de tentar novamente.",
   ATTENDANCE_NOT_FOUND: "Não há atendimento iniciado para esta entrada.",
-  AUTH_SERVICE_UNAVAILABLE: "Não foi possível validar a sessão no servidor. Tente novamente.",
+  PRESCRIPTION_DRAFT_STALE:
+    "Este rascunho foi alterado em outra sessão. Consulte a versão atual antes de continuar.",
+  PRECONDITION_REQUIRED: "Atualize o rascunho antes de salvar esta alteração.",
+  PRESCRIPTION_EMAIL_DISABLED: "O envio por e-mail ainda não está habilitado.",
+  CONSENT_REQUIRED:
+    "Confirme o consentimento do paciente para solicitar o envio.",
+  AUTH_SERVICE_UNAVAILABLE:
+    "Não foi possível validar a sessão no servidor. Tente novamente.",
 };
 function explain(status: number, code: string) {
   if (ERRORS[code]) return ERRORS[code];
@@ -55,17 +78,41 @@ function explain(status: number, code: string) {
   if (status === 400) return "Revise os campos informados e tente novamente.";
   if (status === 401) return ERRORS.UNAUTHENTICATED;
   if (status === 403) return ERRORS.FORBIDDEN;
+  if (status === 404)
+    return "O atendimento não foi encontrado ou não está disponível para esta sessão.";
+  if (status === 412) return ERRORS.PRESCRIPTION_DRAFT_STALE;
+  if (status === 428) return ERRORS.PRECONDITION_REQUIRED;
   if (status === 429) return ERRORS.TOO_MANY_ATTEMPTS;
+  if (status === 503)
+    return "O serviço está temporariamente indisponível. Tente novamente mais tarde.";
   return "Não foi possível concluir a operação. Tente novamente.";
 }
-export async function request(path: string, method: "GET" | "POST" | "PATCH" | "DELETE", body?: object, signal?: AbortSignal): Promise<unknown> {
+export type RequestOptions = {
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+};
+export type ApiResponse<T = unknown> = {
+  data: T | null;
+  status: number;
+  etag: string | null;
+  headers: Headers;
+};
+
+export async function requestWithMeta(
+  path: string,
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  body?: object,
+  options: RequestOptions = {},
+): Promise<ApiResponse> {
   const token = getAccessToken();
   if (!token) {
     window.dispatchEvent(new Event("av:session-expired"));
     throw new ApiError(401, "UNAUTHENTICATED", ERRORS.UNAUTHENTICATED);
   }
   const timeout = AbortSignal.timeout(12000);
-  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const combined = options.signal
+    ? AbortSignal.any([options.signal, timeout])
+    : timeout;
   let response: Response;
   try {
     response = await fetch(apiEndpoint("/api/v1" + path), {
@@ -74,6 +121,7 @@ export async function request(path: string, method: "GET" | "POST" | "PATCH" | "
         Accept: "application/json",
         Authorization: "Bearer " + token,
         ...(body ? { "Content-Type": "application/json" } : {}),
+        ...options.headers,
       },
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
@@ -81,16 +129,28 @@ export async function request(path: string, method: "GET" | "POST" | "PATCH" | "
       signal: combined,
     });
   } catch {
-    if (signal?.aborted) throw new DOMException("Cancelada", "AbortError");
-    throw new ApiError(0, "NETWORK_ERROR", "Não foi possível conectar à API. Confira a conexão e a disponibilidade do serviço.");
+    if (options.signal?.aborted)
+      throw new DOMException("Cancelada", "AbortError");
+    if (combined.aborted)
+      throw new ApiError(
+        0,
+        "TIMEOUT",
+        "A solicitação demorou mais que o esperado. Verifique o estado no servidor antes de repetir.",
+      );
+    throw new ApiError(
+      0,
+      "NETWORK_ERROR",
+      "Não foi possível conectar à API. Confira a conexão e a disponibilidade do serviço.",
+    );
   }
   if (response.status === 401) {
     clearLocalSession();
     window.dispatchEvent(new Event("av:session-expired"));
   }
   if (!response.ok) {
-    const payload = await response.json().catch(() => null) as unknown;
-    const error = isRecord(payload) && isRecord(payload.error) ? payload.error : null;
+    const payload = (await response.json().catch(() => null)) as unknown;
+    const error =
+      isRecord(payload) && isRecord(payload.error) ? payload.error : null;
     const code = typeof error?.code === "string" ? error.code : "UNKNOWN";
     const fields: Record<string, string> = {};
     if (Array.isArray(error?.details))
@@ -112,14 +172,38 @@ export async function request(path: string, method: "GET" | "POST" | "PATCH" | "
       code,
       explain(response.status, code),
       fields,
+      response.headers.get("Retry-After"),
     );
   }
-  if (response.status === 204) return null;
+  if (response.status === 204)
+    return {
+      data: null,
+      status: response.status,
+      etag: response.headers.get("ETag"),
+      headers: response.headers,
+    };
   try {
-    return await response.json();
+    return {
+      data: await response.json(),
+      status: response.status,
+      etag: response.headers.get("ETag"),
+      headers: response.headers,
+    };
   } catch {
-    throw new ApiError(502, "BAD_RESPONSE", "A API retornou dados inesperados.");
+    throw new ApiError(
+      502,
+      "BAD_RESPONSE",
+      "A API retornou dados inesperados.",
+    );
   }
+}
+export async function request(
+  path: string,
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  body?: object,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return (await requestWithMeta(path, method, body, { signal })).data;
 }
 export interface WaitingItem {
   entryId: string;
@@ -151,50 +235,129 @@ export interface EmployeeRecord {
   role: "ADMIN" | "MEDICO" | "RECEPCIONISTA";
   active: boolean;
 }
-export async function getWaitingQueue(signal?: AbortSignal): Promise<WaitingItem[]> {
-  const data = contract(await request("/queues/waiting", "GET", undefined, signal));
-  if (!Array.isArray(data.items) || !data.items.every(
-    (item: unknown) => isRecord(item) && typeof item.entryId === "string" &&
-      typeof item.fullName === "string" && (item.queueCode === null || typeof item.queueCode === "string")
-  )) throw new ApiError(502, "BAD_RESPONSE", "A fila veio em um formato inesperado.");
+export async function getWaitingQueue(
+  signal?: AbortSignal,
+): Promise<WaitingItem[]> {
+  const data = contract(
+    await request("/queues/waiting", "GET", undefined, signal),
+  );
+  if (
+    !Array.isArray(data.items) ||
+    !data.items.every(
+      (item: unknown) =>
+        isRecord(item) &&
+        typeof item.entryId === "string" &&
+        typeof item.fullName === "string" &&
+        (item.queueCode === null || typeof item.queueCode === "string"),
+    )
+  )
+    throw new ApiError(
+      502,
+      "BAD_RESPONSE",
+      "A fila veio em um formato inesperado.",
+    );
   return data.items as WaitingItem[];
 }
-export async function getDoctorQueue(signal?: AbortSignal): Promise<DoctorItem[]> {
+export async function getDoctorQueue(
+  signal?: AbortSignal,
+): Promise<DoctorItem[]> {
   const data = contract(await request("/queues/me", "GET", undefined, signal));
-  if (!Array.isArray(data.items) || !data.items.every((item: unknown) =>
-    isRecord(item) && typeof item.entryId === "string" && typeof item.patientId === "string" &&
-    typeof item.fullName === "string" && (item.queueCode === null || typeof item.queueCode === "string") &&
-    ["VERMELHO", "AMARELO", "VERDE"].includes(String(item.severity)) &&
-    typeof item.enteredAt === "string" && Array.isArray(item.symptoms) &&
-    item.symptoms.every((s: unknown) => isRecord(s) && typeof s.id === "string" && typeof s.name === "string") &&
-    (item.otherSymptoms === null || typeof item.otherSymptoms === "string") &&
-    (item.shortNote === null || typeof item.shortNote === "string")
-  )) throw new ApiError(502, "BAD_RESPONSE", "A fila médica veio em um formato inesperado.");
+  if (
+    !Array.isArray(data.items) ||
+    !data.items.every(
+      (item: unknown) =>
+        isRecord(item) &&
+        typeof item.entryId === "string" &&
+        typeof item.patientId === "string" &&
+        typeof item.fullName === "string" &&
+        (item.queueCode === null || typeof item.queueCode === "string") &&
+        ["VERMELHO", "AMARELO", "VERDE"].includes(String(item.severity)) &&
+        typeof item.enteredAt === "string" &&
+        Array.isArray(item.symptoms) &&
+        item.symptoms.every(
+          (s: unknown) =>
+            isRecord(s) &&
+            typeof s.id === "string" &&
+            typeof s.name === "string",
+        ) &&
+        (item.otherSymptoms === null ||
+          typeof item.otherSymptoms === "string") &&
+        (item.shortNote === null || typeof item.shortNote === "string"),
+    )
+  )
+    throw new ApiError(
+      502,
+      "BAD_RESPONSE",
+      "A fila médica veio em um formato inesperado.",
+    );
   return data.items as DoctorItem[];
 }
-export async function createPatient(input: {
-  fullName: string; cpf: string; birthDate?: string; email?: string; phone?: string;
-}, signal?: AbortSignal): Promise<PatientRecord> {
+export async function createPatient(
+  input: {
+    fullName: string;
+    cpf: string;
+    birthDate?: string;
+    email?: string;
+    phone?: string;
+  },
+  signal?: AbortSignal,
+): Promise<PatientRecord> {
   const data = contract(await request("/patients", "POST", input, signal));
-  if (typeof data.id !== "string" || typeof data.fullName !== "string" || typeof data.cpf !== "string")
-    throw new ApiError(502, "BAD_RESPONSE", "O cadastro foi enviado, mas a resposta não pôde ser verificada. Consulte o banco antes de repetir.");
+  if (
+    typeof data.id !== "string" ||
+    typeof data.fullName !== "string" ||
+    typeof data.cpf !== "string"
+  )
+    throw new ApiError(
+      502,
+      "BAD_RESPONSE",
+      "O cadastro foi enviado, mas a resposta não pôde ser verificada. Consulte o banco antes de repetir.",
+    );
   return data as unknown as PatientRecord;
 }
-export async function createEntry(input: {
-  patientId: string; severity: DoctorItem["severity"]; symptomIds: string[];
-  otherSymptoms: string; shortNote?: string;
-}, signal?: AbortSignal): Promise<EntryRecord> {
+export async function createEntry(
+  input: {
+    patientId: string;
+    severity: DoctorItem["severity"];
+    symptomIds: string[];
+    otherSymptoms: string;
+    shortNote?: string;
+  },
+  signal?: AbortSignal,
+): Promise<EntryRecord> {
   const data = contract(await request("/entries", "POST", input, signal));
-  if (typeof data.id !== "string" || data.status !== "AGUARDANDO" || typeof data.enteredAt !== "string")
-    throw new ApiError(502, "BAD_RESPONSE", "A entrada foi enviada, mas a resposta não pôde ser verificada. Consulte o banco antes de repetir.");
+  if (
+    typeof data.id !== "string" ||
+    data.status !== "AGUARDANDO" ||
+    typeof data.enteredAt !== "string"
+  )
+    throw new ApiError(
+      502,
+      "BAD_RESPONSE",
+      "A entrada foi enviada, mas a resposta não pôde ser verificada. Consulte o banco antes de repetir.",
+    );
   return data as unknown as EntryRecord;
 }
-export async function createEmployee(input: {
-  name: string; email: string; password: string; role: EmployeeRecord["role"];
-}, signal?: AbortSignal): Promise<EmployeeRecord> {
+export async function createEmployee(
+  input: {
+    name: string;
+    email: string;
+    password: string;
+    role: EmployeeRecord["role"];
+  },
+  signal?: AbortSignal,
+): Promise<EmployeeRecord> {
   const data = contract(await request("/employees", "POST", input, signal));
-  if (typeof data.id !== "string" || typeof data.name !== "string" ||
-      typeof data.email !== "string" || !["ADMIN", "MEDICO", "RECEPCIONISTA"].includes(String(data.role)))
-    throw new ApiError(502, "BAD_RESPONSE", "O funcionário foi enviado, mas a resposta não pôde ser verificada. Consulte o banco antes de repetir.");
+  if (
+    typeof data.id !== "string" ||
+    typeof data.name !== "string" ||
+    typeof data.email !== "string" ||
+    !["ADMIN", "MEDICO", "RECEPCIONISTA"].includes(String(data.role))
+  )
+    throw new ApiError(
+      502,
+      "BAD_RESPONSE",
+      "O funcionário foi enviado, mas a resposta não pôde ser verificada. Consulte o banco antes de repetir.",
+    );
   return data as unknown as EmployeeRecord;
 }

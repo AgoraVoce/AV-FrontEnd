@@ -1,4 +1,4 @@
-import { ApiError, request } from "./client";
+import { ApiError, request, requestWithMeta } from "./client";
 import type {
   EmployeeRecord,
   DoctorItem,
@@ -38,6 +38,48 @@ export type Prescription = {
   medications: Medication[];
   notes?: string | null;
 };
+export type PrescriptionDraftPayload = {
+  description: string;
+  medications: Medication[];
+  notes: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type PrescriptionDraftResult = {
+  entryId: string;
+  draft: PrescriptionDraftPayload | null;
+  etag: string | null;
+};
+export type PrescriptionEmailStatus =
+  | "queued"
+  | "processing"
+  | "accepted"
+  | "delivery_delayed"
+  | "delivered"
+  | "failed"
+  | "unknown";
+export type PrescriptionEmailResult = {
+  supported: boolean;
+  eligible: boolean;
+  reasonCode: string | null;
+  latestDelivery: null | {
+    deliveryId: string;
+    status: PrescriptionEmailStatus;
+    requestedAt: string;
+    updatedAt: string;
+    acceptedAt: string | null;
+    deliveredAt: string | null;
+    failureCode: string | null;
+  };
+};
+export type PrescriptionEmailRequest = {
+  deliveryId: string;
+  entryId: string;
+  status: PrescriptionEmailStatus;
+  requestedAt: string;
+};
+export type EntrySymptoms = { id: string; name: string }[];
 export type EntryDetail = {
   id: string;
   patientId: string;
@@ -49,6 +91,7 @@ export type EntryDetail = {
   otherSymptoms: string | null;
   shortNote: string | null;
   symptomIds?: string[];
+  symptoms?: EntrySymptoms;
   updatedAt?: string;
   queuePosition: number | null;
   patient: { id: string; fullName: string; birthDate: string | null };
@@ -103,6 +146,23 @@ function detail(value: unknown): EntryDetail {
       "BAD_RESPONSE",
       "O atendimento retornou dados inesperados.",
     );
+  if (
+    raw.symptoms !== undefined &&
+    (!Array.isArray(raw.symptoms) ||
+      !raw.symptoms.every((item: unknown) => {
+        if (!item || typeof item !== "object" || Array.isArray(item))
+          return false;
+        const symptom = item as Record<string, unknown>;
+        return (
+          typeof symptom.id === "string" && typeof symptom.name === "string"
+        );
+      }))
+  )
+    throw new ApiError(
+      502,
+      "BAD_RESPONSE",
+      "Os sintomas do atendimento retornaram em formato inesperado.",
+    );
   return raw as unknown as EntryDetail;
 }
 const params = (filter: Record<string, string | number | undefined>) => {
@@ -111,6 +171,46 @@ const params = (filter: Record<string, string | number | undefined>) => {
     if (value !== undefined && value !== "") query.set(key, String(value));
   return query.toString();
 };
+function parseDraft(rawValue: unknown): PrescriptionDraftPayload {
+  const raw = object(rawValue);
+  if (
+    typeof raw.description !== "string" ||
+    raw.description.length > 5000 ||
+    !Array.isArray(raw.medications) ||
+    raw.medications.length > 50 ||
+    !Number.isInteger(raw.version) ||
+    typeof raw.createdAt !== "string" ||
+    typeof raw.updatedAt !== "string" ||
+    !(raw.notes === null || typeof raw.notes === "string")
+  )
+    throw new ApiError(
+      502,
+      "BAD_RESPONSE",
+      "O rascunho retornou um formato inesperado.",
+    );
+  const validMedication = raw.medications.every((item: unknown) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const medication = item as Record<string, unknown>;
+    return (
+      typeof medication.name === "string" &&
+      medication.name.length <= 150 &&
+      typeof medication.dosage === "string" &&
+      medication.dosage.length <= 150 &&
+      typeof medication.instructions === "string" &&
+      medication.instructions.length <= 1000
+    );
+  });
+  if (
+    !validMedication ||
+    (typeof raw.notes === "string" && raw.notes.length > 4000)
+  )
+    throw new ApiError(
+      502,
+      "BAD_RESPONSE",
+      "Os campos do rascunho retornaram um formato inesperado.",
+    );
+  return raw as unknown as PrescriptionDraftPayload;
+}
 
 export const operations = {
   patients: (
@@ -166,13 +266,191 @@ export const operations = {
     request("/queues/me/next", "POST").then((value) =>
       value === null ? null : detail(value),
     ),
+  prescriptionDraft: async (
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<PrescriptionDraftResult> => {
+    const response = await requestWithMeta(
+      "/entries/" + encodeURIComponent(id) + "/prescription-draft",
+      "GET",
+      undefined,
+      { signal },
+    );
+    if (response.status !== 200)
+      throw new ApiError(
+        502,
+        "BAD_RESPONSE",
+        "A consulta do rascunho retornou um status inesperado.",
+      );
+    const value = object(response.data);
+    if (value.entryId !== id || (value.draft !== null && !value.draft))
+      throw new ApiError(
+        502,
+        "BAD_RESPONSE",
+        "O rascunho retornou um formato inesperado.",
+      );
+    const raw = value.draft === null ? null : parseDraft(value.draft);
+    return { entryId: id, draft: raw, etag: response.etag };
+  },
+  savePrescriptionDraft: async (
+    id: string,
+    draft: Pick<
+      PrescriptionDraftPayload,
+      "description" | "medications" | "notes"
+    >,
+    etag: string | null,
+    signal?: AbortSignal,
+  ): Promise<PrescriptionDraftResult> => {
+    const response = await requestWithMeta(
+      "/entries/" + encodeURIComponent(id) + "/prescription-draft",
+      "PUT",
+      draft,
+      {
+        signal,
+        headers: etag ? { "If-Match": etag } : { "If-None-Match": "*" },
+      },
+    );
+    if (response.status !== 200 && response.status !== 201)
+      throw new ApiError(
+        502,
+        "BAD_RESPONSE",
+        "O salvamento do rascunho retornou um status inesperado.",
+      );
+    const value = object(response.data);
+    if (value.entryId !== id || !value.draft)
+      throw new ApiError(
+        502,
+        "BAD_RESPONSE",
+        "O salvamento foi enviado, mas a resposta não pôde ser confirmada.",
+      );
+    return { entryId: id, draft: parseDraft(value.draft), etag: response.etag };
+  },
+  deletePrescriptionDraft: async (
+    id: string,
+    etag: string | null,
+    signal?: AbortSignal,
+  ) => {
+    const response = await requestWithMeta(
+      "/entries/" + encodeURIComponent(id) + "/prescription-draft",
+      "DELETE",
+      undefined,
+      { signal, headers: etag ? { "If-Match": etag } : {} },
+    );
+    if (response.status !== 204)
+      throw new ApiError(
+        502,
+        "BAD_RESPONSE",
+        "O descarte do rascunho não foi confirmado.",
+      );
+  },
+  prescriptionEmail: (id: string, signal?: AbortSignal) =>
+    requestWithMeta(
+      "/entries/" + encodeURIComponent(id) + "/prescription-email",
+      "GET",
+      undefined,
+      { signal },
+    ).then(({ data: value, status }) => {
+      if (status !== 200)
+        throw new ApiError(
+          502,
+          "BAD_RESPONSE",
+          "A consulta do envio retornou um status inesperado.",
+        );
+      const raw = object(value);
+      if (
+        typeof raw.supported !== "boolean" ||
+        typeof raw.eligible !== "boolean" ||
+        !(raw.reasonCode === null || typeof raw.reasonCode === "string")
+      )
+        throw new ApiError(
+          502,
+          "BAD_RESPONSE",
+          "A disponibilidade do envio retornou um formato inesperado.",
+        );
+      if (raw.latestDelivery !== null) {
+        const latest = object(raw.latestDelivery);
+        if (
+          typeof latest.deliveryId !== "string" ||
+          typeof latest.status !== "string" ||
+          ![
+            "queued",
+            "processing",
+            "accepted",
+            "delivery_delayed",
+            "delivered",
+            "failed",
+            "unknown",
+          ].includes(latest.status) ||
+          typeof latest.requestedAt !== "string" ||
+          typeof latest.updatedAt !== "string"
+        )
+          throw new ApiError(
+            502,
+            "BAD_RESPONSE",
+            "O estado do envio retornou um formato inesperado.",
+          );
+      }
+      return raw as unknown as PrescriptionEmailResult;
+    }),
+  requestPrescriptionEmail: async (
+    id: string,
+    idempotencyKey: string,
+    signal?: AbortSignal,
+  ) => {
+    const response = await requestWithMeta(
+      "/entries/" + encodeURIComponent(id) + "/prescription-email",
+      "POST",
+      {},
+      {
+        signal,
+        headers: {
+          "Idempotency-Key": idempotencyKey,
+          "X-Patient-Consent": "confirmed",
+        },
+      },
+    );
+    if (response.status !== 202)
+      throw new ApiError(
+        502,
+        "BAD_RESPONSE",
+        "A solicitação de envio retornou um status diferente de 202.",
+      );
+    const result = object(response.data);
+    if (
+      result.entryId !== id ||
+      typeof result.deliveryId !== "string" ||
+      typeof result.requestedAt !== "string" ||
+      typeof result.status !== "string" ||
+      ![
+        "queued",
+        "processing",
+        "accepted",
+        "delivery_delayed",
+        "delivered",
+        "failed",
+        "unknown",
+      ].includes(result.status)
+    )
+      throw new ApiError(
+        502,
+        "BAD_RESPONSE",
+        "A solicitação de envio foi enviada, mas a resposta não pôde ser confirmada.",
+      );
+    return result as unknown as PrescriptionEmailRequest;
+  },
   complete: (
     id: string,
     prescription: Prescription,
+    etag?: string | null,
   ): Promise<EntryDetail | null> =>
-    request("/entries/" + encodeURIComponent(id) + "/complete", "POST", {
-      prescription,
-    }).then((value) => (value === null ? null : detail(value))),
+    requestWithMeta(
+      "/entries/" + encodeURIComponent(id) + "/complete",
+      "POST",
+      {
+        prescription,
+      },
+      { headers: etag ? { "If-Match": etag } : {} },
+    ).then((result) => (result.data === null ? null : detail(result.data))),
   createEntry: (input: {
     patientId: string;
     severity: Severity;

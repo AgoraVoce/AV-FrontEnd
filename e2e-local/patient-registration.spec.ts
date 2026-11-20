@@ -42,11 +42,44 @@ async function setup(page: Page) {
         json: { items: [], total: 0, page: 1, pageSize: 100 },
       });
     if (path.endsWith("/patients") && route.request().method() === "GET")
-      return route.fulfill({json:{items:mode==="existing" ? [{id:patientId,fullName:"Paciente de Teste",cpf:"52998224725"}] : [],total:mode==="existing"?1:0,page:1,pageSize:1}});
-    if (path.endsWith("/patients/"+patientId) && route.request().method() === "GET")
-      return route.fulfill({json:{id:patientId,fullName:"Paciente de Teste",cpf:"52998224725",email:null,phone:null,birthDate:null}});
-    if (path.endsWith("/patients/"+patientId+"/entries") && route.request().method() === "GET")
-      return route.fulfill({json:{items:[],total:0,page:1,pageSize:10}});
+      return route.fulfill({
+        json: {
+          items:
+            mode === "existing"
+              ? [
+                  {
+                    id: patientId,
+                    fullName: "Paciente de Teste",
+                    cpf: "52998224725",
+                  },
+                ]
+              : [],
+          total: mode === "existing" ? 1 : 0,
+          page: 1,
+          pageSize: 1,
+        },
+      });
+    if (
+      path.endsWith("/patients/" + patientId) &&
+      route.request().method() === "GET"
+    )
+      return route.fulfill({
+        json: {
+          id: patientId,
+          fullName: "Paciente de Teste",
+          cpf: "52998224725",
+          email: null,
+          phone: null,
+          birthDate: null,
+        },
+      });
+    if (
+      path.endsWith("/patients/" + patientId + "/entries") &&
+      route.request().method() === "GET"
+    )
+      return route.fulfill({
+        json: { items: [], total: 0, page: 1, pageSize: 10 },
+      });
     if (path.endsWith("/patients") && route.request().method() === "POST") {
       const data = route.request().postDataJSON();
       payloads.push(data);
@@ -137,8 +170,10 @@ async function setup(page: Page) {
   ).toBeVisible();
   await page.getByRole("link", { name: "Novo Cadastro", exact: true }).click();
   async function fill() {
-    await page.getByRole("textbox", {name:"CPF *",exact:true}).fill("529.982.247-25");
-    await page.getByRole("button", {name:"Continuar"}).click();
+    await page
+      .getByRole("textbox", { name: "CPF *", exact: true })
+      .fill("529.982.247-25");
+    await page.getByRole("button", { name: "Continuar" }).click();
     await page
       .getByRole("textbox", { name: "Nome completo *", exact: true })
       .fill("Paciente de Teste");
@@ -177,24 +212,36 @@ test("validação de CPF e nascimento segue as regras do backend e a data civil"
   ).toBeTruthy();
 });
 
-test("CPF inicial inválido não consulta API e correção libera o formulário", async ({page}) => {
-  const controls=await setup(page);
-  await page.getByRole("textbox",{name:"CPF *",exact:true}).fill("11111111111");
-  await page.getByRole("button",{name:"Continuar"}).click();
+test("CPF inicial inválido não consulta API e correção libera o formulário", async ({
+  page,
+}) => {
+  const controls = await setup(page);
+  await page
+    .getByRole("textbox", { name: "CPF *", exact: true })
+    .fill("11111111111");
+  await page.getByRole("button", { name: "Continuar" }).click();
   await expect(page.getByRole("alert")).toContainText("Informe um CPF válido");
   expect(controls.payloads).toHaveLength(0);
   await controls.fill();
-  await page.getByRole("button",{name:"Cadastrar e continuar"}).click();
-  await expect(page.getByRole("heading",{name:"Registrar entrada",exact:true})).toBeVisible();
+  await page.getByRole("button", { name: "Cadastrar e continuar" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Registrar entrada", exact: true }),
+  ).toBeVisible();
   expect(controls.payloads).toHaveLength(1);
 });
 
-test("CPF já cadastrado segue diretamente para registrar entrada, sem criar outro paciente", async ({page}) => {
-  const controls=await setup(page);
+test("CPF já cadastrado segue diretamente para registrar entrada, sem criar outro paciente", async ({
+  page,
+}) => {
+  const controls = await setup(page);
   controls.setMode("existing");
-  await page.getByRole("textbox",{name:"CPF *",exact:true}).fill("52998224725");
-  await page.getByRole("button",{name:"Continuar"}).click();
-  await expect(page.getByRole("heading",{name:"Registrar entrada",exact:true})).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "CPF *", exact: true })
+    .fill("52998224725");
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Registrar entrada", exact: true }),
+  ).toBeVisible();
   expect(controls.payloads).toHaveLength(0);
 });
 
@@ -211,7 +258,9 @@ test("CPF duplicado explica como usar paciente existente e preserva formulário"
   await expect(
     page.getByRole("textbox", { name: "Nome completo *", exact: true }),
   ).toHaveValue("Paciente de Teste");
-  await expect(page.getByRole("link", {name:"Buscar paciente existente"})).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Buscar paciente existente" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("textbox", { name: "CPF *", exact: true }),
   ).toBeFocused();
@@ -236,7 +285,7 @@ test("API informa campo inválido e falha de serviço permite nova tentativa sem
   controls.setMode("unavailable");
   await page.getByRole("button", { name: "Cadastrar e continuar" }).click();
   await expect(page.locator(".av-toast.is-error").last()).toContainText(
-    "Não foi possível concluir",
+    "temporariamente indisponível",
   );
   controls.setMode("success");
   await page.getByRole("button", { name: "Cadastrar e continuar" }).click();
@@ -269,9 +318,7 @@ test("cadastro válido normaliza CPF e permite registrar entrada com espera inic
   await page
     .getByRole("textbox", { name: "Sintomas / queixa relatada *", exact: true })
     .fill("Queixa relatada para teste");
-  await page
-    .getByRole("button", { name: "Confirmar" })
-    .click();
+  await page.getByRole("button", { name: "Confirmar" }).click();
   await expect(
     page.locator(
       'tr[data-priority-entry="registration-entry"] .reception-wait',
@@ -292,9 +339,7 @@ test("entrada já ativa mostra erro persistente e não repete cadastro pessoal",
   await page
     .getByRole("textbox", { name: "Sintomas / queixa relatada *", exact: true })
     .fill("Queixa relatada para teste");
-  await page
-    .getByRole("button", { name: "Confirmar" })
-    .click();
+  await page.getByRole("button", { name: "Confirmar" }).click();
   await expect(page.locator(".local-message.is-error")).toContainText(
     "já possui uma entrada ativa",
   );
@@ -350,6 +395,11 @@ test("máscaras de CPF/telefone apresentam formatação, mantendo os valores do 
   await phone.fill("11999999999");
   await expect(phone).toHaveValue("(11) 99999-9999");
   await page.getByRole("button", { name: "Cadastrar e continuar" }).click();
-  await expect(page.getByRole("heading", { name: "Registrar entrada", exact: true })).toBeVisible();
-  expect(controls.payloads[0]).toMatchObject({ cpf: "52998224725", phone: "11999999999" });
+  await expect(
+    page.getByRole("heading", { name: "Registrar entrada", exact: true }),
+  ).toBeVisible();
+  expect(controls.payloads[0]).toMatchObject({
+    cpf: "52998224725",
+    phone: "11999999999",
+  });
 });

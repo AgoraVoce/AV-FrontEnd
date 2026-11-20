@@ -31,11 +31,14 @@ import { RiskPill, StatePill } from "./shared-ui";
 import { PrescriptionForm } from "../features/prescriptions/PrescriptionForm";
 import {
   clearPrescriptionDraft,
+  createDraftMedicationId,
   emptyPrescriptionDraft,
   getEntrySymptomNames,
   getPrescriptionDraft,
+  getPrescriptionDraftEtag,
   setEntrySymptomNames,
   setPrescriptionDraft,
+  setPrescriptionDraftEtag,
   type PrescriptionDraft,
 } from "../features/prescriptions/draft-store";
 import { prescriptionFromDraft } from "../features/prescriptions/model";
@@ -73,7 +76,13 @@ export function DoctorWorkspace({
   const [profileUnavailable, setProfileUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<
-    "" | "calling" | "starting" | "finishing" | "reconciling" | "signing-out"
+    | ""
+    | "calling"
+    | "starting"
+    | "finishing"
+    | "reconciling"
+    | "discarding"
+    | "signing-out"
   >("");
   const [active, setActive] = useState<EntryDetail | null>(null);
   const [restoring, setRestoring] = useState(true);
@@ -98,6 +107,11 @@ export function DoctorWorkspace({
     uncertain: boolean;
   }>({ key: "", message: "", uncertain: false });
   const [navigationTarget, setNavigationTarget] = useState<string | null>(null);
+  const [draftSync, setDraftSync] = useState<{
+    key: string;
+    status: "loading" | "saved" | "dirty" | "saving" | "error" | "conflict";
+    message: string;
+  }>({ key: "", status: "loading", message: "" });
   const continueEditingRef = useRef<HTMLButtonElement>(null);
   const ongoing = useRef<AbortController | null>(null);
   const mounted = useRef(false);
@@ -111,6 +125,19 @@ export function DoctorWorkspace({
     entryId: null,
   });
   const lock = useRef(false);
+  const draftSyncRef = useRef<{
+    key: string;
+    etag: string | null;
+    revision: number;
+    queue: Promise<void>;
+    loadRevision: number;
+  }>({
+    key: "",
+    etag: null,
+    revision: 0,
+    queue: Promise.resolve(),
+    loadRevision: 0,
+  });
   const draftKey = active && userId ? JSON.stringify([userId, active.id]) : "";
   const draft =
     draftKey && draftState.key === draftKey
@@ -172,7 +199,15 @@ export function DoctorWorkspace({
 
   useEffect(() => {
     const clearDraftFromAuthContext = () => {
+      draftSyncRef.current = {
+        key: "",
+        etag: null,
+        revision: draftSyncRef.current.revision + 1,
+        queue: Promise.resolve(),
+        loadRevision: draftSyncRef.current.loadRevision + 1,
+      };
       setDraftState({ key: "", value: emptyPrescriptionDraft() });
+      setDraftSync({ key: "", status: "loading", message: "" });
       setFormErrorsState({ key: "", errors: {} });
       setReviewedDraftKey("");
       setShowFormFor(null);
@@ -201,7 +236,12 @@ export function DoctorWorkspace({
   }
 
   useEffect(() => {
-    if (!draft.changed && busy !== "finishing" && busy !== "reconciling")
+    if (
+      !draft.changed &&
+      busy !== "finishing" &&
+      busy !== "reconciling" &&
+      busy !== "discarding"
+    )
       return;
     const preventExit = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -336,6 +376,236 @@ export function DoctorWorkspace({
     };
   }, [view, entryId, detailRevision, userId, navigate, toast]);
 
+  const activeEntryId = active?.id;
+  const activeEntryStatus = active?.status;
+  // Drafts are loaded only for the authenticated doctor + exact entry. A delayed GET
+  // is ignored after any edit, and the API's ETag is kept only in memory.
+  useEffect(() => {
+    if (!activeEntryId || !userId || activeEntryStatus !== "in_progress")
+      return;
+    const key = JSON.stringify([userId, activeEntryId]);
+    const controller = new AbortController();
+    const local = getPrescriptionDraft(userId, activeEntryId);
+    const localEtag = getPrescriptionDraftEtag(userId, activeEntryId);
+    const generation = ++draftSyncRef.current.loadRevision;
+    draftSyncRef.current = {
+      key,
+      etag: localEtag,
+      revision: 0,
+      queue: Promise.resolve(),
+      loadRevision: generation,
+    };
+    void operations
+      .prescriptionDraft(activeEntryId, controller.signal)
+      .then((result) => {
+        if (
+          controller.signal.aborted ||
+          draftSyncRef.current.key !== key ||
+          draftSyncRef.current.loadRevision !== generation
+        )
+          return;
+        const currentRevision = draftSyncRef.current.revision;
+        const remote = result.draft
+          ? {
+              description: result.draft.description,
+              medications: result.draft.medications.map((item) => ({
+                ...item,
+                draftId: createDraftMedicationId(),
+              })),
+              notes: result.draft.notes ?? "",
+              changed: false,
+            }
+          : emptyPrescriptionDraft();
+        if (currentRevision > 0) {
+          if (result.draft && (!localEtag || localEtag !== result.etag)) {
+            setDraftSync({
+              key,
+              status: "conflict",
+              message:
+                "O rascunho foi alterado em outra sessão enquanto você digitava. Seus dados locais foram preservados.",
+            });
+            return;
+          }
+          draftSyncRef.current.etag = result.etag;
+          setPrescriptionDraftEtag(userId, activeEntryId, result.etag);
+          setDraftSync({ key, status: "dirty", message: "" });
+          return;
+        }
+        if (local.changed) {
+          if (result.draft && (!localEtag || localEtag !== result.etag)) {
+            draftSyncRef.current.etag = result.etag;
+            setDraftState({ key, value: local });
+            setDraftSync({
+              key,
+              status: "conflict",
+              message:
+                "O rascunho local e a versão do servidor diferem. Escolha qual versão manter.",
+            });
+            return;
+          }
+          draftSyncRef.current.etag = localEtag;
+          setDraftState({ key, value: local });
+          setDraftSync({ key, status: "dirty", message: "" });
+          return;
+        }
+        if (currentRevision === 0) {
+          draftSyncRef.current.etag = result.etag;
+          setPrescriptionDraftEtag(userId, activeEntryId, result.etag);
+          setPrescriptionDraft(userId, activeEntryId, remote);
+          setDraftState({ key, value: remote });
+          setDraftSync({ key, status: "saved", message: "" });
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted && draftSyncRef.current.key === key) {
+          setDraftSync({
+            key,
+            status: "error",
+            message:
+              "Não foi possível recuperar o rascunho do servidor. O que você digitar continuará em memória.",
+          });
+          if (local.changed) setDraftState({ key, value: local });
+        }
+      });
+    return () => controller.abort();
+  }, [activeEntryId, activeEntryStatus, userId]);
+
+  // Debounce each edit, then serialize writes. A newer edit remains dirty until
+  // its own PUT has been confirmed by the server.
+  useEffect(() => {
+    if (
+      !activeEntryId ||
+      !userId ||
+      !draftKey ||
+      draftState.key !== draftKey ||
+      !draftState.value.changed
+    )
+      return;
+    if (
+      draftSync.key !== draftKey ||
+      ["loading", "saving", "conflict", "error"].includes(draftSync.status)
+    )
+      return;
+    const timer = window.setTimeout(() => {
+      const snapshot = draftState.value;
+      const revision = draftSyncRef.current.revision;
+      const id = activeEntryId;
+      const actorId = userId;
+      setDraftSync({ key: draftKey, status: "saving", message: "" });
+      const write = async () => {
+        if (draftSyncRef.current.key !== draftKey) return;
+        try {
+          const payload = {
+            description: snapshot.description,
+            medications: snapshot.medications.map(
+              ({ name, dosage, instructions }) => ({
+                name,
+                dosage,
+                instructions,
+              }),
+            ),
+            notes: snapshot.notes || null,
+          };
+          const etag = getPrescriptionDraftEtag(actorId, id);
+          const saved = await operations.savePrescriptionDraft(
+            id,
+            payload,
+            etag,
+          );
+          if (draftSyncRef.current.key !== draftKey) return;
+          draftSyncRef.current.etag = saved.etag;
+          setPrescriptionDraftEtag(actorId, id, saved.etag);
+          if (revision === draftSyncRef.current.revision) {
+            const confirmed = { ...snapshot, changed: false };
+            setPrescriptionDraft(actorId, id, confirmed);
+            setDraftState({ key: draftKey, value: confirmed });
+            setDraftSync({ key: draftKey, status: "saved", message: "" });
+          } else setDraftSync({ key: draftKey, status: "dirty", message: "" });
+        } catch (cause) {
+          if (draftSyncRef.current.key !== draftKey) return;
+          if (cause instanceof ApiError && cause.status === 412) {
+            setDraftSync({
+              key: draftKey,
+              status: "conflict",
+              message:
+                "O rascunho foi alterado em outra sessão. Compare a versão do servidor antes de salvar novamente.",
+            });
+          } else if (
+            cause instanceof ApiError &&
+            (cause.code === "TIMEOUT" || cause.code === "NETWORK_ERROR")
+          ) {
+            try {
+              const current = await operations.prescriptionDraft(id);
+              const submitted = JSON.stringify({
+                description: snapshot.description,
+                medications: snapshot.medications.map(
+                  ({ name, dosage, instructions }) => ({
+                    name,
+                    dosage,
+                    instructions,
+                  }),
+                ),
+                notes: snapshot.notes || null,
+              });
+              const observed =
+                current.draft &&
+                JSON.stringify({
+                  description: current.draft.description,
+                  medications: current.draft.medications,
+                  notes: current.draft.notes,
+                });
+              if (observed === submitted) {
+                draftSyncRef.current.etag = current.etag;
+                setPrescriptionDraftEtag(actorId, id, current.etag);
+                if (revision === draftSyncRef.current.revision) {
+                  const confirmed = { ...snapshot, changed: false };
+                  setPrescriptionDraft(actorId, id, confirmed);
+                  setDraftState({ key: draftKey, value: confirmed });
+                  setDraftSync({ key: draftKey, status: "saved", message: "" });
+                } else
+                  setDraftSync({ key: draftKey, status: "dirty", message: "" });
+              } else {
+                draftSyncRef.current.etag = current.etag;
+                setPrescriptionDraftEtag(actorId, id, current.etag);
+                setDraftSync({
+                  key: draftKey,
+                  status: "conflict",
+                  message:
+                    "Não foi possível confirmar se o salvamento foi aplicado. Consulte a versão do servidor antes de continuar.",
+                });
+              }
+            } catch {
+              setDraftSync({
+                key: draftKey,
+                status: "error",
+                message:
+                  "O resultado do salvamento é incerto. Seus dados permanecem em memória; confira o servidor antes de repetir.",
+              });
+            }
+          } else
+            setDraftSync({
+              key: draftKey,
+              status: "error",
+              message: errorText(cause),
+            });
+        }
+      };
+      draftSyncRef.current.queue = draftSyncRef.current.queue.then(
+        write,
+        write,
+      );
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeEntryId,
+    draftKey,
+    draftState.key,
+    draftState.value,
+    draftSync.key,
+    draftSync.status,
+    userId,
+  ]);
+
   async function callNext() {
     if (lock.current || active || restoring) return;
     lock.current = true;
@@ -399,12 +669,140 @@ export function DoctorWorkspace({
         ? draftState.value
         : getPrescriptionDraft(userId, active.id);
     const next = { ...update(current), changed: true };
+    if (draftSyncRef.current.key === key) draftSyncRef.current.revision += 1;
     setPrescriptionDraft(userId, active.id, next);
     setDraftState({ key, value: next });
+    setDraftSync({ key, status: "dirty", message: "" });
     setFormErrorsState({ key, errors: {} });
     setReviewedDraftKey("");
     setFinalizationState({ key, message: "", uncertain: false });
     setNavigationTarget(null);
+  }
+  async function reloadServerDraft() {
+    if (!active || !userId || !draftKey) return;
+    const id = active.id;
+    const actorId = userId;
+    setDraftSync({ key: draftKey, status: "loading", message: "" });
+    try {
+      const result = await operations.prescriptionDraft(id);
+      if (draftSyncRef.current.key !== draftKey) return;
+      const value: PrescriptionDraft = result.draft
+        ? {
+            description: result.draft.description,
+            medications: result.draft.medications.map((item) => ({
+              ...item,
+              draftId: createDraftMedicationId(),
+            })),
+            notes: result.draft.notes ?? "",
+            changed: false,
+          }
+        : emptyPrescriptionDraft();
+      draftSyncRef.current.etag = result.etag;
+      draftSyncRef.current.revision += 1;
+      setPrescriptionDraftEtag(actorId, id, result.etag);
+      setPrescriptionDraft(actorId, id, value);
+      setDraftState({ key: draftKey, value });
+      setDraftSync({
+        key: draftKey,
+        status: "saved",
+        message: "Versão do servidor carregada.",
+      });
+      setReviewedDraftKey("");
+    } catch (cause) {
+      setDraftSync({
+        key: draftKey,
+        status: "conflict",
+        message: `Não foi possível consultar a versão atual. ${errorText(cause)}`,
+      });
+    }
+  }
+  async function discardRemoteDraft() {
+    if (!active || !userId || !draftKey || lock.current) return;
+    if (
+      !window.confirm(
+        "Descartar o rascunho salvo deste atendimento? Esta ação não pode ser desfeita.",
+      )
+    )
+      return;
+    lock.current = true;
+    setBusy("discarding");
+    const id = active.id;
+    const actorId = userId;
+    const key = draftKey;
+    const etag = draftSyncRef.current.etag;
+    try {
+      await operations.deletePrescriptionDraft(id, etag);
+      if (draftSyncRef.current.key !== key) return;
+      clearPrescriptionDraft(actorId, id);
+      draftSyncRef.current.etag = null;
+      draftSyncRef.current.revision += 1;
+      setDraftState({ key, value: emptyPrescriptionDraft() });
+      setDraftSync({
+        key,
+        status: "saved",
+        message: "Rascunho descartado.",
+      });
+      setReviewedDraftKey("");
+    } catch (cause) {
+      if (draftSyncRef.current.key !== key) return;
+      if (cause instanceof ApiError && cause.status === 412) {
+        setDraftSync({
+          key,
+          status: "conflict",
+          message:
+            "O rascunho foi alterado em outra sessão e não foi descartado.",
+        });
+      } else if (
+        cause instanceof ApiError &&
+        (cause.code === "TIMEOUT" ||
+          cause.code === "NETWORK_ERROR" ||
+          cause.status === 503)
+      ) {
+        try {
+          const current = await operations.prescriptionDraft(id);
+          if (draftSyncRef.current.key !== key) return;
+          if (!current.draft) {
+            clearPrescriptionDraft(actorId, id);
+            draftSyncRef.current.etag = null;
+            draftSyncRef.current.revision += 1;
+            setDraftState({ key, value: emptyPrescriptionDraft() });
+            setDraftSync({
+              key,
+              status: "saved",
+              message: "Descarte confirmado no servidor.",
+            });
+            setReviewedDraftKey("");
+          } else {
+            draftSyncRef.current.etag = current.etag;
+            setPrescriptionDraftEtag(actorId, id, current.etag);
+            setDraftSync({
+              key,
+              status: current.etag !== etag ? "conflict" : "error",
+              message:
+                current.etag !== etag
+                  ? "O rascunho foi atualizado em outra sessão e não foi descartado."
+                  : "O servidor ainda retorna o rascunho. O descarte não foi confirmado; seus dados continuam preservados.",
+            });
+          }
+        } catch {
+          if (draftSyncRef.current.key === key)
+            setDraftSync({
+              key,
+              status: "error",
+              message:
+                "Não foi possível confirmar o descarte. O conteúdo permanece preservado em memória; consulte o servidor antes de tentar novamente.",
+            });
+        }
+      } else
+        setDraftSync({
+          key,
+          status: "error",
+          message: errorText(cause),
+        });
+    } finally {
+      lock.current = false;
+      setBusy("");
+    }
   }
   function validatePrescription(value: PrescriptionDraft) {
     const errors: Record<string, string> = {};
@@ -576,6 +974,12 @@ export function DoctorWorkspace({
       return;
     }
     if (!review) {
+      if (
+        draftSync.key !== draftKey ||
+        draftSync.status !== "saved" ||
+        draft.changed
+      )
+        return;
       setFormErrorsState({ key: draftKey, errors: {} });
       setReviewedDraftKey(draftKey);
       return;
@@ -588,7 +992,11 @@ export function DoctorWorkspace({
     const prescription = prescriptionFromDraft(draft);
     setFinalizationState({ key: contextKey, message: "", uncertain: false });
     try {
-      const result = await operations.complete(id, prescription);
+      const result = await operations.complete(
+        id,
+        prescription,
+        draftSyncRef.current.etag,
+      );
       try {
         const current = await operations.entry(id);
         if (current.id !== id) {
@@ -617,6 +1025,13 @@ export function DoctorWorkspace({
         navigateToPrescription(id, actorId);
       }
     } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 412)
+        setDraftSync({
+          key: contextKey,
+          status: "conflict",
+          message:
+            "A versão do rascunho mudou no servidor. A finalização foi bloqueada; carregue a versão atual para resolver o conflito.",
+        });
       await reconcileFailedFinalization(id, cause, contextKey, actorId);
     } finally {
       lock.current = false;
@@ -628,6 +1043,7 @@ export function DoctorWorkspace({
       !draft.changed &&
       busy !== "finishing" &&
       busy !== "reconciling" &&
+      busy !== "discarding" &&
       busy !== "signing-out"
     )
       return true;
@@ -636,11 +1052,6 @@ export function DoctorWorkspace({
   }
   async function discardAndNavigate() {
     if (!navigationTarget) return;
-    if (userId && active) clearPrescriptionDraft(userId, active.id);
-    setDraftState({ key: draftKey, value: emptyPrescriptionDraft() });
-    setFormErrorsState({ key: draftKey, errors: {} });
-    setReviewedDraftKey("");
-    setShowFormFor(null);
     const target = navigationTarget;
     setNavigationTarget(null);
     if (target === "/__sign-out") {
@@ -773,15 +1184,17 @@ export function DoctorWorkspace({
               >
                 Continuar editando
               </button>
-              {busy !== "finishing" && busy !== "reconciling" && (
-                <button
-                  className="local-primary"
-                  type="button"
-                  onClick={discardAndNavigate}
-                >
-                  Sair sem salvar
-                </button>
-              )}
+              {busy !== "finishing" &&
+                busy !== "reconciling" &&
+                busy !== "discarding" && (
+                  <button
+                    className="local-primary"
+                    type="button"
+                    onClick={discardAndNavigate}
+                  >
+                    Sair sem salvar
+                  </button>
+                )}
             </div>
           </section>
         )}
@@ -1013,6 +1426,14 @@ export function DoctorWorkspace({
                 </div>
                 <div className="operational-detail-grid">
                   <div>
+                    <span>Sintomas registrados</span>
+                    <strong>
+                      {detail.symptoms
+                        ?.map((symptom) => symptom.name)
+                        .join(" · ") || "Nenhum sintoma estruturado"}
+                    </strong>
+                  </div>
+                  <div>
                     <span>Queixa relatada</span>
                     <strong>{detail.otherSymptoms || "Não informada"}</strong>
                   </div>
@@ -1072,6 +1493,14 @@ export function DoctorWorkspace({
                 </div>
                 <div className="operational-detail-grid">
                   <div>
+                    <span>Sintomas registrados</span>
+                    <strong>
+                      {active.symptoms
+                        ?.map((symptom) => symptom.name)
+                        .join(" · ") || "Nenhum sintoma estruturado"}
+                    </strong>
+                  </div>
+                  <div>
                     <span>Queixa relatada</span>
                     <strong>{active.otherSymptoms || "Não informada"}</strong>
                   </div>
@@ -1117,8 +1546,7 @@ export function DoctorWorkspace({
                         </p>
                         {draft.changed && (
                           <p className="prescription-draft-note">
-                            Rascunho não salvo no servidor. Os campos continuam
-                            nesta aba enquanto a sessão permanecer ativa.
+                            Rascunho ainda não confirmado no servidor.
                           </p>
                         )}
                         <button
@@ -1127,7 +1555,8 @@ export function DoctorWorkspace({
                           onClick={() => setShowFormFor(active.id)}
                         >
                           <ClipboardCheck size={17} aria-hidden="true" />{" "}
-                          {draft.changed
+                          {draft.changed ||
+                          getPrescriptionDraftEtag(userId, active.id)
                             ? "Continuar rascunho"
                             : "Prescrever e finalizar"}
                         </button>
@@ -1142,8 +1571,45 @@ export function DoctorWorkspace({
                         busy={busy !== ""}
                         finalizationError={finalization.message}
                         finalizationUncertain={finalization.uncertain}
+                        syncStatus={
+                          draftSync.key === draftKey
+                            ? draftSync.status
+                            : "loading"
+                        }
+                        syncMessage={
+                          draftSync.key === draftKey ? draftSync.message : ""
+                        }
+                        canReview={
+                          draftSync.key === draftKey &&
+                          draftSync.status === "saved" &&
+                          !draft.changed
+                        }
+                        canDiscard={Boolean(
+                          userId &&
+                          draftSync.key === draftKey &&
+                          !draft.changed &&
+                          draftSync.status === "saved" &&
+                          getPrescriptionDraftEtag(userId, active.id),
+                        )}
+                        onRetrySave={() => {
+                          if (draftSyncRef.current.key !== draftKey) return;
+                          draftSyncRef.current.revision += 1;
+                          const retry = { ...draft, changed: true };
+                          setPrescriptionDraft(userId, active.id, retry);
+                          setDraftState({ key: draftKey, value: retry });
+                          setDraftSync({
+                            key: draftKey,
+                            status: "dirty",
+                            message: "",
+                          });
+                        }}
+                        onReloadServer={() => void reloadServerDraft()}
+                        onDiscardDraft={() => void discardRemoteDraft()}
                         symptomNames={
-                          userId ? getEntrySymptomNames(userId, active.id) : []
+                          active.symptoms?.map((symptom) => symptom.name) ??
+                          (userId
+                            ? getEntrySymptomNames(userId, active.id)
+                            : [])
                         }
                         onSubmit={(event) => void complete(event)}
                         onChange={(field, value) =>
