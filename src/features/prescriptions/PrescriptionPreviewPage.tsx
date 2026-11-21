@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { ArrowLeft, Download, Printer, RefreshCw } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "../../components/AppShell";
@@ -20,14 +26,51 @@ import "./prescription.css";
 import "./prescription-print.css";
 
 const emailStatusLabel: Record<PrescriptionEmailStatus, string> = {
-  queued: "Solicitação na fila",
-  processing: "Envio em processamento",
-  accepted: "E-mail aceito pelo provedor; entrega ainda não confirmada",
-  delivery_delayed: "Entrega atrasada; aguardando atualização do provedor",
-  delivered: "E-mail entregue",
-  failed: "Envio falhou",
-  unknown: "Estado do envio desconhecido",
+  queued: "Solicitação registrada, aguardando processamento",
+  processing: "Preparando e enviando a prescrição",
+  accepted: "E-mail aceito pelo Gmail; recebimento não confirmado",
+  delivery_delayed: "Entrega atrasada, conforme estado registrado",
+  delivered: "Entrega confirmada pelo provedor registrado",
+  failed: "O envio apresentou uma falha",
+  unknown: "Não foi possível confirmar o resultado do envio",
 };
+
+type EmailUiState = {
+  key: string;
+  capability: PrescriptionEmailResult | null;
+  loading: boolean;
+  busy: boolean;
+  phase: "idle" | "validating" | "submitting";
+  uncertain: boolean;
+  error: string;
+  consentOpen: boolean;
+  consent: boolean;
+  idempotencyKey: string;
+};
+
+function initialEmailUiState(key: string): EmailUiState {
+  return {
+    key,
+    capability: null,
+    loading: false,
+    busy: false,
+    phase: "idle",
+    uncertain: false,
+    error: "",
+    consentOpen: false,
+    consent: false,
+    idempotencyKey: "",
+  };
+}
+
+function canRequestEmail(capability: PrescriptionEmailResult | null) {
+  return Boolean(
+    capability?.supported &&
+    capability.eligible &&
+    (!capability.latestDelivery ||
+      capability.latestDelivery.status === "failed"),
+  );
+}
 
 type PageState = {
   key: string;
@@ -52,23 +95,56 @@ export function PrescriptionPreviewPage() {
     retry: 0,
   });
   const [pdfBusy, setPdfBusy] = useState(false);
-  const [emailCapability, setEmailCapability] =
-    useState<PrescriptionEmailResult | null>(null);
-  const [emailLoading, setEmailLoading] = useState(false);
-  const [emailBusy, setEmailBusy] = useState(false);
-  const [emailUncertain, setEmailUncertain] = useState(false);
-  const [emailError, setEmailError] = useState("");
-  const [showEmailConsent, setShowEmailConsent] = useState(false);
-  const [emailConsent, setEmailConsent] = useState(false);
-  const [emailIdempotencyKey, setEmailIdempotencyKey] = useState("");
-  const emailAttemptAt = useRef<string | null>(null);
-  const expectedDeliveryId = useRef<string | null>(null);
+  const [emailState, setEmailState] = useState<EmailUiState>(() =>
+    initialEmailUiState(requestKey),
+  );
+  const emailUi =
+    emailState.key === requestKey
+      ? emailState
+      : initialEmailUiState(requestKey);
+  const activeEmailKey = useRef(requestKey);
+  const emailStatusRequestId = useRef(0);
+  const emailOperation = useRef<{
+    key: string;
+    attemptAt: string | null;
+    expectedDeliveryId: string | null;
+  }>({ key: requestKey, attemptAt: null, expectedDeliveryId: null });
+  const emailSubmissionLocks = useRef(new Set<string>());
+  const automaticRefreshBudget = useRef<{
+    key: string;
+    deliveryId: string | null;
+    attempts: number;
+  }>({ key: requestKey, deliveryId: null, attempts: 0 });
   const emailTrigger = useRef<HTMLButtonElement>(null);
   const consentInput = useRef<HTMLInputElement>(null);
   const consentDialog = useRef<HTMLDialogElement>(null);
   const verifyEmailButton = useRef<HTMLButtonElement>(null);
   const emailStatusMessage = useRef<HTMLParagraphElement>(null);
+  const emailErrorMessage = useRef<HTMLParagraphElement>(null);
   const hadEmailConsentOpen = useRef(false);
+  const updateEmailState = useCallback(
+    (key: string, update: (current: EmailUiState) => EmailUiState) => {
+      setEmailState((current) => {
+        if (activeEmailKey.current !== key) return current;
+        return update(current.key === key ? current : initialEmailUiState(key));
+      });
+    },
+    [],
+  );
+  useLayoutEffect(() => {
+    activeEmailKey.current = requestKey;
+    emailStatusRequestId.current += 1;
+    emailOperation.current = {
+      key: requestKey,
+      attemptAt: null,
+      expectedDeliveryId: null,
+    };
+    automaticRefreshBudget.current = {
+      key: requestKey,
+      deliveryId: null,
+      attempts: 0,
+    };
+  }, [requestKey]);
   const finalizationConfirmed =
     (location.state as { finalizationConfirmed?: boolean } | null)
       ?.finalizationConfirmed === true;
@@ -133,6 +209,13 @@ export function PrescriptionPreviewPage() {
   const printable =
     entry?.status === "completed" &&
     isRenderablePrescription(entry.prescription);
+  const emailCapability = emailUi.capability;
+  const emailLoading = emailUi.loading;
+  const emailBusy = emailUi.busy;
+  const emailUncertain = emailUi.uncertain;
+  const emailError = emailUi.error;
+  const showEmailConsent = emailUi.consentOpen;
+  const emailConsent = emailUi.consent;
   const emailStatus = emailCapability?.latestDelivery?.status ?? null;
   const documentModel =
     printable && entry
@@ -155,54 +238,92 @@ export function PrescriptionPreviewPage() {
 
   const refreshEmailStatus = useCallback(
     async (signal?: AbortSignal) => {
-      if (!entryId || !printable) return null;
-      setEmailLoading(true);
+      const scope = requestKey;
+      if (!entryId || !printable || activeEmailKey.current !== scope)
+        return null;
+      const requestId = ++emailStatusRequestId.current;
+      const isLatestRequest = () =>
+        activeEmailKey.current === scope &&
+        emailStatusRequestId.current === requestId;
+      updateEmailState(scope, (current) => ({
+        ...current,
+        loading: true,
+        error: current.uncertain ? current.error : "",
+      }));
       try {
         const status = await operations.prescriptionEmail(entryId, signal);
-        if (!signal?.aborted) {
-          setEmailCapability((current) => {
-            if (
-              expectedDeliveryId.current &&
-              current?.latestDelivery?.deliveryId ===
-                expectedDeliveryId.current &&
-              status.latestDelivery?.deliveryId !== expectedDeliveryId.current
-            )
-              return { ...status, latestDelivery: current.latestDelivery };
-            return status;
-          });
-          if (
-            expectedDeliveryId.current &&
-            status.latestDelivery?.deliveryId === expectedDeliveryId.current
-          ) {
-            setEmailUncertain(false);
-            if (status.latestDelivery.status === "failed") {
-              setEmailIdempotencyKey("");
-              emailAttemptAt.current = null;
-              expectedDeliveryId.current = null;
-            }
-          } else if (
-            !expectedDeliveryId.current &&
-            emailAttemptAt.current &&
-            status.latestDelivery &&
-            new Date(status.latestDelivery.requestedAt).getTime() >=
-              new Date(emailAttemptAt.current).getTime()
-          ) {
-            setEmailUncertain(false);
-            if (status.latestDelivery.status === "failed") {
-              setEmailIdempotencyKey("");
-              emailAttemptAt.current = null;
-            }
-          }
+        if (signal?.aborted || !isLatestRequest()) return null;
+        const operation = emailOperation.current;
+        if (
+          operation.key === scope &&
+          operation.expectedDeliveryId &&
+          status.latestDelivery?.deliveryId !== operation.expectedDeliveryId
+        )
+          return null;
+        const attemptMatches = Boolean(
+          operation.key === scope &&
+          !operation.expectedDeliveryId &&
+          operation.attemptAt &&
+          status.latestDelivery &&
+          Date.parse(status.latestDelivery.requestedAt) >=
+            Date.parse(operation.attemptAt),
+        );
+        const confirmedDelivery = Boolean(
+          operation.expectedDeliveryId &&
+          status.latestDelivery?.deliveryId === operation.expectedDeliveryId,
+        );
+        const reconciledDelivery = confirmedDelivery || attemptMatches;
+        updateEmailState(scope, (current) => ({
+          ...current,
+          capability: status,
+          uncertain: reconciledDelivery ? false : current.uncertain,
+          error: reconciledDelivery ? "" : current.error,
+          idempotencyKey:
+            reconciledDelivery && status.latestDelivery?.status === "failed"
+              ? ""
+              : current.idempotencyKey,
+        }));
+        if (reconciledDelivery && status.latestDelivery?.status === "failed") {
+          emailOperation.current = {
+            key: scope,
+            attemptAt: null,
+            expectedDeliveryId: null,
+          };
+        }
+        const deliveryId = status.latestDelivery?.deliveryId ?? null;
+        if (automaticRefreshBudget.current.key !== scope) {
+          automaticRefreshBudget.current = {
+            key: scope,
+            deliveryId,
+            attempts: 0,
+          };
+        } else if (automaticRefreshBudget.current.deliveryId !== deliveryId) {
+          automaticRefreshBudget.current = {
+            key: scope,
+            deliveryId,
+            attempts: 0,
+          };
         }
         return status;
       } catch (cause) {
-        if (!signal?.aborted) setEmailError(errorText(cause));
+        if (!signal?.aborted && isLatestRequest())
+          updateEmailState(scope, (current) => ({
+            ...current,
+            error:
+              current.uncertain && current.error
+                ? current.error
+                : errorText(cause),
+          }));
         return null;
       } finally {
-        if (!signal?.aborted) setEmailLoading(false);
+        if (!signal?.aborted && isLatestRequest())
+          updateEmailState(scope, (current) => ({
+            ...current,
+            loading: false,
+          }));
       }
     },
-    [entryId, printable],
+    [entryId, printable, requestKey, updateEmailState],
   );
 
   useEffect(() => {
@@ -219,28 +340,51 @@ export function PrescriptionPreviewPage() {
   }, [printable, refreshEmailStatus]);
 
   useEffect(() => {
+    const deliveryId = emailCapability?.latestDelivery?.deliveryId;
     if (
       !printable ||
+      !deliveryId ||
       !emailStatus ||
-      ![
-        "queued",
-        "processing",
-        "accepted",
-        "delivery_delayed",
-        "unknown",
-      ].includes(emailStatus)
+      !["queued", "processing"].includes(emailStatus)
     )
       return;
+    const refreshAutomatically = () => {
+      if (
+        document.visibilityState !== "visible" ||
+        emailLoading ||
+        emailBusy ||
+        activeEmailKey.current !== requestKey
+      )
+        return;
+      const budget = automaticRefreshBudget.current;
+      if (budget.key !== requestKey || budget.deliveryId !== deliveryId) {
+        automaticRefreshBudget.current = {
+          key: requestKey,
+          deliveryId,
+          attempts: 0,
+        };
+      }
+      if (automaticRefreshBudget.current.attempts >= 3) return;
+      automaticRefreshBudget.current.attempts += 1;
+      void refreshEmailStatus();
+    };
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refreshEmailStatus();
+      refreshAutomatically();
     }, 60000);
-    const onFocus = () => void refreshEmailStatus();
-    window.addEventListener("focus", onFocus);
+    window.addEventListener("focus", refreshAutomatically);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("focus", refreshAutomatically);
     };
-  }, [emailStatus, printable, refreshEmailStatus]);
+  }, [
+    emailBusy,
+    emailCapability?.latestDelivery?.deliveryId,
+    emailLoading,
+    emailStatus,
+    printable,
+    refreshEmailStatus,
+    requestKey,
+  ]);
 
   useEffect(() => {
     if (showEmailConsent) {
@@ -253,12 +397,13 @@ export function PrescriptionPreviewPage() {
       if (hadEmailConsentOpen.current) {
         hadEmailConsentOpen.current = false;
         if (emailUncertain) verifyEmailButton.current?.focus();
+        else if (emailError) emailErrorMessage.current?.focus();
         else if (emailStatus && emailStatus !== "failed")
           emailStatusMessage.current?.focus();
         else emailTrigger.current?.focus();
       }
     }
-  }, [showEmailConsent, emailStatus, emailUncertain]);
+  }, [showEmailConsent, emailStatus, emailUncertain, emailError]);
 
   async function downloadPdf() {
     if (!entry || !printable || pdfBusy) return;
@@ -273,58 +418,105 @@ export function PrescriptionPreviewPage() {
   }
 
   async function requestEmail() {
+    const scope = requestKey;
     if (
       !entry ||
       !printable ||
-      !emailCapability?.supported ||
-      !emailCapability.eligible ||
+      !canRequestEmail(emailUi.capability) ||
       !emailConsent ||
-      emailBusy
+      emailUi.busy ||
+      emailUi.uncertain ||
+      emailSubmissionLocks.current.has(scope)
     )
       return;
-    const key = emailIdempotencyKey || crypto.randomUUID();
-    setEmailIdempotencyKey(key);
-    emailAttemptAt.current = new Date().toISOString();
-    setEmailBusy(true);
-    setEmailError("");
+    emailSubmissionLocks.current.add(scope);
+    updateEmailState(scope, (current) => ({
+      ...current,
+      busy: true,
+      phase: "validating",
+      error: "",
+    }));
+    let postStarted = false;
     try {
+      const latest = await refreshEmailStatus();
+      if (activeEmailKey.current !== scope) return;
+      if (!latest) {
+        updateEmailState(scope, (current) => ({
+          ...current,
+          consentOpen: false,
+          consent: false,
+        }));
+        return;
+      }
+      if (!canRequestEmail(latest)) {
+        const message = !latest.supported
+          ? "O envio pelo Gmail está indisponível no servidor."
+          : latest.latestDelivery && latest.latestDelivery.status !== "failed"
+            ? "Já existe uma solicitação registrada para esta prescrição. Atualize o estado antes de solicitar outro envio."
+            : "A prescrição não está elegível para envio. Confira o estado do atendimento.";
+        updateEmailState(scope, (current) => ({
+          ...current,
+          error: message,
+          consentOpen: false,
+          consent: false,
+        }));
+        return;
+      }
+      const key = emailUi.idempotencyKey || crypto.randomUUID();
+      updateEmailState(scope, (current) => ({
+        ...current,
+        idempotencyKey: key,
+        phase: "submitting",
+      }));
+      emailOperation.current = {
+        key: scope,
+        attemptAt: new Date().toISOString(),
+        expectedDeliveryId: null,
+      };
+      postStarted = true;
       const requested = await operations.requestPrescriptionEmail(
         entry.id,
         key,
       );
-      setEmailUncertain(false);
-      emailAttemptAt.current = requested.requestedAt;
-      expectedDeliveryId.current = requested.deliveryId;
-      setEmailCapability((current) =>
-        current
+      if (activeEmailKey.current !== scope) return;
+      emailOperation.current = {
+        key: scope,
+        attemptAt: requested.requestedAt,
+        expectedDeliveryId: requested.deliveryId,
+      };
+      automaticRefreshBudget.current = {
+        key: scope,
+        deliveryId: requested.deliveryId,
+        attempts: 0,
+      };
+      updateEmailState(scope, (current) => ({
+        ...current,
+        uncertain: false,
+        capability: current.capability
           ? {
-              ...current,
+              ...current.capability,
               latestDelivery: {
                 deliveryId: requested.deliveryId,
                 status: requested.status,
                 requestedAt: requested.requestedAt,
                 updatedAt: requested.requestedAt,
-                acceptedAt:
-                  requested.status === "accepted"
-                    ? requested.requestedAt
-                    : null,
-                deliveredAt:
-                  requested.status === "delivered"
-                    ? requested.requestedAt
-                    : null,
+                acceptedAt: null,
+                deliveredAt: null,
                 failureCode: null,
               },
             }
-          : current,
-      );
-      setShowEmailConsent(false);
-      setEmailConsent(false);
+          : current.capability,
+        consentOpen: false,
+        consent: false,
+      }));
       await refreshEmailStatus();
-      toast.info(
-        "Solicitação registrada",
-        "O HTTP 202 confirma que o pedido foi aceito para processamento, não que o e-mail foi entregue.",
-      );
+      if (activeEmailKey.current === scope)
+        toast.info(
+          "Solicitação registrada",
+          "O HTTP 202 confirma que o pedido entrou no fluxo de processamento. O Gmail não confirma o recebimento pelo destinatário.",
+        );
     } catch (cause) {
+      if (activeEmailKey.current !== scope) return;
       const status =
         cause instanceof Error
           ? (cause as { status?: number }).status
@@ -332,22 +524,30 @@ export function PrescriptionPreviewPage() {
       const code =
         cause instanceof Error ? (cause as { code?: string }).code : undefined;
       const uncertain =
-        code === "TIMEOUT" ||
-        code === "NETWORK_ERROR" ||
-        status === 409 ||
-        status === 429 ||
-        status === 503;
-      setEmailUncertain(uncertain);
-      setEmailError(
-        uncertain
+        postStarted &&
+        (code === "TIMEOUT" ||
+          code === "NETWORK_ERROR" ||
+          status === 409 ||
+          status === 429 ||
+          status === 503);
+      updateEmailState(scope, (current) => ({
+        ...current,
+        uncertain,
+        error: uncertain
           ? "Não foi possível confirmar o resultado. O envio não será repetido automaticamente; consulte o estado antes de qualquer outra ação."
           : errorText(cause),
-      );
-      setShowEmailConsent(false);
-      setEmailConsent(false);
-      await refreshEmailStatus();
+        consentOpen: false,
+        consent: false,
+      }));
+      if (postStarted) await refreshEmailStatus();
     } finally {
-      setEmailBusy(false);
+      emailSubmissionLocks.current.delete(scope);
+      if (activeEmailKey.current === scope)
+        updateEmailState(scope, (current) => ({
+          ...current,
+          busy: false,
+          phase: "idle",
+        }));
     }
   }
 
@@ -485,21 +685,24 @@ export function PrescriptionPreviewPage() {
                 className="local-secondary-button"
                 disabled={
                   emailLoading ||
-                  !emailCapability?.supported ||
-                  !emailCapability?.eligible ||
+                  !canRequestEmail(emailCapability) ||
                   emailBusy ||
-                  emailUncertain ||
-                  Boolean(emailStatus && emailStatus !== "failed")
+                  emailUncertain
                 }
                 aria-describedby="prescription-email-help"
                 onClick={() => {
-                  setEmailConsent(false);
-                  setEmailError("");
-                  setShowEmailConsent(true);
+                  updateEmailState(requestKey, (current) => ({
+                    ...current,
+                    consent: false,
+                    error: "",
+                    consentOpen: true,
+                  }));
                 }}
               >
                 {emailBusy
-                  ? "Solicitando envio…"
+                  ? emailUi.phase === "validating"
+                    ? "Verificando disponibilidade…"
+                    : "Solicitando envio…"
                   : "Enviar prescrição por e-mail"}
               </button>
               <p
@@ -510,13 +713,17 @@ export function PrescriptionPreviewPage() {
               >
                 {emailLoading
                   ? "Consultando disponibilidade do serviço…"
-                  : !emailCapability?.supported
-                    ? "O serviço de envio não está habilitado no servidor."
-                    : !emailCapability.eligible
-                      ? "Este atendimento não está elegível para envio por e-mail."
-                      : emailStatus
-                        ? emailStatusLabel[emailStatus]
-                        : "O envio exige consentimento explícito do paciente."}
+                  : !emailCapability
+                    ? "Aguardando consulta da disponibilidade do serviço…"
+                    : !emailCapability?.supported
+                      ? "O envio pelo Gmail não está habilitado no servidor."
+                      : emailStatus && emailStatus !== "failed"
+                        ? `${emailStatusLabel[emailStatus]}. Não é possível solicitar outro envio enquanto esta entrega estiver registrada.`
+                        : !emailCapability.eligible
+                          ? "Este atendimento não está elegível para novo envio por e-mail."
+                          : emailStatus
+                            ? emailStatusLabel[emailStatus]
+                            : "O envio exige consentimento explícito do paciente."}
               </p>
               {emailCapability?.reasonCode && (
                 <p className="local-note">
@@ -530,9 +737,26 @@ export function PrescriptionPreviewPage() {
                 </p>
               )}
               {emailError && (
-                <p className="prescription-form-error" role="alert">
+                <p
+                  ref={emailErrorMessage}
+                  className="prescription-form-error"
+                  role="alert"
+                  tabIndex={-1}
+                >
                   {emailError}
                 </p>
+              )}
+              {emailStatus && !emailUncertain && (
+                <button
+                  type="button"
+                  className="local-secondary-button"
+                  onClick={() => void refreshEmailStatus()}
+                  disabled={emailLoading || emailBusy}
+                >
+                  {emailLoading
+                    ? "Atualizando estado…"
+                    : "Atualizar estado do envio"}
+                </button>
               )}
               {emailUncertain && (
                 <button
@@ -560,7 +784,11 @@ export function PrescriptionPreviewPage() {
                   className="prescription-consent-dialog"
                   onCancel={(event) => {
                     event.preventDefault();
-                    setShowEmailConsent(false);
+                    updateEmailState(requestKey, (current) => ({
+                      ...current,
+                      consentOpen: false,
+                      consent: false,
+                    }));
                   }}
                 >
                   <h2 id="prescription-consent-title">
@@ -576,7 +804,10 @@ export function PrescriptionPreviewPage() {
                       type="checkbox"
                       checked={emailConsent}
                       onChange={(event) =>
-                        setEmailConsent(event.target.checked)
+                        updateEmailState(requestKey, (current) => ({
+                          ...current,
+                          consent: event.target.checked,
+                        }))
                       }
                     />{" "}
                     Confirmo que o paciente consentiu com o envio desta
@@ -587,19 +818,33 @@ export function PrescriptionPreviewPage() {
                       type="button"
                       className="local-secondary-button"
                       onClick={() => {
-                        setShowEmailConsent(false);
-                        setEmailConsent(false);
+                        updateEmailState(requestKey, (current) => ({
+                          ...current,
+                          consentOpen: false,
+                          consent: false,
+                        }));
                       }}
                     >
                       Cancelar
                     </button>
+                    {emailBusy && (
+                      <p role="status">
+                        {emailUi.phase === "validating"
+                          ? "Verificando a disponibilidade e a elegibilidade no servidor…"
+                          : "Registrando a solicitação no servidor…"}
+                      </p>
+                    )}
                     <button
                       type="button"
                       className="local-primary"
                       disabled={!emailConsent || emailBusy}
                       onClick={() => void requestEmail()}
                     >
-                      {emailBusy ? "Solicitando…" : "Confirmar e solicitar"}
+                      {emailBusy
+                        ? emailUi.phase === "validating"
+                          ? "Verificando…"
+                          : "Solicitando…"
+                        : "Confirmar e solicitar"}
                     </button>
                   </div>
                 </dialog>
