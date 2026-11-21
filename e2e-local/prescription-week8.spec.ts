@@ -400,7 +400,7 @@ test("confirma o DELETE após timeout consultando o servidor antes de limpar a e
   expect(unexpectedRequests).toEqual([]);
 });
 
-test("envia apenas após consentimento, usa idempotência e separa accepted de delivered", async ({
+test("envia após revalidar consentimento, usa idempotência e distingue aceitação de entrega", async ({
   page,
 }) => {
   await login(page);
@@ -413,11 +413,13 @@ test("envia apenas após consentimento, usa idempotência e separa accepted de d
   );
   let latestDelivery: Record<string, unknown> | null = null;
   let requestCount = 0;
+  let statusReadCount = 0;
   let staleStatusRead = true;
   await page.route(
     `**/api/v1/entries/${entryId}/prescription-email`,
     async (route) => {
       if (route.request().method() === "GET") {
+        statusReadCount += 1;
         const visibleDelivery =
           requestCount > 0 && staleStatusRead
             ? ((staleStatusRead = false), null)
@@ -425,7 +427,7 @@ test("envia apenas após consentimento, usa idempotência e separa accepted de d
         await route.fulfill({
           json: {
             supported: true,
-            eligible: true,
+            eligible: !visibleDelivery || visibleDelivery.status === "failed",
             reasonCode: null,
             latestDelivery: visibleDelivery,
           },
@@ -469,21 +471,25 @@ test("envia apenas após consentimento, usa idempotência e separa accepted de d
     .click();
   const confirm = page.getByRole("button", { name: "Confirmar e solicitar" });
   await expect(confirm).toBeDisabled();
-  await page.getByLabel(/Confirmo que o paciente consentiu/).check();
+  const consent = page.getByLabel(/Confirmo que o paciente consentiu/);
+  await expect(consent).toBeFocused();
+  const axe = await new AxeBuilder({ page }).analyze();
+  expect(axe.violations).toEqual([]);
+  await page.keyboard.press("Space");
   await expect(confirm).toBeEnabled();
-  await confirm.click();
-  await expect(
-    page.getByText(
-      "E-mail aceito pelo provedor; entrega ainda não confirmada",
-      {
-        exact: true,
-      },
-    ),
-  ).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Cancelar" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#prescription-email-help")).toContainText(
+    "E-mail aceito pelo Gmail; recebimento não confirmado",
+  );
   await expect(page.getByText(/E-mail entregue/)).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
   ).toBeDisabled();
+  expect(statusReadCount).toBe(3);
   latestDelivery = {
     ...latestDelivery,
     status: "delivered",
@@ -491,10 +497,513 @@ test("envia apenas após consentimento, usa idempotência e separa accepted de d
     updatedAt: "2026-11-12T09:40:00.000Z",
   };
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(
-    page.getByText("E-mail entregue", { exact: true }),
-  ).toBeVisible();
+  await expect(page.locator("#prescription-email-help")).toContainText(
+    "E-mail aceito pelo Gmail; recebimento não confirmado",
+  );
+  expect(statusReadCount).toBe(3);
+  await page.getByRole("button", { name: "Atualizar estado do envio" }).click();
+  await expect(page.locator("#prescription-email-help")).toContainText(
+    "Entrega confirmada pelo provedor registrado",
+  );
   expect(requestCount).toBe(1);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("revalida elegibilidade após o consentimento e bloqueia envio já registrado", async ({
+  page,
+}) => {
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta sintética.")),
+    }),
+  );
+  let statusReads = 0;
+  let postCount = 0;
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-email`,
+    async (route) => {
+      if (route.request().method() === "GET") {
+        statusReads += 1;
+        const latestDelivery =
+          statusReads === 1
+            ? null
+            : {
+                deliveryId: "58150f8c-fc50-4bd5-81aa-b174e3c44daf",
+                status: "accepted",
+                requestedAt: "2026-11-20T15:00:00.000Z",
+                updatedAt: "2026-11-20T15:00:05.000Z",
+                acceptedAt: "2026-11-20T15:00:05.000Z",
+                deliveredAt: null,
+                failureCode: null,
+              };
+        await route.fulfill({
+          json: {
+            supported: true,
+            eligible: latestDelivery === null,
+            reasonCode:
+              latestDelivery === null ? null : "RECIPIENT_NOT_ELIGIBLE",
+            latestDelivery,
+          },
+        });
+        return;
+      }
+      postCount += 1;
+      await route.fulfill({ status: 202, json: {} });
+    },
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  const send = page.getByRole("button", {
+    name: "Enviar prescrição por e-mail",
+  });
+  await expect(send).toBeEnabled();
+  await send.click();
+  await page.getByLabel(/Confirmo que o paciente consentiu/).check();
+  await page.getByRole("button", { name: "Confirmar e solicitar" }).click();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: "Já existe uma solicitação registrada para esta prescrição",
+    }),
+  ).toBeVisible();
+  await expect(send).toBeDisabled();
+  expect(statusReads).toBe(2);
+  expect(postCount).toBe(0);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("duplo clique na confirmação mantém uma única validação e um único POST", async ({
+  page,
+}) => {
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta sintética.")),
+    }),
+  );
+  let statusReads = 0;
+  let postCount = 0;
+  let releasePreflight: (() => void) | undefined;
+  let signalPreflightStarted: (() => void) | undefined;
+  const preflightGate = new Promise<void>((resolve) => {
+    releasePreflight = resolve;
+  });
+  const preflightStarted = new Promise<void>((resolve) => {
+    signalPreflightStarted = resolve;
+  });
+  let latestDelivery: Record<string, unknown> | null = null;
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-email`,
+    async (route) => {
+      if (route.request().method() === "GET") {
+        statusReads += 1;
+        if (statusReads === 2) {
+          signalPreflightStarted?.();
+          await preflightGate;
+        }
+        await route.fulfill({
+          json: {
+            supported: true,
+            eligible: !latestDelivery,
+            reasonCode: null,
+            latestDelivery,
+          },
+        });
+        return;
+      }
+      postCount += 1;
+      expect(route.request().postDataJSON()).toEqual({});
+      expect(route.request().headers()["x-patient-consent"]).toBe("confirmed");
+      expect(route.request().headers()["idempotency-key"]).toMatch(
+        /^[0-9a-f-]{36}$/i,
+      );
+      latestDelivery = {
+        deliveryId: "4ea26dbf-7b3a-4580-854b-4375c71632c1",
+        status: "queued",
+        requestedAt: "2026-11-20T15:00:00.000Z",
+        updatedAt: "2026-11-20T15:00:00.000Z",
+        acceptedAt: null,
+        deliveredAt: null,
+        failureCode: null,
+      };
+      await route.fulfill({
+        status: 202,
+        json: {
+          deliveryId: latestDelivery.deliveryId,
+          entryId,
+          status: "queued",
+          requestedAt: "2026-11-20T15:00:00.000Z",
+        },
+      });
+    },
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  await page
+    .getByRole("button", { name: "Enviar prescrição por e-mail" })
+    .click();
+  await page.getByLabel(/Confirmo que o paciente consentiu/).check();
+  const confirm = page.getByRole("button", { name: "Confirmar e solicitar" });
+  await confirm.evaluate((button) => {
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await preflightStarted;
+  expect(statusReads).toBe(2);
+  expect(postCount).toBe(0);
+  releasePreflight?.();
+  await expect(page.locator("#prescription-email-help")).toContainText(
+    "Solicitação registrada, aguardando processamento",
+  );
+  expect(statusReads).toBe(3);
+  expect(postCount).toBe(1);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("respostas de status fora de ordem não substituem o estado mais recente", async ({
+  page,
+}) => {
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta sintética.")),
+    }),
+  );
+  let concurrencyPhase = false;
+  let delayedReads = 0;
+  let signalBothReads: (() => void) | undefined;
+  let releaseOlder: (() => void) | undefined;
+  let releaseNewer: (() => void) | undefined;
+  const bothReadsStarted = new Promise<void>((resolve) => {
+    signalBothReads = resolve;
+  });
+  const olderGate = new Promise<void>((resolve) => {
+    releaseOlder = resolve;
+  });
+  const newerGate = new Promise<void>((resolve) => {
+    releaseNewer = resolve;
+  });
+  const delivery = (status: string) => ({
+    deliveryId: "d7391381-ed78-4e70-a4c1-a6a73047dbf9",
+    status,
+    requestedAt: "2026-11-20T15:00:00.000Z",
+    updatedAt: "2026-11-20T15:01:00.000Z",
+    acceptedAt: status === "accepted" ? "2026-11-20T15:01:00.000Z" : null,
+    deliveredAt: null,
+    failureCode: null,
+  });
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-email`,
+    async (route) => {
+      if (concurrencyPhase) {
+        delayedReads += 1;
+        if (delayedReads === 1) {
+          await olderGate;
+          await route.fulfill({
+            json: {
+              supported: true,
+              eligible: false,
+              reasonCode: "RECIPIENT_NOT_ELIGIBLE",
+              latestDelivery: delivery("queued"),
+            },
+          });
+          return;
+        }
+        if (delayedReads === 2) signalBothReads?.();
+        await newerGate;
+        await route.fulfill({
+          json: {
+            supported: true,
+            eligible: false,
+            reasonCode: "RECIPIENT_NOT_ELIGIBLE",
+            latestDelivery: delivery("accepted"),
+          },
+        });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          supported: true,
+          eligible: true,
+          reasonCode: null,
+          latestDelivery: delivery("queued"),
+        },
+      });
+    },
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  await expect(page.locator("#prescription-email-help")).toContainText(
+    "Solicitação registrada, aguardando processamento",
+  );
+  concurrencyPhase = true;
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("focus"));
+  });
+  await bothReadsStarted;
+  expect(delayedReads).toBe(2);
+  releaseNewer?.();
+  await expect(page.locator("#prescription-email-help")).toContainText(
+    "E-mail aceito pelo Gmail; recebimento não confirmado",
+  );
+  releaseOlder?.();
+  await expect(page.locator("#prescription-email-help")).toContainText(
+    "E-mail aceito pelo Gmail; recebimento não confirmado",
+  );
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("não mistura estado de envio ao trocar de atendimento enquanto a consulta anterior está pendente", async ({
+  page,
+}) => {
+  const secondEntryId = "a3b3c3d3-e4f5-4678-8901-23456789abcd";
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta A sintética.")),
+    }),
+  );
+  await page.route(`**/api/v1/entries/${secondEntryId}`, (route) =>
+    route.fulfill({
+      json: {
+        ...entry("completed", persistedPrescription("Conduta B sintética.")),
+        id: secondEntryId,
+        patientId: "b4c4d4e4-f5a6-4789-9012-3456789abcde",
+      },
+    }),
+  );
+  let releaseOldRead: (() => void) | undefined;
+  let signalOldRead: (() => void) | undefined;
+  const oldReadGate = new Promise<void>((resolve) => {
+    releaseOldRead = resolve;
+  });
+  const oldReadStarted = new Promise<void>((resolve) => {
+    signalOldRead = resolve;
+  });
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-email`,
+    async (route) => {
+      if (route.request().method() === "GET") {
+        signalOldRead?.();
+        await oldReadGate;
+        await route.fulfill({
+          json: {
+            supported: true,
+            eligible: false,
+            reasonCode: "RECIPIENT_NOT_ELIGIBLE",
+            latestDelivery: {
+              deliveryId: "d7391381-ed78-4e70-a4c1-a6a73047dbf9",
+              status: "accepted",
+              requestedAt: "2026-11-20T15:00:00.000Z",
+              updatedAt: "2026-11-20T15:00:00.000Z",
+              acceptedAt: "2026-11-20T15:00:00.000Z",
+              deliveredAt: null,
+              failureCode: null,
+            },
+          },
+        });
+        return;
+      }
+      await route.fulfill({ status: 202, json: {} });
+    },
+  );
+  await page.route(
+    `**/api/v1/entries/${secondEntryId}/prescription-email`,
+    (route) =>
+      route.fulfill({
+        json: {
+          supported: false,
+          eligible: false,
+          reasonCode: "SERVICE_UNAVAILABLE",
+          latestDelivery: null,
+        },
+      }),
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  await oldReadStarted;
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${secondEntryId}`);
+  await expect(page.locator("#prescription-email-help")).toContainText(
+    "O envio pelo Gmail não está habilitado no servidor.",
+  );
+  releaseOldRead?.();
+  await expect(page.locator("#prescription-email-help")).toContainText(
+    "O envio pelo Gmail não está habilitado no servidor.",
+  );
+  await expect(page.getByText(/E-mail aceito pelo Gmail/)).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+  ).toBeDisabled();
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("logout durante a consulta de status encerra a sessão sem manter estado de e-mail", async ({
+  page,
+}) => {
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta sintética.")),
+    }),
+  );
+  await page.route("**/api/v1/auth/logout", (route) =>
+    route.fulfill({ status: 204, body: "" }),
+  );
+  let releaseStatus: (() => void) | undefined;
+  let signalStatusStarted: (() => void) | undefined;
+  const statusGate = new Promise<void>((resolve) => {
+    releaseStatus = resolve;
+  });
+  const statusStarted = new Promise<void>((resolve) => {
+    signalStatusStarted = resolve;
+  });
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-email`,
+    async (route) => {
+      signalStatusStarted?.();
+      await statusGate;
+      await route
+        .fulfill({
+          json: {
+            supported: true,
+            eligible: false,
+            reasonCode: "RECIPIENT_NOT_ELIGIBLE",
+            latestDelivery: {
+              deliveryId: "d7391381-ed78-4e70-a4c1-a6a73047dbf9",
+              status: "accepted",
+              requestedAt: "2026-11-20T15:00:00.000Z",
+              updatedAt: "2026-11-20T15:00:00.000Z",
+              acceptedAt: "2026-11-20T15:00:00.000Z",
+              deliveredAt: null,
+              failureCode: null,
+            },
+          },
+        })
+        .catch(() => undefined);
+    },
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  await statusStarted;
+  await page.getByRole("button", { name: "Sair" }).click();
+  await expect(page).toHaveURL("/login");
+  releaseStatus?.();
+  await expect(
+    page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+  ).toHaveCount(0);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("consentimento pode ser cancelado por teclado sem solicitar envio", async ({
+  page,
+}) => {
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta sintética.")),
+    }),
+  );
+  let postCount = 0;
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-email`,
+    async (route) => {
+      if (route.request().method() === "POST") postCount += 1;
+      await route.fulfill({
+        status: 200,
+        json: {
+          supported: true,
+          eligible: true,
+          reasonCode: null,
+          latestDelivery: null,
+        },
+      });
+    },
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  const send = page.getByRole("button", {
+    name: "Enviar prescrição por e-mail",
+  });
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(send).toBeFocused();
+  expect(postCount).toBe(0);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+for (const status of [403, 404, 503]) {
+  test(`falha HTTP ${status} na consulta mantém o envio bloqueado e remove loading`, async ({
+    page,
+  }) => {
+    await login(page);
+    await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+      route.fulfill({
+        json: entry("completed", persistedPrescription("Conduta sintética.")),
+      }),
+    );
+    await page.route(
+      `**/api/v1/entries/${entryId}/prescription-email`,
+      (route) =>
+        route.fulfill({
+          status,
+          json: { error: { code: "EMAIL_STATUS_TEST_ERROR" } },
+        }),
+    );
+    await page.evaluate((path) => {
+      history.pushState(null, "", path);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }, `/medico/prescricoes/${entryId}`);
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+    ).toBeDisabled();
+    await expect(page.locator("#prescription-email-help")).not.toContainText(
+      "Consultando disponibilidade do serviço",
+    );
+    expect(unexpectedRequests).toEqual([]);
+  });
+}
+
+test("401 na consulta de envio invalida a sessão", async ({ page }) => {
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta sintética.")),
+    }),
+  );
+  await page.route(`**/api/v1/entries/${entryId}/prescription-email`, (route) =>
+    route.fulfill({
+      status: 401,
+      json: { error: { code: "UNAUTHENTICATED" } },
+    }),
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  await expect(page).toHaveURL("/login");
+  await expect(
+    page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+  ).toHaveCount(0);
   expect(unexpectedRequests).toEqual([]);
 });
 
@@ -548,6 +1057,142 @@ test("resultado incerto do envio não permite repetir nem troca a chave automati
   await page.getByRole("button", { name: "Verificar estado do envio" }).click();
   expect(postCount).toBe(1);
   expect(issuedKey).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("falha ao reconciliar resultado incerto mantém aviso e não repete envio", async ({
+  page,
+}) => {
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta sintética.")),
+    }),
+  );
+  let getCount = 0;
+  let postCount = 0;
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-email`,
+    async (route) => {
+      if (route.request().method() === "GET") {
+        getCount += 1;
+        if (getCount >= 3) {
+          await route.fulfill({
+            status: 503,
+            json: { error: { code: "EMAIL_STATUS_UNAVAILABLE" } },
+          });
+          return;
+        }
+        await route.fulfill({
+          json: {
+            supported: true,
+            eligible: true,
+            reasonCode: null,
+            latestDelivery: null,
+          },
+        });
+        return;
+      }
+      postCount += 1;
+      await route.abort("failed");
+    },
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  await page
+    .getByRole("button", { name: "Enviar prescrição por e-mail" })
+    .click();
+  await page.getByLabel(/Confirmo que o paciente consentiu/).check();
+  await page.getByRole("button", { name: "Confirmar e solicitar" }).click();
+  const uncertainAlert = page
+    .getByRole("alert")
+    .filter({ hasText: /não será repetido automaticamente/ });
+  await expect(uncertainAlert).toBeVisible();
+  await page.getByRole("button", { name: "Verificar estado do envio" }).click();
+  await expect(uncertainAlert).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+  ).toBeDisabled();
+  expect(getCount).toBeGreaterThanOrEqual(4);
+  expect(postCount).toBe(1);
+  expect(unexpectedRequests).toEqual([]);
+});
+
+test("timeout do POST consulta o estado e não repete a solicitação", async ({
+  page,
+}) => {
+  await login(page);
+  await page.route(`**/api/v1/entries/${entryId}`, (route) =>
+    route.fulfill({
+      json: entry("completed", persistedPrescription("Conduta sintética.")),
+    }),
+  );
+  let getCount = 0;
+  let postCount = 0;
+  let issuedKey = "";
+  let signalPostStarted: (() => void) | undefined;
+  let releasePost: (() => void) | undefined;
+  const postStarted = new Promise<void>((resolve) => {
+    signalPostStarted = resolve;
+  });
+  const postGate = new Promise<void>((resolve) => {
+    releasePost = resolve;
+  });
+  await page.route(
+    `**/api/v1/entries/${entryId}/prescription-email`,
+    async (route) => {
+      if (route.request().method() === "GET") {
+        getCount += 1;
+        await route.fulfill({
+          json: {
+            supported: true,
+            eligible: true,
+            reasonCode: null,
+            latestDelivery: null,
+          },
+        });
+        return;
+      }
+      postCount += 1;
+      issuedKey = route.request().headers()["idempotency-key"];
+      signalPostStarted?.();
+      await postGate;
+      await route
+        .fulfill({ status: 202, json: { status: "queued" } })
+        .catch(() => undefined);
+    },
+  );
+  await page.evaluate((path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/medico/prescricoes/${entryId}`);
+  await expect(
+    page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Enviar prescrição por e-mail" })
+    .click();
+  await page.getByLabel(/Confirmo que o paciente consentiu/).check();
+  await page.getByRole("button", { name: "Confirmar e solicitar" }).click();
+  await postStarted;
+  await expect
+    .poll(() => getCount, { timeout: 15_000, intervals: [100, 250, 500] })
+    .toBe(3);
+  const uncertainAlert = page
+    .getByRole("alert")
+    .filter({ hasText: /não será repetido automaticamente/ });
+  await expect(uncertainAlert).toBeVisible();
+  releasePost?.();
+  await page.getByRole("button", { name: "Verificar estado do envio" }).click();
+  await expect(uncertainAlert).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Enviar prescrição por e-mail" }),
+  ).toBeDisabled();
+  expect(issuedKey).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(postCount).toBe(1);
+  expect(getCount).toBe(4);
   expect(unexpectedRequests).toEqual([]);
 });
 
@@ -638,7 +1283,7 @@ test("acompanha os estados reais do envio sem permitir novo POST enquanto não f
     route.fulfill({
       json: {
         supported: true,
-        eligible: true,
+        eligible: latestDelivery.status === "failed",
         reasonCode: null,
         latestDelivery,
       },
@@ -652,21 +1297,21 @@ test("acompanha os estados reais do envio sem permitir novo POST enquanto não f
   const send = page.getByRole("button", {
     name: "Enviar prescrição por e-mail",
   });
-  await expect(help).toHaveText("Solicitação na fila");
+  await expect(help).toContainText(
+    "Solicitação registrada, aguardando processamento",
+  );
   const states = [
-    ["processing", "Envio em processamento", false],
-    [
-      "delivery_delayed",
-      "Entrega atrasada; aguardando atualização do provedor",
-      false,
-    ],
-    ["unknown", "Estado do envio desconhecido", false],
-    ["failed", "Envio falhou", true],
+    ["processing", "Preparando e enviando a prescrição", false],
+    ["delivery_delayed", "Entrega atrasada, conforme estado registrado", false],
+    ["unknown", "Não foi possível confirmar o resultado do envio", false],
+    ["failed", "O envio apresentou uma falha", true],
   ] as const;
   for (const [status, label, enabled] of states) {
     latestDelivery.status = status;
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await expect(help).toHaveText(label);
+    await page
+      .getByRole("button", { name: "Atualizar estado do envio" })
+      .click();
+    await expect(help).toContainText(label);
     if (enabled) await expect(send).toBeEnabled();
     else await expect(send).toBeDisabled();
   }
@@ -1042,7 +1687,7 @@ test("finaliza sem medicamentos, mantém texto literal e abre impressão, PDF e 
   });
   await expect(emailButton).toBeDisabled();
   await expect(
-    page.getByText("O serviço de envio não está habilitado no servidor."),
+    page.getByText("O envio pelo Gmail não está habilitado no servidor."),
   ).toBeVisible();
   await expect(page.getByText(/enviado/i)).toHaveCount(0);
   await expect(page.getByText("Sem medicamentos prescritos.")).toBeVisible();
